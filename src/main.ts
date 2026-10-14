@@ -16,6 +16,9 @@ const CATCH_UP_PER_PLACE = 0.01;  // +1% pace for every place behind the leader
 // Turbo start: press W in this window around GO for a perfect launch. Holding W from earlier is a jump start.
 const LAUNCH_EARLY = 0.3;     // s before GO a press still counts as perfect
 const LAUNCH_LATE = 0.15;     // s after GO a press still counts as perfect
+// DRS: from this lap on, being within DRS_GAP seconds of the car ahead when entering a zone opens the wing.
+const DRS_FROM_LAP = 1;       // laps completed, i.e. DRS is enabled from lap 2
+const DRS_GAP = 1.0;          // s
 /** Season points for 1st to 6th. */
 const POINTS = [10, 8, 6, 4, 2, 1];
 
@@ -72,10 +75,12 @@ let launchJudged = false;
 let lastPressAt = -Infinity;
 let prevThrottle = false;
 let aiLaunched = false;
+/** Per car: the DRS zone it's in (-1 = none) and whether it earned DRS on entering it. */
+const drs = new Map<Car, { zone: number; earned: boolean }>();
 
 function livery(i: number) {
-  const { sprite, color, hue } = LIVERIES[i];
-  return { sprite, color, hue };
+  const { sprite, color, hue, name } = LIVERIES[i];
+  return { sprite, color, hue, name };
 }
 
 /** Line everyone up on the grid and start the countdown. */
@@ -107,6 +112,7 @@ function startRace(): void {
   resultsAt = 0;
   lastCount = COUNTDOWN + 1;
   launchJudged = false;
+  drs.clear();
   lastPressAt = -Infinity;
   prevThrottle = input.throttle;
   aiLaunched = false;
@@ -259,9 +265,11 @@ function update(dt: number): void {
   const crafts = cars.map((c) => c.craft);
   for (const c of crafts) c.feelWake(crafts, dt);
   // Rubber band: each place behind the leader is worth +1% pace (none before the start or once finished).
-  rankCars().forEach((car, place) => {
+  const ranked = rankCars();
+  ranked.forEach((car, place) => {
     car.craft.catchUp = racing && !finishOrder.includes(car) ? place * CATCH_UP_PER_PLACE : 0;
   });
+  updateDrs(ranked, racing);
 
   // Player: aim from the craft's on-screen position toward the cursor.
   const pc = player.craft;
@@ -271,15 +279,18 @@ function update(dt: number): void {
   const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
   if (autopilot && racing) {
     const c = autopilot.think(track, time, cars);
+    pc.deploy = c.deploy;
     pc.step(dt, c.aim, c.throttle, c.brake);
   } else {
+    pc.deploy = racing && input.deploy;
     pc.step(dt, racing ? aim : pc.heading, racing && input.throttle, racing && input.brake);
   }
   sound.engine(pc.gear, pc.rev, pc.thrust, clamp(pc.speed / 880, 0, 1));
   if (pc.shifted === 1) sound.whoosh();
 
   for (const { car, driver } of rivals) {
-    const c = racing ? driver.think(track, time, cars) : { aim: car.craft.heading, throttle: false, brake: false };
+    const c = racing ? driver.think(track, time, cars) : { aim: car.craft.heading, throttle: false, brake: false, deploy: false };
+    car.craft.deploy = c.deploy;
     car.craft.step(dt, c.aim, c.throttle, c.brake);
   }
 
@@ -437,6 +448,39 @@ function resultRows(): ResultRow[] {
   });
 }
 
+/**
+ * DRS. On entering a zone, a car earns DRS if it's within DRS_GAP seconds of the car directly
+ * ahead (from lap 2). The wing stays open to the end of the zone, or until it brakes.
+ */
+function updateDrs(ranked: Car[], racing: boolean): void {
+  ranked.forEach((car, place) => {
+    const st = drs.get(car) ?? { zone: -1, earned: false };
+    const zone = racing ? track.drsZoneAt(car.race.index) : -1;
+    if (zone !== st.zone) {
+      const ahead = ranked[place - 1];
+      const gap = ahead ? car.race.gapBehind(ahead.race, track, time) : NaN;
+      st.earned = zone >= 0 && car.race.lap >= DRS_FROM_LAP && !finishOrder.includes(car) && gap < DRS_GAP;
+      st.zone = zone;
+      if (st.earned && car === player) showToast('DRS OPEN', '#4dff9a');
+    }
+    if (car.craft.braking) st.earned = false;
+    car.craft.drsOpen = st.earned && zone >= 0;
+    drs.set(car, st);
+  });
+}
+
+/** Time gap from the player to the cars just ahead and behind, for the HUD. */
+function gaps(ranked: Car[]): Pick<RaceHud, 'ahead' | 'behind'> {
+  const i = ranked.indexOf(player);
+  const tag = (car: Car | undefined, gap: number) =>
+    car && Number.isFinite(gap) ? { name: car.name, color: car.color, gap } : null;
+  const ahead = ranked[i - 1], behind = ranked[i + 1];
+  return {
+    ahead: tag(ahead, ahead ? player.race.gapBehind(ahead.race, track, time) : NaN),
+    behind: tag(behind, behind ? behind.race.gapBehind(player.race, track, time) : NaN),
+  };
+}
+
 function raceHud(): RaceHud {
   const ranked = rankCars();
   const left = goTime - time;
@@ -447,6 +491,8 @@ function raceHud(): RaceHud {
   return {
     position: ranked.indexOf(player) + 1, racers: cars.length, laps: raceLaps, countdown, banner,
     catchUp: player.craft.catchUp, launchHint,
+    ...(mode === 'racing' || mode === 'paused' ? gaps(ranked) : { ahead: null, behind: null }),
+    drsAvailable: player.race.lap >= DRS_FROM_LAP,
   };
 }
 

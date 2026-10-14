@@ -6,7 +6,7 @@
 import { Craft, clamp } from './craft';
 import { COOL_LANE, HALF_WIDTH, RaceState, Track, lateral } from './track';
 
-export interface Controls { aim: number; throttle: boolean; brake: boolean }
+export interface Controls { aim: number; throttle: boolean; brake: boolean; deploy: boolean }
 
 /** What the AI can see of another car. */
 export interface Rival { craft: Craft; race: RaceState }
@@ -125,7 +125,11 @@ export class Driver {
     const safe = Math.min(1000, (this.cornerK * this.skill * late) / Math.sqrt(maxCurve + 1e-6));
     const brake = speed > safe * 1.04;
     const throttle = !brake && speed < safe;
-    return { aim, throttle, brake };
+    // ERS: spend energy on straights to attack or defend, or when the battery is nearly full.
+    const straight = maxCurve < 1 / 1500;
+    const deploy = throttle && straight && c.energy > 0.05
+      && (front !== null || rearGap < Infinity || c.energy > 0.6);
+    return { aim, throttle, brake, deploy };
   }
 
   /** Roll how this driver gets off the line at GO. */

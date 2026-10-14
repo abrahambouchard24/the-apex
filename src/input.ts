@@ -2,12 +2,15 @@
 
 const THROTTLE_KEYS = new Set(['KeyW', 'ArrowUp']);
 const BRAKE_KEYS = new Set(['KeyD', 'KeyS', 'ArrowDown', 'Space']);
+const DEPLOY_KEYS = new Set(['ShiftLeft', 'ShiftRight', 'KeyE']);
 
 export class Input {
   /** Virtual cursor in canvas CSS pixels. */
   cursor = { x: 0, y: 0 };
   throttle = false;
   brake = false;
+  /** Holding the ERS deploy key. */
+  deploy = false;
   locked = false;
   private resetQueued = false;
   private pauseQueued = false;
@@ -38,7 +41,7 @@ export class Input {
       }
     });
     addEventListener('keydown', (e) => {
-      if (THROTTLE_KEYS.has(e.code) || BRAKE_KEYS.has(e.code)) {
+      if (THROTTLE_KEYS.has(e.code) || BRAKE_KEYS.has(e.code) || DEPLOY_KEYS.has(e.code)) {
         this.held.add(e.code);
         e.preventDefault();
       }
@@ -57,6 +60,7 @@ export class Input {
   private refresh(): void {
     this.throttle = [...THROTTLE_KEYS].some((k) => this.held.has(k));
     this.brake = [...BRAKE_KEYS].some((k) => this.held.has(k));
+    this.deploy = [...DEPLOY_KEYS].some((k) => this.held.has(k));
   }
 
   takeReset(): boolean { const r = this.resetQueued; this.resetQueued = false; return r; }

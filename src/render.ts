@@ -46,7 +46,7 @@ export function loadSprite(url: string, height = 256): Sprite {
 }
 
 /** One racer: physics, race progress, art, minimap color and exhaust flame hue. */
-export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number }
+export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string }
 
 export interface RaceHud {
   position: number; racers: number; laps: number; countdown: string | null; banner: string | null;
@@ -54,6 +54,11 @@ export interface RaceHud {
   catchUp: number;
   /** Show the turbo-start tip under the countdown. */
   launchHint: boolean;
+  /** Time gaps to the cars just ahead of and behind the player (null when there isn't one). */
+  ahead: { name: string; color: string; gap: number } | null;
+  behind: { name: string; color: string; gap: number } | null;
+  /** DRS is enabled for the player this lap (from lap 2). */
+  drsAvailable: boolean;
 }
 
 export interface Scene {
@@ -82,7 +87,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
 
   drawMinimap(ctx, w, s.track, s.cars, s.player);
   drawLapPanel(ctx, s.player.race, s.time, s.hud);
-  drawHud(ctx, w, h, s.player.craft, s.toast, s.locked);
+  drawGapPanel(ctx, s.hud);
+  drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud);
   drawRaceBanners(ctx, w, h, s.hud);
   drawCursor(ctx, s.cursor);
 }
@@ -217,6 +223,7 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
 
   drawCoolLane(ctx, track, p, time);
 
+  drawDrsZones(ctx, track);
   drawStartLine(ctx, track);
   ctx.restore();
 }
@@ -259,6 +266,37 @@ function drawCoolLane(ctx: CanvasRenderingContext2D, track: Track, p: TrackPaths
   ctx.textBaseline = 'middle';
   ctx.fillStyle = 'rgba(200, 245, 255, 0.9)';
   ctx.fillText('COOL', 0, 0);
+  ctx.restore();
+}
+
+/** A dashed green line and "DRS" across the track where each zone starts, a fainter line where it ends. */
+function drawDrsZones(ctx: CanvasRenderingContext2D, track: Track): void {
+  ctx.save();
+  for (const z of track.drsZones) {
+    for (const [i, start] of [[z.from, true], [z.to, false]] as const) {
+      const p = track.pts[i];
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(track.direction(i));
+      ctx.strokeStyle = start ? 'rgba(77, 255, 154, 0.85)' : 'rgba(77, 255, 154, 0.35)';
+      ctx.lineWidth = start ? 4 : 2;
+      ctx.setLineDash([12, 10]);
+      ctx.beginPath();
+      ctx.moveTo(0, -HALF_WIDTH + 6);
+      ctx.lineTo(0, HALF_WIDTH - 6);
+      ctx.stroke();
+      if (start) {
+        ctx.setLineDash([]);
+        ctx.font = '900 22px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(77, 255, 154, 0.75)';
+        ctx.rotate(Math.PI / 2);   // reads along the direction of travel
+        ctx.fillText('DRS', 0, -26);
+      }
+      ctx.restore();
+    }
+  }
   ctx.restore();
 }
 
@@ -311,6 +349,36 @@ function drawMinimap(ctx: CanvasRenderingContext2D, w: number, track: Track, car
     ctx.arc(car.craft.pos.x, car.craft.pos.y, (car === player ? 6 : 5) / scale, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
+}
+
+/** Live time gaps to the cars just ahead (+) and behind (-), under the lap panel. */
+function drawGapPanel(ctx: CanvasRenderingContext2D, hud: RaceHud): void {
+  const rows = [
+    hud.ahead && { label: 'AHEAD', ...hud.ahead, text: `+${hud.ahead.gap.toFixed(1)}` },
+    hud.behind && { label: 'BEHIND', ...hud.behind, text: `-${hud.behind.gap.toFixed(1)}` },
+  ].filter((r): r is NonNullable<typeof r> => !!r);
+  if (!rows.length) return;
+  const x = 24, y = 152;
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,10,22,0.7)';
+  roundRect(ctx, x, y, 220, 16 + rows.length * 24, 12);
+  ctx.fill();
+  rows.forEach((r, i) => {
+    const ry = y + 28 + i * 24;
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillStyle = '#8a93c0';
+    ctx.textAlign = 'left';
+    ctx.fillText(r.label, x + 16, ry);
+    ctx.font = '800 13px system-ui, sans-serif';
+    ctx.fillStyle = r.color;
+    ctx.fillText(r.name, x + 70, ry);
+    ctx.font = '700 15px ui-monospace, Consolas, monospace';
+    // Within a second of the car ahead: green, you can get DRS on it.
+    ctx.fillStyle = r.label === 'AHEAD' && r.gap < 1 ? '#4dff9a' : r.label === 'BEHIND' && r.gap < 1 ? '#ffb02e' : '#fff';
+    ctx.textAlign = 'right';
+    ctx.fillText(r.text, x + 204, ry);
+  });
   ctx.restore();
 }
 
@@ -422,6 +490,7 @@ export const NOZZLE_BACK = CRAFT_LENGTH / 2 - 4;
 export const NOZZLE_SIDE = 5.5;
 
 function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite, hue: number): void {
+  // (hue is reassigned below while ERS is deploying)
   const bob = Math.sin(time * 5 + c.pos.x * 0.001) * 2.5;
   const hoverHeight = 10 + bob;
   const width = CRAFT_LENGTH * sprite.aspect;
@@ -445,7 +514,8 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
   ctx.rotate(c.heading);
 
   // Thruster flames out of the twin rear exhausts.
-  const flame = 10 + c.thrust * 22 + Math.random() * 4;
+  const flame = 10 + c.thrust * 22 + (c.deploying ? 16 : 0) + Math.random() * 4;
+  if (c.deploying) hue = 280;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const side of [-NOZZLE_SIDE, NOZZLE_SIDE]) {
@@ -510,17 +580,37 @@ function drawSprite(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
   ctx.drawImage(sprite.canvas!, -width / 2, -CRAFT_LENGTH / 2, width, CRAFT_LENGTH);
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean): void {
-  const x = w - 260, y = h - 172;
+function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean, hud: RaceHud): void {
+  const x = w - 260, y = h - 192;
   ctx.save();
   ctx.fillStyle = 'rgba(8,10,22,0.7)';
-  roundRect(ctx, x, y, 236, 148, 12);
+  roundRect(ctx, x, y, 236, 168, 12);
   ctx.fill();
 
   ctx.font = '600 13px system-ui, sans-serif';
   ctx.fillStyle = '#8a93c0';
   ctx.fillText('SPEED', x + 16, y + 26);
   ctx.fillText('GEAR', x + 168, y + 26);
+
+  // DRS badge: solid green while the wing is open, an outline once DRS is enabled for the race.
+  if (c.drsOpen || hud.drsAvailable) {
+    const bx0 = x + 98, by0 = y + 12;
+    ctx.save();
+    roundRect(ctx, bx0, by0, 46, 20, 5);
+    if (c.drsOpen) {
+      ctx.fillStyle = '#4dff9a';
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = 'rgba(138, 147, 192, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.font = '800 12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = c.drsOpen ? '#07080f' : 'rgba(138, 147, 192, 0.8)';
+    ctx.fillText('DRS', bx0 + 23, by0 + 14);
+    ctx.restore();
+  }
 
   ctx.font = '700 40px system-ui, sans-serif';
   ctx.fillStyle = '#fff';
@@ -553,16 +643,25 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.fillRect(bx + 80, y + 108, (bw - 80) * c.heat, 6);
   ctx.globalAlpha = 1;
 
+  // ERS energy: violet, brighter while deploying.
+  ctx.font = '700 11px system-ui, sans-serif';
+  ctx.fillStyle = c.deploying ? '#d9a6ff' : '#8a93c0';
+  ctx.fillText(c.deploying ? 'DEPLOYING' : 'ENERGY', bx, y + 136);
+  ctx.fillStyle = '#1b2040';
+  ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
+  ctx.fillStyle = c.deploying ? '#d9a6ff' : '#9d5cff';
+  ctx.fillRect(bx + 80, y + 128, (bw - 80) * c.energy, 6);
+
   // Slipstream meter: only shown while towing.
   if (c.slipstream > 0.05) {
     ctx.globalAlpha = clamp(c.slipstream * 2, 0, 1);
     ctx.font = '700 11px system-ui, sans-serif';
     ctx.fillStyle = '#dff4ff';
-    ctx.fillText('SLIPSTREAM', bx, y + 136);
+    ctx.fillText('SLIPSTREAM', bx, y + 156);
     ctx.fillStyle = '#1b2040';
-    ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
+    ctx.fillRect(bx + 80, y + 148, bw - 80, 6);
     ctx.fillStyle = '#dff4ff';
-    ctx.fillRect(bx + 80, y + 128, (bw - 80) * c.slipstream, 6);
+    ctx.fillRect(bx + 80, y + 148, (bw - 80) * c.slipstream, 6);
     ctx.globalAlpha = 1;
   }
 
@@ -585,8 +684,8 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
   const help = locked
-    ? 'Mouse: steer   W: accelerate   D / S / Space: brake   R: restart   Esc: pause'
-    : 'Click to lock the mouse   Mouse: steer   W: accelerate   D / S / Space: brake   R: restart   Esc: pause';
+    ? 'Mouse: steer   W: accelerate   D / S / Space: brake   Shift: deploy energy   R: restart   Esc: pause'
+    : 'Click to lock the mouse   Mouse: steer   W: accelerate   D / S / Space: brake   Shift: deploy energy   R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }

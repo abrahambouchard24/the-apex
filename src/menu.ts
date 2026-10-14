@@ -143,7 +143,7 @@ export class Menus {
             ${SEASON_CHOICES.map((n) => `<button data-v="${n}">${n}</button>`).join('')}</div></div>
         </div>
         <div class="hr-btns"><button class="hr-btn" data-act="start">START RACE</button></div>
-        <p class="hr-keys">Mouse: steer &nbsp;·&nbsp; W: accelerate &nbsp;·&nbsp; S / D / Space: brake &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
+        <p class="hr-keys">Mouse: steer &nbsp;·&nbsp; W: accelerate &nbsp;·&nbsp; S / D / Space: brake &nbsp;·&nbsp; Shift: deploy energy &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
       </div>`);
     const grid = this.start.querySelector('.hr-cars')!;
     cars.forEach((car, i) => {
