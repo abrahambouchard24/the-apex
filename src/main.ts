@@ -2,12 +2,11 @@ import { Driver } from './ai';
 import { Sound } from './audio';
 import { Craft, LAUNCH_TIME, STALL_TIME, clamp, collideCrafts, lerp } from './craft';
 import { Input } from './input';
-import { Menus, ResultRow, TrackChoice } from './menu';
+import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
 import { RaceState, TRACKS, Track, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
-const RACE_LAPS = 3;
 const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
 // AI skill range: 1 = drives near the grip limit; lower brakes earlier and corners slower.
 const AI_SKILL_MIN = 0.7;
@@ -17,6 +16,8 @@ const CATCH_UP_PER_PLACE = 0.01;  // +1% pace for every place behind the leader
 // Turbo start: press W in this window around GO for a perfect launch. Holding W from earlier is a jump start.
 const LAUNCH_EARLY = 0.3;     // s before GO a press still counts as perfect
 const LAUNCH_LATE = 0.15;     // s after GO a press still counts as perfect
+/** Season points for 1st to 6th. */
+const POINTS = [10, 8, 6, 4, 2, 1];
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -41,6 +42,14 @@ const LIVERIES = [
 let mode: 'menu' | 'racing' | 'paused' | 'results' = 'menu';
 let playerLivery = 0;
 let pausedAt = 0;             // performance.now() when the pause menu opened
+let raceLaps = 3;
+
+/**
+ * A season: a run of races rotating through the tracks from the opening one, scored by finishing
+ * position. points holds the totals from completed races, keyed by car name.
+ */
+interface Season { races: number; round: number; openingTrack: number; points: Map<string, number> }
+let season: Season | null = null;
 
 let player: Car;
 let rivals: { car: Car; driver: Driver }[] = [];
@@ -121,16 +130,29 @@ const trackChoices: TrackChoice[] = tracks.map((t, i) => {
 });
 
 const menus = new Menus(LIVERIES, trackChoices, {
-  start(carIndex, trackChoice) {
-    playerLivery = carIndex;
-    trackIndex = trackChoice;
-    track = tracks[trackIndex];
-    startRace();
-    play();
+  start(setup: RaceSetup) {
+    playerLivery = setup.car;
+    raceLaps = setup.laps;
+    season = setup.races > 1 ? { races: setup.races, round: 0, openingTrack: setup.track, points: new Map() } : null;
+    menus.setSeason(!!season);
+    startRound(setup.track);
   },
   resume: play,
   restart() { startRace(); play(); },
+  action(act) {
+    if (act === 'next' && season) {
+      scoreRound(season);
+      season.round++;
+      startRound((season.openingTrack + season.round) % tracks.length);
+    }
+    if (act === 'newseason' && season) {
+      season = { ...season, round: 0, points: new Map() };
+      startRound(season.openingTrack);
+    }
+  },
   changeCar() {
+    season = null;
+    menus.setSeason(false);
     mode = 'menu';
     sound.menu();
     input.unlock();
@@ -139,6 +161,15 @@ const menus = new Menus(LIVERIES, trackChoices, {
     menus.showStart();
   },
 });
+
+/** Load a track and start a race on it (in a season, announce which round it is). */
+function startRound(index: number): void {
+  trackIndex = index;
+  track = tracks[trackIndex];
+  startRace();
+  play();
+  if (season) showToast(`RACE ${season.round + 1} OF ${season.races}  ·  ${TRACKS[trackIndex].name}`, '#ffd23f');
+}
 
 function play(): void {
   mode = 'racing';
@@ -255,7 +286,7 @@ function update(dt: number): void {
   let scraping = 0;
   for (const car of cars) {
     const lap = car.race.update(track, car.craft, time, racing);
-    if (lap && car.race.lap === RACE_LAPS && !finishOrder.includes(car)) {
+    if (lap && car.race.lap === raceLaps && !finishOrder.includes(car)) {
       finishOrder.push(car);
       finishTimes.set(car, time - goTime);
       if (car === player) {
@@ -329,8 +360,56 @@ function update(dt: number): void {
   }
   if (mode === 'results' && time >= resultsRefresh) {
     resultsRefresh = time + 0.25;
-    menus.showResults(TRACKS[trackIndex].name, resultRows());
+    menus.showResults(resultsView());
   }
+}
+
+/** Points each car is on course to score in this race (final once everyone has finished). */
+function racePoints(): Map<Car, number> {
+  return new Map(rankCars().map((car, place) => [car, POINTS[place] ?? 0]));
+}
+
+/** Bank this race's points into the season totals. */
+function scoreRound(s: Season): void {
+  for (const [car, pts] of racePoints()) {
+    const name = names.get(car) ?? '';
+    s.points.set(name, (s.points.get(name) ?? 0) + pts);
+  }
+}
+
+/** What the results screen shows: the race, plus the standings and next steps in a season. */
+function resultsView(): ResultsView {
+  const rows = resultRows();
+  const subtitle = `${TRACKS[trackIndex].name}  ·  ${raceLaps} ${raceLaps === 1 ? 'LAP' : 'LAPS'}`;
+  if (!season) {
+    return {
+      title: 'RESULTS', subtitle, rows,
+      buttons: [{ act: 'restart', label: 'RACE AGAIN', primary: true }, { act: 'change', label: 'CHANGE CAR' }],
+    };
+  }
+  const gained = racePoints();
+  for (const [i, car] of rankCars().entries()) rows[i].points = gained.get(car);
+  // Standings include this race's points; ties go to whoever finished ahead today.
+  const order = rankCars();
+  const standings: StandingRow[] = order.map((car) => {
+    const name = names.get(car) ?? '';
+    return {
+      name, color: car.color, player: car === player, gained: gained.get(car) ?? 0,
+      points: (season!.points.get(name) ?? 0) + (gained.get(car) ?? 0),
+    };
+  }).sort((a, b) => b.points - a.points);
+  const last = season.round === season.races - 1;
+  const settled = finishOrder.length === cars.length;
+  const champ = standings[0];
+  const nextTrack = TRACKS[(season.openingTrack + season.round + 1) % tracks.length].name;
+  return {
+    title: last ? 'SEASON FINAL' : `RACE ${season.round + 1} OF ${season.races}`,
+    subtitle, rows, standings,
+    note: last && settled ? (champ.player ? 'YOU ARE THE CHAMPION!' : `${champ.name} WINS THE SEASON`) : undefined,
+    buttons: last
+      ? [{ act: 'newseason', label: 'NEW SEASON', primary: true }, { act: 'change', label: 'MAIN MENU' }]
+      : [{ act: 'next', label: `NEXT: ${nextTrack}`, primary: true }, { act: 'change', label: 'QUIT SEASON' }],
+  };
 }
 
 /** Race order: finished cars by finishing order, everyone else by distance covered. */
@@ -350,7 +429,7 @@ function resultRows(): ResultRow[] {
     return {
       name: names.get(car) ?? '',
       color: car.color,
-      time: t === undefined ? `LAP ${Math.min(car.race.lap + 1, RACE_LAPS)}/${RACE_LAPS}` : formatTime(t),
+      time: t === undefined ? `LAP ${Math.min(car.race.lap + 1, raceLaps)}/${raceLaps}` : formatTime(t),
       gap: t === undefined ? 'RUNNING' : t === winner ? '' : `+${(t - winner).toFixed(3)}`,
       best: car.race.bestLap ? formatTime(car.race.bestLap) : '-',
       player: car === player,
@@ -366,7 +445,7 @@ function raceHud(): RaceHud {
   const place = finishOrder.indexOf(player);
   const banner = place < 0 || mode === 'results' ? null : place === 0 ? 'YOU WIN!' : `FINISHED ${ordinal(place + 1)}`;
   return {
-    position: ranked.indexOf(player) + 1, racers: cars.length, laps: RACE_LAPS, countdown, banner,
+    position: ranked.indexOf(player) + 1, racers: cars.length, laps: raceLaps, countdown, banner,
     catchUp: player.craft.catchUp, launchHint,
   };
 }

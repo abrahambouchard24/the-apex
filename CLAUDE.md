@@ -26,7 +26,8 @@ Project brief (vision, visual reference, art prompts, roadmap): https://claude.a
 - `src/track.ts` holds the circuits in `TRACKS` (each a Catmull-Rom spline through control points, with a color theme), walls and lap/sector timing. Four tracks: Apex Grand Prix (balanced), Velocity Ring (fast oval), Neon Streets (tight street circuit) and Summit Pass (mountain sweepers). Keep corner radii above about 170 px and separate parts of a track at least about 330 px apart, or the walls misbehave.
 - `src/ai.ts` holds the AI driver: look-ahead steering with an inside-line bias and corner-speed braking. `CORNER_K` and `skill` set its pace (skill 0.75 is about 30.5 s a lap).
 - `src/render.ts` does all canvas drawing (track, kerbs, minimap, HUD, arrow cursor); it only reads game state.
-- `src/menu.ts` holds the DOM overlays: start screen (car and track select), pause menu and the results screen.
+- `src/menu.ts` holds the DOM overlays: start screen (car, track, mode, laps and season length), pause menu and the results screen (with season standings).
+- Race setup: single race or a season of 2, 3, 4, 6 or 8 races, and 1, 3, 5 or 10 laps. A season starts on the chosen track and rotates through the others; points go 10/8/6/4/2/1 for 1st-6th, ties broken by the latest race. Season logic lives in `main.ts` (`Season`, `scoreRound`, `resultsView`).
 - `src/audio.ts` synthesizes all sound with Web Audio (engine, upshift whoosh, wall scrape and thuds, countdown beeps, lap chimes); M mutes. No sound files.
 - `src/main.ts` runs the fixed 60 Hz loop, the camera, particles and the race flow (menu → countdown → race → results). In dev, `window.game` has `advance(seconds)` to step the game while the tab is hidden and `autodrive()` to let the AI drive your car.
 
