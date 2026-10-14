@@ -529,7 +529,62 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
   }
   ctx.restore();
 
-  if (sprite.canvas) drawSprite(ctx, sprite);
+  // Glowing outlines: green while the DRS wing is open, purple while the ERS battery is full.
+  if (sprite.canvas) {
+    const pulse = 0.7 + 0.3 * Math.sin(time * 8);
+    const full = c.energy >= ENERGY_FULL;
+    // Both at once: green ring on the outside, a tighter purple ring inside it.
+    if (c.drsOpen) drawOutline(ctx, sprite, DRS_GLOW, full ? 5 : 2.5, pulse, 14);
+    if (full) drawOutline(ctx, sprite, ERS_GLOW, 2.5, pulse, c.drsOpen ? 3 : 14);
+    drawSprite(ctx, sprite);
+  }
+  ctx.restore();
+}
+
+const DRS_GLOW = '#4dff9a';
+const ERS_GLOW = '#b86bff';
+/** The battery counts as full from here (it charges in small steps). */
+const ENERGY_FULL = 0.995;
+
+/** One solid-color copy of each sprite per color, for outlines. */
+const silhouettes = new Map<HTMLCanvasElement, Map<string, HTMLCanvasElement>>();
+
+function silhouette(sprite: Sprite, color: string): HTMLCanvasElement {
+  const src = sprite.canvas!;
+  let byColor = silhouettes.get(src);
+  if (!byColor) silhouettes.set(src, byColor = new Map());
+  let out = byColor.get(color);
+  if (!out) {
+    out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const octx = out.getContext('2d')!;
+    octx.drawImage(src, 0, 0);
+    octx.globalCompositeOperation = 'source-in';
+    octx.fillStyle = color;
+    octx.fillRect(0, 0, out.width, out.height);
+    byColor.set(color, out);
+  }
+  return out;
+}
+
+/**
+ * A glowing outline around the craft's own shape: its silhouette drawn a few px out in every
+ * direction with a soft glow, so the sprite drawn on top leaves just a colored rim.
+ * Call in the craft's local frame (nose along +x).
+ */
+function drawOutline(ctx: CanvasRenderingContext2D, sprite: Sprite, color: string, thickness: number, alpha: number, glow: number): void {
+  const sil = silhouette(sprite, color);
+  const width = CRAFT_LENGTH * sprite.aspect;
+  ctx.save();
+  ctx.rotate(Math.PI / 2);
+  ctx.globalAlpha = alpha;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = glow;
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    ctx.drawImage(sil, -width / 2 + Math.cos(a) * thickness, -CRAFT_LENGTH / 2 + Math.sin(a) * thickness, width, CRAFT_LENGTH);
+  }
   ctx.restore();
 }
 
@@ -650,7 +705,18 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.fillStyle = '#1b2040';
   ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
   ctx.fillStyle = c.deploying ? '#d9a6ff' : '#9d5cff';
-  ctx.fillRect(bx + 80, y + 128, (bw - 80) * c.energy, 6);
+  if (c.energy >= ENERGY_FULL) {
+    // Full battery: the bar pulses and glows.
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
+    ctx.save();
+    ctx.shadowColor = ERS_GLOW;
+    ctx.shadowBlur = 8 + pulse * 10;
+    ctx.fillStyle = `rgb(${Math.round(157 + pulse * 70)}, ${Math.round(92 + pulse * 80)}, 255)`;
+    ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
+    ctx.restore();
+  } else {
+    ctx.fillRect(bx + 80, y + 128, (bw - 80) * c.energy, 6);
+  }
 
   // Slipstream meter: only shown while towing.
   if (c.slipstream > 0.05) {
