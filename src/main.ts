@@ -1,9 +1,10 @@
 import { Driver } from './ai';
+import { Sound } from './audio';
 import { Craft, clamp, collideCrafts, lerp } from './craft';
 import { Input } from './input';
-import { Menus } from './menu';
+import { Menus, ResultRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
-import { RaceState, Track, collideWalls, placeOnGrid } from './track';
+import { RaceState, TRACKS, Track, collideWalls, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
 const RACE_LAPS = 3;
@@ -11,12 +12,16 @@ const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
 // AI skill range: 1 = drives near the grip limit; lower brakes earlier and corners slower.
 const AI_SKILL_MIN = 0.7;
 const AI_SKILL_MAX = 0.9;
+const RESULTS_DELAY = 2.5;    // seconds after the player finishes before the results screen
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const input = new Input(canvas);
+const sound = new Sound();
 
-const track = new Track();
+const tracks = TRACKS.map((def) => new Track(def));
+let trackIndex = 0;
+let track = tracks[0];
 /** The field. The player picks one on the start screen; the rest are AI. hue = exhaust flame color. */
 const LIVERIES = [
   { name: '01 RED', url: '/sprites/craft-red.png', color: '#ff3d6e', hue: 190 },
@@ -27,21 +32,28 @@ const LIVERIES = [
   { name: '06 BLUE', url: '/sprites/craft-blue.png', color: '#3d7bff', hue: 215 },
 ].map((l) => ({ ...l, sprite: loadSprite(l.url) }));
 
-/** menu = start screen; paused = pause menu; racing = the simulation runs. */
-let mode: 'menu' | 'racing' | 'paused' = 'menu';
+/** menu = start screen; paused = pause menu; racing = the simulation runs; results = it keeps
+ * running behind the results table while the rest of the field finishes. */
+let mode: 'menu' | 'racing' | 'paused' | 'results' = 'menu';
 let playerLivery = 0;
 let pausedAt = 0;             // performance.now() when the pause menu opened
 
 let player: Car;
 let rivals: { car: Car; driver: Driver }[] = [];
 let cars: Car[] = [];
-let bestLap = 0;              // kept across restarts
+const names = new Map<Car, string>();
+const bestLaps = TRACKS.map(() => 0);   // the player's best lap per track, kept across restarts
 const particles: Particle[] = [];
 const cam: Camera = { x: 0, y: 0, zoom: 1, shake: 0 };
 let toast: Toast | null = null;
 let time = 0;
 let goTime = 0;               // race time when the lights go out
 let finishOrder: Car[] = [];
+const finishTimes = new Map<Car, number>();   // race time from the lights going out
+let autopilot: Driver | null = null;          // drives the player's car once it has finished
+let resultsAt = 0;            // race time to show the results screen; 0 = not yet
+let resultsRefresh = 0;
+let lastCount = 0;            // countdown number last beeped
 
 function livery(i: number) {
   const { sprite, color, hue } = LIVERIES[i];
@@ -50,13 +62,17 @@ function livery(i: number) {
 
 /** Line everyone up on the grid and start the countdown. */
 function startRace(): void {
+  names.clear();
   rivals = LIVERIES.map((_, i) => i).filter((i) => i !== playerLivery).map((li, k) => {
     const skill = lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random());
     const driver = new Driver(skill, k + 1);
-    return { car: { craft: driver.craft, race: driver.race, ...livery(li) }, driver };
+    const car = { craft: driver.craft, race: driver.race, ...livery(li) };
+    names.set(car, LIVERIES[li].name);
+    return { car, driver };
   });
   player = { craft: new Craft(), race: new RaceState(), ...livery(playerLivery) };
-  player.race.bestLap = bestLap;
+  names.set(player, LIVERIES[playerLivery].name);
+  player.race.bestLap = bestLaps[trackIndex];
   cars = [...rivals.map((r) => r.car), player];
 
   // Random grid: shuffle everyone (player included) into the slots.
@@ -68,6 +84,10 @@ function startRace(): void {
   cars.forEach((car, i) => { car.race.index = placeOnGrid(track, car.craft, slots[i]); });
 
   finishOrder = [];
+  finishTimes.clear();
+  autopilot = null;
+  resultsAt = 0;
+  lastCount = COUNTDOWN + 1;
   particles.length = 0;
   goTime = time + COUNTDOWN;
   cam.x = player.craft.pos.x;
@@ -78,19 +98,38 @@ function startRace(): void {
 }
 startRace();   // lines up the grid behind the start screen
 
-const menus = new Menus(LIVERIES, {
-  start(carIndex) {
+/** Track cards for the start screen: each outline scaled into a 120 x 80 box. */
+const trackChoices: TrackChoice[] = tracks.map((t, i) => {
+  const b = t.bounds, scale = Math.min(110 / (b.maxX - b.minX), 70 / (b.maxY - b.minY));
+  const ox = 60 - ((b.minX + b.maxX) / 2) * scale, oy = 40 - ((b.minY + b.maxY) / 2) * scale;
+  const outline = t.pts.filter((_, k) => k % 6 === 0)
+    .map((p) => `${(p.x * scale + ox).toFixed(1)},${(p.y * scale + oy).toFixed(1)}`).join(' ');
+  return { name: TRACKS[i].name, blurb: TRACKS[i].blurb, outline, color: t.theme.wall };
+});
+
+const menus = new Menus(LIVERIES, trackChoices, {
+  start(carIndex, trackChoice) {
     playerLivery = carIndex;
+    trackIndex = trackChoice;
+    track = tracks[trackIndex];
     startRace();
     play();
   },
   resume: play,
   restart() { startRace(); play(); },
-  changeCar() { mode = 'menu'; menus.select(playerLivery); menus.showStart(); },
+  changeCar() {
+    mode = 'menu';
+    sound.pause();
+    input.unlock();
+    menus.select(playerLivery);
+    menus.selectTrack(trackIndex);
+    menus.showStart();
+  },
 });
 
 function play(): void {
   mode = 'racing';
+  sound.unlock();
   menus.hide();
   input.release();
   input.takePause();   // drop keys pressed while in a menu
@@ -102,6 +141,7 @@ function pause(): void {
   if (mode !== 'racing') return;
   mode = 'paused';
   pausedAt = performance.now();
+  sound.pause();
   input.release();
   input.unlock();
   menus.showPause();
@@ -124,7 +164,22 @@ function fitCanvas(): void {
 // Dev-only handle for poking at game state from the console.
 if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
   (window as unknown as { game: object }).game = {
-    get player() { return player; }, get rivals() { return rivals; }, track,
+    get player() { return player; }, get rivals() { return rivals; }, get track() { return track; },
+    get mode() { return mode; },
+    /** Let an AI drive the player's car (for testing whole races). */
+    autodrive() {
+      autopilot = new Driver(0.85, 7);
+      autopilot.craft = player.craft;
+      autopilot.race = player.race;
+    },
+    /** Step the simulation by hand (e.g. while the tab is hidden and animation frames are paused). */
+    advance(seconds: number) {
+      for (let i = 0; i < Math.round(seconds / STEP) && (mode === 'racing' || mode === 'results'); i++) update(STEP);
+      drawFrame(ctx, innerWidth, innerHeight, {
+        time, cam, player, cars, track, hud: raceHud(),
+        particles, cursor: input.cursor, toast, locked: input.locked,
+      });
+    },
     get time() { return time; }, get goTime() { return goTime; },
   };
 }
@@ -136,8 +191,15 @@ function ordinal(n: number): string { return ['1ST', '2ND', '3RD'][n - 1] ?? `${
 function update(dt: number): void {
   if (input.takePause()) { pause(); return; }
   time += dt;
-  if (input.takeReset()) startRace();
+  if (input.takeReset() && mode === 'racing') startRace();
   const racing = time >= goTime;
+
+  // Countdown beeps: 3, 2, 1, then a long one for GO.
+  const count = Math.max(0, Math.ceil(goTime - time));
+  if (count !== lastCount) {
+    if (count <= COUNTDOWN) sound.beep(count === 0);
+    lastCount = count;
+  }
 
   const crafts = cars.map((c) => c.craft);
   for (const c of crafts) c.feelWake(crafts, dt);
@@ -148,34 +210,60 @@ function update(dt: number): void {
   const csy = (pc.pos.y - cam.y) * cam.zoom + innerHeight / 2;
   const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
   const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
-  pc.step(dt, racing ? aim : pc.heading, racing && input.throttle, racing && input.brake);
+  if (autopilot && racing) {
+    const c = autopilot.think(track, time, crafts);
+    pc.step(dt, c.aim, c.throttle, c.brake);
+  } else {
+    pc.step(dt, racing ? aim : pc.heading, racing && input.throttle, racing && input.brake);
+  }
+  sound.engine(pc.gear, pc.rev, pc.thrust, clamp(pc.speed / 880, 0, 1));
+  if (pc.shifted === 1) sound.whoosh();
 
   for (const { car, driver } of rivals) {
     const c = racing ? driver.think(track, time, cars.map((o) => o.craft)) : { aim: car.craft.heading, throttle: false, brake: false };
     car.craft.step(dt, c.aim, c.throttle, c.brake);
   }
 
+  let scraping = 0;
   for (const car of cars) {
     const lap = car.race.update(track, car.craft, time, racing);
     if (lap && car.race.lap === RACE_LAPS && !finishOrder.includes(car)) {
       finishOrder.push(car);
-      if (car === player) showToast(`FINISHED ${ordinal(finishOrder.length)}`, '#ffd23f');
-    } else if (lap && car === player) {
+      finishTimes.set(car, time - goTime);
+      if (car === player) {
+        showToast(`FINISHED ${ordinal(finishOrder.length)}`, '#ffd23f');
+        sound.chime(true);
+        // Hand the car to an AI driver for the cool-down lap.
+        autopilot = new Driver(0.6, 9);
+        autopilot.craft = player.craft;
+        autopilot.race = player.race;
+        resultsAt = time + RESULTS_DELAY;
+      }
+    } else if (lap && car === player && !autopilot) {
+      sound.chime(lap === 'best');
       if (lap === 'best') showToast(`BEST LAP  ${formatTime(player.race.lastLap)}`, '#c77dff');
       else showToast(`LAP  ${formatTime(player.race.lastLap)}`, '#ffffff');
     }
     const contact = collideWalls(track, car.craft, car.race, dt);
     if (contact) {
       emitSparks(contact.x, contact.y, car.craft);
-      if (car === player && contact.impact > 80) cam.shake = Math.min(16, contact.impact / 25);
+      if (car === player) {
+        scraping = clamp(car.craft.speed / 500, 0.25, 1);
+        if (contact.impact > 80) cam.shake = Math.min(16, contact.impact / 25);
+        if (contact.impact > 120) sound.thud(contact.impact);
+      }
     }
   }
-  bestLap = player.race.bestLap;
+  sound.scrape(scraping);
+  bestLaps[trackIndex] = player.race.bestLap;
 
   for (let i = 0; i < cars.length; i++) {
     for (let j = i + 1; j < cars.length; j++) {
       const hit = collideCrafts(cars[i].craft, cars[j].craft);
-      if (hit > 80 && (cars[i] === player || cars[j] === player)) cam.shake = Math.min(14, hit / 30);
+      if (hit > 80 && (cars[i] === player || cars[j] === player)) {
+        cam.shake = Math.min(14, hit / 30);
+        sound.thud(hit);
+      }
     }
   }
 
@@ -200,15 +288,45 @@ function update(dt: number): void {
   cam.shake = Math.max(0, cam.shake - 40 * dt);
 
   if (toast) toast.t -= dt;
+
+  if (mode === 'racing' && resultsAt && time >= resultsAt) {
+    mode = 'results';
+    input.release();
+    input.unlock();
+  }
+  if (mode === 'results' && time >= resultsRefresh) {
+    resultsRefresh = time + 0.25;
+    menus.showResults(TRACKS[trackIndex].name, resultRows());
+  }
 }
 
-function raceHud(): RaceHud {
-  // Finished cars rank by finishing order; everyone else by distance covered.
-  const ranked = [...cars].sort((a, b) => {
+/** Finished cars rank by finishing order; everyone else by distance covered. */
+function rankCars(): Car[] {
+  return [...cars].sort((a, b) => {
     const fa = finishOrder.indexOf(a), fb = finishOrder.indexOf(b);
     if (fa >= 0 || fb >= 0) return (fa < 0 ? Infinity : fa) - (fb < 0 ? Infinity : fb);
     return b.race.progress(track) - a.race.progress(track);
   });
+}
+
+/** The results table: finish time and gap to the winner, or the lap a car is still on. */
+function resultRows(): ResultRow[] {
+  const winner = finishTimes.get(finishOrder[0]) ?? 0;
+  return rankCars().map((car) => {
+    const t = finishTimes.get(car);
+    return {
+      name: names.get(car) ?? '',
+      color: car.color,
+      time: t === undefined ? `LAP ${Math.min(car.race.lap + 1, RACE_LAPS)}/${RACE_LAPS}` : formatTime(t),
+      gap: t === undefined ? 'RUNNING' : t === winner ? '' : `+${(t - winner).toFixed(3)}`,
+      best: car.race.bestLap ? formatTime(car.race.bestLap) : '-',
+      player: car === player,
+    };
+  });
+}
+
+function raceHud(): RaceHud {
+  const ranked = rankCars();
   const left = goTime - time;
   const countdown = mode === 'menu' ? null : left > 0 ? String(Math.ceil(left)) : left > -0.8 ? 'GO' : null;
   const place = finishOrder.indexOf(player);
@@ -252,8 +370,9 @@ let acc = 0;
 function frame(now: number): void {
   acc += Math.min(0.25, (now - last) / 1000);
   last = now;
-  if (mode === 'racing') {
-    while (acc >= STEP && mode === 'racing') { update(STEP); acc -= STEP; }
+  if (input.takeMute()) showToast(sound.toggleMute() ? 'SOUND OFF' : 'SOUND ON', '#ffffff');
+  if (mode === 'racing' || mode === 'results') {
+    while (acc >= STEP && (mode === 'racing' || mode === 'results')) { update(STEP); acc -= STEP; }
   } else {
     acc = 0;
     // Esc / P on the pause menu resumes.
