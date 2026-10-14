@@ -33,7 +33,7 @@ const CONTROL: [number, number][] = [
 export const HALF_WIDTH = 130;     // half the racing surface width, px
 export const WALL_DIST = 270;      // centerline to barrier, px (runoff is the gap)
 const SAMPLES_PER_SEGMENT = 40;
-const CRAFT_RADIUS = 18;
+const CRAFT_RADIUS = 24;
 export const SECTORS = 10;         // checkpoints per lap; all must be passed in order
 
 export interface TrackPoint { x: number; y: number; nx: number; ny: number; curve: number }

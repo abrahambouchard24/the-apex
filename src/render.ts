@@ -260,76 +260,62 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: Particle[]): vo
   ctx.restore();
 }
 
+/** The craft sprite (nose up in the file) and where its parts sit, in world px. */
+const craftImg = new Image();
+craftImg.src = '/sprites/craft-red.png';
+export const CRAFT_LENGTH = 80;
+const CRAFT_WIDTH = CRAFT_LENGTH * (157 / 256);
+/** Rear exhausts: distance behind center and sideways offset of each nozzle. */
+export const NOZZLE_BACK = CRAFT_LENGTH / 2 - 4;
+export const NOZZLE_SIDE = 5.5;
+
 function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number): void {
   const bob = Math.sin(time * 5) * 2.5;
   const hoverHeight = 10 + bob;
+  const ready = craftImg.complete && craftImg.naturalWidth > 0;
 
-  // Shadow on the ground; it shifts and blurs with hover height.
+  // Shadow on the ground: the sprite's silhouette, shifted and blurred by hover height.
   ctx.save();
   ctx.translate(c.pos.x + hoverHeight * 0.6, c.pos.y + hoverHeight);
   ctx.rotate(c.heading);
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.filter = `blur(${2 + bob * 0.5}px)`;
-  hullPath(ctx);
-  ctx.fill();
+  ctx.globalAlpha = 0.5;
+  if (ready) {
+    ctx.filter = `brightness(0) blur(${2 + bob * 0.5}px)`;
+    drawSprite(ctx);
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-CRAFT_LENGTH / 2, -CRAFT_WIDTH / 2, CRAFT_LENGTH, CRAFT_WIDTH);
+  }
   ctx.restore();
 
   ctx.save();
   ctx.translate(c.pos.x, c.pos.y);
   ctx.rotate(c.heading);
 
-  // Thruster flames behind the hull.
-  const flame = 10 + c.thrust * 18 + (c.boostFlash > 0 ? 26 : 0) + Math.random() * 4;
+  // Thruster flames out of the twin rear exhausts.
+  const flame = 10 + c.thrust * 22 + (c.boostFlash > 0 ? 30 : 0) + Math.random() * 4;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   const hue = c.boostFlash > 0 ? 40 : 190;
-  for (const side of [-8, 8]) {
-    const g = ctx.createLinearGradient(-20, 0, -20 - flame, 0);
+  for (const side of [-NOZZLE_SIDE, NOZZLE_SIDE]) {
+    const g = ctx.createLinearGradient(-NOZZLE_BACK, 0, -NOZZLE_BACK - flame, 0);
     g.addColorStop(0, `hsla(${hue}, 100%, 75%, 0.95)`);
     g.addColorStop(1, `hsla(${hue}, 100%, 50%, 0)`);
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.moveTo(-19, side - 4); ctx.lineTo(-20 - flame, side); ctx.lineTo(-19, side + 4);
+    ctx.moveTo(-NOZZLE_BACK, side - 4); ctx.lineTo(-NOZZLE_BACK - flame, side); ctx.lineTo(-NOZZLE_BACK, side + 4);
     ctx.fill();
   }
   ctx.restore();
 
-  // Hull: a wedge, pointing along +x (the heading).
-  const body = ctx.createLinearGradient(0, -14, 0, 14);
-  body.addColorStop(0, '#ff5a7a');
-  body.addColorStop(0.5, '#e0204f');
-  body.addColorStop(1, '#8a0f33');
-  ctx.fillStyle = body;
-  hullPath(ctx);
-  ctx.fill();
-  ctx.strokeStyle = '#ffd0dc';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Cockpit canopy.
-  ctx.fillStyle = '#6ff3ff';
-  ctx.beginPath();
-  ctx.ellipse(4, 0, 7, 4, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Thruster housings.
-  ctx.fillStyle = '#2a2f45';
-  ctx.fillRect(-21, -12, 6, 8);
-  ctx.fillRect(-21, 4, 6, 8);
-
+  if (ready) drawSprite(ctx);
   ctx.restore();
 }
 
-function hullPath(ctx: CanvasRenderingContext2D): void {
-  ctx.beginPath();
-  ctx.moveTo(24, 0);
-  ctx.lineTo(4, -10);
-  ctx.lineTo(-16, -15);
-  ctx.lineTo(-20, -8);
-  ctx.lineTo(-20, 8);
-  ctx.lineTo(-16, 15);
-  ctx.lineTo(4, 10);
-  ctx.closePath();
+/** Draw the sprite centered on the origin, pointing along +x (the heading). */
+function drawSprite(ctx: CanvasRenderingContext2D): void {
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(craftImg, -CRAFT_WIDTH / 2, -CRAFT_LENGTH / 2, CRAFT_WIDTH, CRAFT_LENGTH);
 }
 
 function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean, offTrack: boolean): void {

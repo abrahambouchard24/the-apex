@@ -1,6 +1,6 @@
 import { Craft, clamp, lerp } from './craft';
 import { Input } from './input';
-import { Camera, Particle, Toast, drawFrame, formatTime } from './render';
+import { Camera, NOZZLE_BACK, NOZZLE_SIDE, Particle, Toast, drawFrame, formatTime } from './render';
 import { RaceState, Track, collideWalls, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
@@ -105,9 +105,9 @@ function emitTrail(): void {
   const slip = Math.abs(craft.slip);
   // Trail shifts cyan -> magenta with drift angle; gold during a boost.
   const hue = craft.boostFlash > 0 ? 40 : lerp(190, 310, clamp(slip / 0.6, 0, 1));
-  for (const side of [-8, 8]) {
-    const x = craft.pos.x - fx * 22 - fy * side;
-    const y = craft.pos.y - fy * 22 + fx * side;
+  for (const side of [-NOZZLE_SIDE, NOZZLE_SIDE]) {
+    const x = craft.pos.x - fx * NOZZLE_BACK - fy * side;
+    const y = craft.pos.y - fy * NOZZLE_BACK + fx * side;
     particles.push({
       x, y,
       vx: -fx * 60 + (Math.random() - 0.5) * 30,
