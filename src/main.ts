@@ -353,7 +353,7 @@ function raceHud(): RaceHud {
   const countdown = mode === 'menu' ? null : left > 0 ? String(Math.ceil(left)) : left > -0.8 ? 'GO' : null;
   const launchHint = mode !== 'menu' && left > 0;
   const place = finishOrder.indexOf(player);
-  const banner = place < 0 ? null : place === 0 ? 'YOU WIN!' : `FINISHED ${ordinal(place + 1)}`;
+  const banner = place < 0 || mode === 'results' ? null : place === 0 ? 'YOU WIN!' : `FINISHED ${ordinal(place + 1)}`;
   return {
     position: ranked.indexOf(player) + 1, racers: cars.length, laps: RACE_LAPS, countdown, banner,
     catchUp: player.craft.catchUp, launchHint,
