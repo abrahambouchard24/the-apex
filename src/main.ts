@@ -11,6 +11,7 @@ const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
 // AI skill range: 1 = drives near the grip limit; lower brakes earlier and corners slower.
 const AI_SKILL_MIN = 0.7;
 const AI_SKILL_MAX = 0.9;
+const CATCH_UP_PER_PLACE = 0.01;  // +1% pace for every place behind the leader
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -141,6 +142,10 @@ function update(dt: number): void {
 
   const crafts = cars.map((c) => c.craft);
   for (const c of crafts) c.feelWake(crafts, dt);
+  // Rubber band: each place behind the leader is worth +1% pace (none before the start or once finished).
+  rankCars().forEach((car, place) => {
+    car.craft.catchUp = racing && !finishOrder.includes(car) ? place * CATCH_UP_PER_PLACE : 0;
+  });
 
   // Player: aim from the craft's on-screen position toward the cursor.
   const pc = player.craft;
@@ -202,18 +207,25 @@ function update(dt: number): void {
   if (toast) toast.t -= dt;
 }
 
-function raceHud(): RaceHud {
-  // Finished cars rank by finishing order; everyone else by distance covered.
-  const ranked = [...cars].sort((a, b) => {
+/** Race order: finished cars by finishing order, everyone else by distance covered. */
+function rankCars(): Car[] {
+  return [...cars].sort((a, b) => {
     const fa = finishOrder.indexOf(a), fb = finishOrder.indexOf(b);
     if (fa >= 0 || fb >= 0) return (fa < 0 ? Infinity : fa) - (fb < 0 ? Infinity : fb);
     return b.race.progress(track) - a.race.progress(track);
   });
+}
+
+function raceHud(): RaceHud {
+  const ranked = rankCars();
   const left = goTime - time;
   const countdown = mode === 'menu' ? null : left > 0 ? String(Math.ceil(left)) : left > -0.8 ? 'GO' : null;
   const place = finishOrder.indexOf(player);
   const banner = place < 0 ? null : place === 0 ? 'YOU WIN!' : `FINISHED ${ordinal(place + 1)}`;
-  return { position: ranked.indexOf(player) + 1, racers: cars.length, laps: RACE_LAPS, countdown, banner };
+  return {
+    position: ranked.indexOf(player) + 1, racers: cars.length, laps: RACE_LAPS, countdown, banner,
+    catchUp: player.craft.catchUp,
+  };
 }
 
 /** Orange sparks thrown back along the wall while a craft grinds against it. */

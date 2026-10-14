@@ -55,6 +55,10 @@ export class Craft {
   shiftPause = 0;
   /** 0..1 how deep in another car's wake the craft is; set by feelWake each step. */
   slipstream = 0;
+  /** The car whose wake is towing us (for the draft effect), or null. */
+  slipFrom: Craft | null = null;
+  /** Extra pace from running behind: 0.01 per place behind the leader, set by the race each step. */
+  catchUp = 0;
 
   get speed(): number { return Math.hypot(this.vel.x, this.vel.y); }
 
@@ -81,7 +85,7 @@ export class Craft {
   step(dt: number, aimAngle: number, throttle: boolean, brake: boolean): void {
     this.braking = brake;
     const speed = this.speed;
-    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream;
+    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp;
     const gear = { top: GEARS[this.gear].top * tow, accel: GEARS[this.gear].accel * tow };
 
     // Steering: turn toward the aim at a capped rate that tightens a little with speed.
@@ -135,6 +139,7 @@ export class Craft {
    */
   feelWake(others: Craft[], dt: number): void {
     let target = 0;
+    let from: Craft | null = null;
     const mySpeed = this.speed;
     if (mySpeed > WAKE_MIN_SPEED * 0.5) {
       for (const o of others) {
@@ -148,11 +153,14 @@ export class Craft {
         if (behind <= 0 || behind > WAKE_LENGTH) continue;
         const across = Math.abs(rx * -dy + ry * dx);
         if (across > WAKE_HALF_WIDTH + behind * WAKE_SPREAD) continue;
-        target = Math.max(target, 1 - 0.5 * (behind / WAKE_LENGTH));
+        const strength = 1 - 0.5 * (behind / WAKE_LENGTH);
+        if (strength > target) { target = strength; from = o; }
       }
     }
     const rate = target > this.slipstream ? SLIPSTREAM_RISE : SLIPSTREAM_FALL;
     this.slipstream = moveToward(this.slipstream, target, rate * dt);
+    if (from) this.slipFrom = from;
+    else if (this.slipstream === 0) this.slipFrom = null;
   }
 
   /**

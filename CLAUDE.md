@@ -7,6 +7,8 @@ Project brief (vision, visual reference, art prompts, roadmap): https://claude.a
 ## Decisions so far
 - Controls: the mouse steers (the craft turns toward the cursor), W accelerates, and D / S / Space brake. Gears are automatic: 5 gears, shifting up near each gear's top speed and down when the craft slows.
 - Walls sit at the track edge; you scrape along them, losing the speed going into the wall plus some friction, with sparks. There is no runoff.
+- Slipstream: tucking into a car's wake gives up to +5% pace. It's drawn as flowing dashed draft lines from the follower's nose to the leader's tail.
+- Catch-up: +1% pace (top speed and pull) for each place behind the leader, for every car, the player included (`CATCH_UP_PER_PLACE`). The HUD shows the player's bonus.
 - Drift: heading and velocity are separate, so the craft slides. There is no drift boost (removed on purpose).
 - Acceleration is deliberately slow: about 5 s to reach 5th gear and about 10 s to top speed, with a 0.4 s thrust cut on each upshift.
 - The 2.5D look is faked: one rotated sprite plus an offset shadow and hover bob for now, with sprite stacking later.
