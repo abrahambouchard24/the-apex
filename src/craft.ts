@@ -36,6 +36,18 @@ const WAKE_HALF_WIDTH = 28;      // px either side of the wake's center line, ri
 const WAKE_SPREAD = 0.1;         // the wake widens by this many px per px behind the car
 const WAKE_MIN_SPEED = 300;      // px/s: slower cars leave no usable wake
 const WAKE_ALIGN = 0.85;         // both cars must be moving within ~30° of the same direction
+// Heat: hitting walls and other cars heats the craft; a hot craft loses top speed until it cools.
+const HEAT_PER_IMPACT = 1 / 1100; // heat per px/s of into-the-wall or closing speed
+const HEAT_PER_SCRAPE = 0.22;     // heat per second of grinding along a wall
+const HEAT_COOL = 0.07;           // heat shed per second (a full bar takes ~14 s to clear)
+const HEAT_WARM = 0.6;            // above this, top speed starts to drop...
+const HEAT_WARM_LOSS = 0.06;      // ...by up to this much just before overheating
+const OVERHEAT_LOSS = 0.15;       // top speed lost while overheated
+const OVERHEAT_CLEAR = 0.35;      // overheating ends once heat cools below this
+// Turbo start: a perfectly timed launch pulls harder for a moment; a jump start stalls.
+const LAUNCH_PULL = 1.9;          // thrust multiplier during a perfect launch
+export const LAUNCH_TIME = 1.4;   // seconds a perfect launch lasts
+export const STALL_TIME = 0.8;    // seconds of no thrust after a jump start
 const SLIPSTREAM_RISE = 2.0;     // how fast the tow builds (1/s)
 const SLIPSTREAM_FALL = 4.0;     // and how fast it fades after pulling out (1/s)
 
@@ -59,6 +71,13 @@ export class Craft {
   slipFrom: Craft | null = null;
   /** Extra pace from running behind: 0.01 per place behind the leader, set by the race each step. */
   catchUp = 0;
+  /** 0..1 how hot the craft is from contact. */
+  heat = 0;
+  /** True from the moment heat maxes out until it cools below OVERHEAT_CLEAR. */
+  overheated = false;
+  /** Seconds left on a perfect-launch boost / a jump-start stall. */
+  launch = 0;
+  stall = 0;
 
   get speed(): number { return Math.hypot(this.vel.x, this.vel.y); }
 
@@ -85,7 +104,7 @@ export class Craft {
   step(dt: number, aimAngle: number, throttle: boolean, brake: boolean): void {
     this.braking = brake;
     const speed = this.speed;
-    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp;
+    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp - this.heatLoss;
     const gear = { top: GEARS[this.gear].top * tow, accel: GEARS[this.gear].accel * tow };
 
     // Steering: turn toward the aim at a capped rate that tightens a little with speed.
@@ -108,7 +127,7 @@ export class Craft {
     if (accelerating) {
       const top = this.gear === GEARS.length - 1;
       const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
-      const engaging = this.shiftPause > 0 ? 0.1 : 1;
+      const engaging = (this.shiftPause > 0 ? 0.1 : 1) * (this.stall > 0 ? 0 : this.launch > 0 ? LAUNCH_PULL : 1);
       this.thrust = pull * engaging;
       fwd += engaging * gear.accel * pull * dt;
     }
@@ -120,7 +139,7 @@ export class Craft {
     if (!accelerating) fwd -= fwd * DRAG * (1 - SLIPSTREAM_DRAG_CUT * this.slipstream) * dt;
     if (brake) fwd = moveToward(fwd, 0, BRAKE_DECEL * dt);
 
-    this.autoShift(dt, fwd, throttle && !brake);
+    this.autoShift(dt, fwd, throttle && !brake, tow);
 
     side *= Math.exp(-(brake ? BRAKE_GRIP : GRIP) * dt);
 
@@ -131,6 +150,23 @@ export class Craft {
 
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
+
+    this.launch = Math.max(0, this.launch - dt);
+    this.stall = Math.max(0, this.stall - dt);
+    this.heat = Math.max(0, this.heat - HEAT_COOL * dt);
+    if (this.overheated && this.heat < OVERHEAT_CLEAR) this.overheated = false;
+  }
+
+  /** Fraction of top speed currently lost to heat. */
+  get heatLoss(): number {
+    if (this.overheated) return OVERHEAT_LOSS;
+    return this.heat > HEAT_WARM ? ((this.heat - HEAT_WARM) / (1 - HEAT_WARM)) * HEAT_WARM_LOSS : 0;
+  }
+
+  /** Add heat from a hit (closing speed in px/s) and/or seconds of grinding. */
+  addHeat(impact: number, grindSeconds = 0): void {
+    this.heat = Math.min(1, this.heat + impact * HEAT_PER_IMPACT + grindSeconds * HEAT_PER_SCRAPE);
+    if (this.heat >= 1) this.overheated = true;
   }
 
   /**
@@ -177,20 +213,22 @@ export class Craft {
     const keep = Math.exp(-SCRAPE_FRICTION * dt);
     this.vel.x *= keep;
     this.vel.y *= keep;
-    return Math.max(0, -vn);
+    const impact = Math.max(0, -vn);
+    if (this.speed > 40) this.addHeat(impact, dt);
+    return impact;
   }
 
   /** Automatic gearbox: up when the gear is nearly maxed under throttle, down when too slow for it. */
-  private autoShift(dt: number, fwd: number, throttle: boolean): void {
+  private autoShift(dt: number, fwd: number, throttle: boolean, tow: number): void {
     this.shifted = 0;
     this.shiftTimer = Math.max(0, this.shiftTimer - dt);
     this.shiftPause = Math.max(0, this.shiftPause - dt);
     if (this.shiftTimer > 0) return;
     const speed = Math.max(fwd, 0);
-    if (throttle && this.gear < GEARS.length - 1 && speed >= GEARS[this.gear].top * UPSHIFT_AT) {
+    if (throttle && this.gear < GEARS.length - 1 && speed >= GEARS[this.gear].top * tow * UPSHIFT_AT) {
       this.gear++;
       this.shifted = 1;
-    } else if (this.gear > 0 && speed < GEARS[this.gear - 1].top * DOWNSHIFT_AT) {
+    } else if (this.gear > 0 && speed < GEARS[this.gear - 1].top * tow * DOWNSHIFT_AT) {
       this.gear--;
       this.shifted = -1;
     }
@@ -213,6 +251,9 @@ export function collideCrafts(a: Craft, b: Craft, radius = 22): number {
   const j = (-(1 + 0.5) * closing) / 2;
   a.vel.x -= j * nx; a.vel.y -= j * ny;
   b.vel.x += j * nx; b.vel.y += j * ny;
+  // Contact heats both cars, half as much as a wall.
+  a.addHeat(-closing * 0.5);
+  b.addHeat(-closing * 0.5);
   return -closing;
 }
 

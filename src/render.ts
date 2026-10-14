@@ -52,6 +52,8 @@ export interface RaceHud {
   position: number; racers: number; laps: number; countdown: string | null; banner: string | null;
   /** The player's catch-up pace bonus as a fraction (0.03 = +3%). */
   catchUp: number;
+  /** Show the turbo-start tip under the countdown. */
+  launchHint: boolean;
 }
 
 export interface Scene {
@@ -295,6 +297,12 @@ function drawRaceBanners(ctx: CanvasRenderingContext2D, w: number, h: number, hu
     ctx.shadowColor = 'rgba(0,0,0,0.6)';
     ctx.shadowBlur = 16;
     ctx.fillText(hud.countdown, w / 2, h * 0.38);
+    if (hud.launchHint) {
+      ctx.shadowBlur = 0;
+      ctx.font = '700 16px system-ui, sans-serif';
+      ctx.fillStyle = '#c8d2ff';
+      ctx.fillText('Press W right on GO for a turbo start', w / 2, h * 0.38 + 40);
+    }
   }
   if (hud.banner) {
     ctx.fillStyle = 'rgba(8,10,22,0.8)';
@@ -443,10 +451,10 @@ function drawSprite(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
 }
 
 function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean): void {
-  const x = w - 260, y = h - 150;
+  const x = w - 260, y = h - 172;
   ctx.save();
   ctx.fillStyle = 'rgba(8,10,22,0.7)';
-  roundRect(ctx, x, y, 236, 126, 12);
+  roundRect(ctx, x, y, 236, 148, 12);
   ctx.fill();
 
   ctx.font = '600 13px system-ui, sans-serif';
@@ -472,16 +480,28 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.fillStyle = c.rev > 0.9 ? '#ffd23f' : '#3fa9ff';
   ctx.fillRect(bx, by, bw * c.rev, bh);
 
+  // Heat meter: green while cool, orange once it's costing speed, flashing red when overheated.
+  const heatColor = c.overheated ? '#ff3d3d' : c.heat > 0.6 ? '#ffb02e' : '#4dff9a';
+  ctx.font = '700 11px system-ui, sans-serif';
+  ctx.fillStyle = c.overheated ? heatColor : '#8a93c0';
+  ctx.fillText(c.overheated ? 'OVERHEAT' : 'HEAT', bx, y + 116);
+  ctx.fillStyle = '#1b2040';
+  ctx.fillRect(bx + 80, y + 108, bw - 80, 6);
+  ctx.globalAlpha = c.overheated ? 0.55 + 0.45 * Math.sin(performance.now() / 90) : 1;
+  ctx.fillStyle = heatColor;
+  ctx.fillRect(bx + 80, y + 108, (bw - 80) * c.heat, 6);
+  ctx.globalAlpha = 1;
+
   // Slipstream meter: only shown while towing.
   if (c.slipstream > 0.05) {
     ctx.globalAlpha = clamp(c.slipstream * 2, 0, 1);
     ctx.font = '700 11px system-ui, sans-serif';
     ctx.fillStyle = '#dff4ff';
-    ctx.fillText('SLIPSTREAM', bx, y + 116);
+    ctx.fillText('SLIPSTREAM', bx, y + 136);
     ctx.fillStyle = '#1b2040';
-    ctx.fillRect(bx + 80, y + 108, bw - 80, 6);
+    ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
     ctx.fillStyle = '#dff4ff';
-    ctx.fillRect(bx + 80, y + 108, (bw - 80) * c.slipstream, 6);
+    ctx.fillRect(bx + 80, y + 128, (bw - 80) * c.slipstream, 6);
     ctx.globalAlpha = 1;
   }
 
