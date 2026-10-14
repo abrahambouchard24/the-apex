@@ -9,8 +9,48 @@ export interface Particle { x: number; y: number; vx: number; vy: number; life: 
 
 export interface Toast { text: string; color: string; t: number }
 
+/** A craft art image, trimmed to its visible pixels once it loads. Nose points up in the file. */
+export interface Sprite { canvas: HTMLCanvasElement | null; aspect: number }
+
+export function loadSprite(url: string, height = 256): Sprite {
+  const sprite: Sprite = { canvas: null, aspect: 0.6 };
+  const img = new Image();
+  img.onload = () => {
+    const probe = document.createElement('canvas');
+    probe.width = img.width;
+    probe.height = img.height;
+    const pctx = probe.getContext('2d')!;
+    pctx.drawImage(img, 0, 0);
+    const data = pctx.getImageData(0, 0, img.width, img.height).data;
+    let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        if (data[(y * img.width + x) * 4 + 3] > 24) {
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+      }
+    }
+    const w = maxX - minX + 1, h = maxY - minY + 1;
+    const out = document.createElement('canvas');
+    out.height = height;
+    out.width = Math.round((w / h) * height);
+    const octx = out.getContext('2d')!;
+    octx.imageSmoothingQuality = 'high';
+    octx.drawImage(img, minX, minY, w, h, 0, 0, out.width, out.height);
+    sprite.canvas = out;
+    sprite.aspect = w / h;
+  };
+  img.src = url;
+  return sprite;
+}
+
+export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string }
+
+export interface RaceHud { position: number; racers: number; laps: number; countdown: string | null; banner: string | null }
+
 export interface Scene {
-  time: number; cam: Camera; craft: Craft; track: Track; race: RaceState;
+  time: number; cam: Camera; player: Car; cars: Car[]; track: Track; hud: RaceHud;
   particles: Particle[]; cursor: { x: number; y: number }; toast: Toast | null; locked: boolean;
 }
 
@@ -28,13 +68,14 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   drawGround(ctx, cam, w, h);
   drawTrack(ctx, s.track, s.time);
   drawParticles(ctx, s.particles);
-  drawCraft(ctx, s.craft, s.time);
+  for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite);
 
   ctx.restore();
 
-  drawMinimap(ctx, w, s.track, s.craft);
-  drawLapPanel(ctx, s.race, s.time);
-  drawHud(ctx, w, h, s.craft, s.toast, s.locked, s.race.offTrack);
+  drawMinimap(ctx, w, s.track, s.cars, s.player);
+  drawLapPanel(ctx, s.player.race, s.time, s.hud);
+  drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.player.race.offTrack);
+  drawRaceBanners(ctx, w, h, s.hud);
   drawCursor(ctx, s.cursor);
 }
 
@@ -168,7 +209,7 @@ function drawStartLine(ctx: CanvasRenderingContext2D, track: Track): void {
   ctx.restore();
 }
 
-function drawMinimap(ctx: CanvasRenderingContext2D, w: number, track: Track, craft: Craft): void {
+function drawMinimap(ctx: CanvasRenderingContext2D, w: number, track: Track, cars: Car[], player: Car): void {
   const b = track.bounds;
   const boxW = 220, boxH = 160, pad = 14;
   const scale = Math.min((boxW - pad * 2) / (b.maxX - b.minX), (boxH - pad * 2) / (b.maxY - b.minY));
@@ -193,14 +234,17 @@ function drawMinimap(ctx: CanvasRenderingContext2D, w: number, track: Track, cra
   ctx.beginPath();
   ctx.arc(s.x, s.y, 4 / scale, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#ff3d6e';
-  ctx.beginPath();
-  ctx.arc(craft.pos.x, craft.pos.y, 6 / scale, 0, Math.PI * 2);
-  ctx.fill();
+  // Player drawn last so it sits on top.
+  for (const car of [...cars.filter((c) => c !== player), player]) {
+    ctx.fillStyle = car.color;
+    ctx.beginPath();
+    ctx.arc(car.craft.pos.x, car.craft.pos.y, (car === player ? 6 : 5) / scale, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
-function drawLapPanel(ctx: CanvasRenderingContext2D, race: RaceState, now: number): void {
+function drawLapPanel(ctx: CanvasRenderingContext2D, race: RaceState, now: number, hud: RaceHud): void {
   const x = 24, y = 24;
   ctx.save();
   ctx.fillStyle = 'rgba(8,10,22,0.7)';
@@ -211,7 +255,14 @@ function drawLapPanel(ctx: CanvasRenderingContext2D, race: RaceState, now: numbe
   ctx.fillText('LAP', x + 16, y + 28);
   ctx.font = '800 24px system-ui, sans-serif';
   ctx.fillStyle = '#fff';
-  ctx.fillText(String(race.lap + 1), x + 50, y + 30);
+  ctx.fillText(`${Math.min(race.lap + 1, hud.laps)}/${hud.laps}`, x + 50, y + 30);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = hud.position === 1 ? '#ffd23f' : '#fff';
+  ctx.fillText(`P${hud.position}`, x + 204, y + 30);
+  ctx.font = '600 13px system-ui, sans-serif';
+  ctx.fillStyle = '#8a93c0';
+  ctx.fillText(`/${hud.racers}`, x + 204, y + 46);
+  ctx.textAlign = 'left';
   ctx.font = '700 28px ui-monospace, Consolas, monospace';
   ctx.fillText(formatTime(race.current(now)), x + 16, y + 66);
   ctx.font = '600 14px ui-monospace, Consolas, monospace';
@@ -219,6 +270,30 @@ function drawLapPanel(ctx: CanvasRenderingContext2D, race: RaceState, now: numbe
   ctx.fillText(`LAST ${race.lastLap ? formatTime(race.lastLap) : '-:--.---'}`, x + 16, y + 90);
   ctx.fillStyle = race.bestLap ? '#c77dff' : '#8a93c0';
   ctx.fillText(`BEST ${race.bestLap ? formatTime(race.bestLap) : '-:--.---'}`, x + 16, y + 110);
+  ctx.restore();
+}
+
+function drawRaceBanners(ctx: CanvasRenderingContext2D, w: number, h: number, hud: RaceHud): void {
+  ctx.save();
+  ctx.textAlign = 'center';
+  if (hud.countdown) {
+    ctx.font = '900 96px system-ui, sans-serif';
+    ctx.fillStyle = hud.countdown === 'GO' ? '#4dff9a' : '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 16;
+    ctx.fillText(hud.countdown, w / 2, h * 0.38);
+  }
+  if (hud.banner) {
+    ctx.fillStyle = 'rgba(8,10,22,0.8)';
+    roundRect(ctx, w / 2 - 210, h * 0.3 - 50, 420, 96, 14);
+    ctx.fill();
+    ctx.font = '900 40px system-ui, sans-serif';
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillText(hud.banner, w / 2, h * 0.3 + 2);
+    ctx.font = '600 15px system-ui, sans-serif';
+    ctx.fillStyle = '#c8d2ff';
+    ctx.fillText('Press R to race again', w / 2, h * 0.3 + 32);
+  }
   ctx.restore();
 }
 
@@ -260,31 +335,27 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: Particle[]): vo
   ctx.restore();
 }
 
-/** The craft sprite (nose up in the file) and where its parts sit, in world px. */
-const craftImg = new Image();
-craftImg.src = '/sprites/craft-red.png';
+/** Craft size and where the rear exhausts sit, in world px (heading along +x). */
 export const CRAFT_LENGTH = 80;
-const CRAFT_WIDTH = CRAFT_LENGTH * (157 / 256);
-/** Rear exhausts: distance behind center and sideways offset of each nozzle. */
 export const NOZZLE_BACK = CRAFT_LENGTH / 2 - 4;
 export const NOZZLE_SIDE = 5.5;
 
-function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number): void {
-  const bob = Math.sin(time * 5) * 2.5;
+function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite): void {
+  const bob = Math.sin(time * 5 + c.pos.x * 0.001) * 2.5;
   const hoverHeight = 10 + bob;
-  const ready = craftImg.complete && craftImg.naturalWidth > 0;
+  const width = CRAFT_LENGTH * sprite.aspect;
 
   // Shadow on the ground: the sprite's silhouette, shifted and blurred by hover height.
   ctx.save();
   ctx.translate(c.pos.x + hoverHeight * 0.6, c.pos.y + hoverHeight);
   ctx.rotate(c.heading);
   ctx.globalAlpha = 0.5;
-  if (ready) {
+  if (sprite.canvas) {
     ctx.filter = `brightness(0) blur(${2 + bob * 0.5}px)`;
-    drawSprite(ctx);
+    drawSprite(ctx, sprite);
   } else {
     ctx.fillStyle = '#000';
-    ctx.fillRect(-CRAFT_LENGTH / 2, -CRAFT_WIDTH / 2, CRAFT_LENGTH, CRAFT_WIDTH);
+    ctx.fillRect(-CRAFT_LENGTH / 2, -width / 2, CRAFT_LENGTH, width);
   }
   ctx.restore();
 
@@ -293,10 +364,10 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number): void 
   ctx.rotate(c.heading);
 
   // Thruster flames out of the twin rear exhausts.
-  const flame = 10 + c.thrust * 22 + (c.boostFlash > 0 ? 30 : 0) + Math.random() * 4;
+  const flame = 10 + c.thrust * 22 + Math.random() * 4;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const hue = c.boostFlash > 0 ? 40 : 190;
+  const hue = 190;
   for (const side of [-NOZZLE_SIDE, NOZZLE_SIDE]) {
     const g = ctx.createLinearGradient(-NOZZLE_BACK, 0, -NOZZLE_BACK - flame, 0);
     g.addColorStop(0, `hsla(${hue}, 100%, 75%, 0.95)`);
@@ -308,14 +379,15 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number): void 
   }
   ctx.restore();
 
-  if (ready) drawSprite(ctx);
+  if (sprite.canvas) drawSprite(ctx, sprite);
   ctx.restore();
 }
 
 /** Draw the sprite centered on the origin, pointing along +x (the heading). */
-function drawSprite(ctx: CanvasRenderingContext2D): void {
+function drawSprite(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
+  const width = CRAFT_LENGTH * sprite.aspect;
   ctx.rotate(Math.PI / 2);
-  ctx.drawImage(craftImg, -CRAFT_WIDTH / 2, -CRAFT_LENGTH / 2, CRAFT_WIDTH, CRAFT_LENGTH);
+  ctx.drawImage(sprite.canvas!, -width / 2, -CRAFT_LENGTH / 2, width, CRAFT_LENGTH);
 }
 
 function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean, offTrack: boolean): void {
@@ -347,12 +419,6 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.fillRect(bx, by, bw, bh);
   ctx.fillStyle = c.rev > 0.9 ? '#ffd23f' : '#3fa9ff';
   ctx.fillRect(bx, by, bw * c.rev, bh);
-
-  // Drift boost meter.
-  ctx.fillStyle = '#1b2040';
-  ctx.fillRect(bx, by + 18, bw, 6);
-  ctx.fillStyle = '#ff4fd8';
-  ctx.fillRect(bx, by + 18, bw * clamp(c.boostCharge / 220, 0, 1), 6);
 
   // Gear pips.
   for (let i = 0; i < GEARS.length; i++) {

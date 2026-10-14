@@ -6,11 +6,11 @@ export interface Vec { x: number; y: number }
 export interface Gear { top: number; accel: number }
 
 export const GEARS: Gear[] = [
-  { top: 240, accel: 560 },
-  { top: 400, accel: 430 },
-  { top: 560, accel: 330 },
-  { top: 720, accel: 250 },
-  { top: 880, accel: 190 },
+  { top: 240, accel: 290 },
+  { top: 400, accel: 220 },
+  { top: 560, accel: 170 },
+  { top: 720, accel: 130 },
+  { top: 880, accel: 100 },
 ];
 
 const TURN_RATE = 3.6;        // rad/s at low speed
@@ -25,27 +25,24 @@ const BRAKE_DECEL = 700;      // px/s²
 const BOG_FRACTION = 0.55;    // the rev band of a gear starts at this fraction of the previous gear's top
 const UPSHIFT_AT = 0.96;      // auto upshift once forward speed reaches this fraction of the gear's top
 const DOWNSHIFT_AT = 0.8;     // auto downshift once speed falls below this fraction of the lower gear's top
-const SHIFT_COOLDOWN = 0.25;  // seconds between automatic shifts, so it never hunts between gears
-const DRIFT_START = 0.26;     // rad (~15°) of slip before drift charges boost
-const DRIFT_END = 0.12;       // rad (~7°): slip below this ends the drift and pays out
-const BOOST_RATE = 120;       // boost charged per second of drifting (px/s of speed)
-const BOOST_MAX = 220;
+const SHIFT_COOLDOWN = 0.6;   // seconds between automatic shifts, so it never hunts between gears
+const SHIFT_TIME = 0.4;       // seconds of cut thrust while an upshift engages
+const DRIFT_START = 0.26;     // rad (~15°) of slip that counts as drifting (for effects)
 
 export class Craft {
   pos: Vec = { x: 0, y: 0 };
   vel: Vec = { x: 0, y: 0 };
   heading = -Math.PI / 2;     // pointing "up" the screen
   gear = 0;                   // index into GEARS
-  boostCharge = 0;
   drifting = false;
   braking = false;
   /** 0..1 how hard the thrusters are working this frame (for effects). */
   thrust = 0;
-  /** Seconds left on the boost flame effect. */
-  boostFlash = 0;
   /** +1 / -1 on the step a gear change happened, else 0 (for HUD flashes). */
   shifted = 0;
   private shiftTimer = 0;
+  /** Seconds left on the current upshift; thrust is cut while it engages. */
+  shiftPause = 0;
 
   get speed(): number { return Math.hypot(this.vel.x, this.vel.y); }
 
@@ -95,10 +92,11 @@ export class Craft {
     if (accelerating) {
       const top = this.gear === GEARS.length - 1;
       const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
-      this.thrust = pull;
-      fwd += gear.accel * pull * (offTrack ? OFF_TRACK_THRUST : 1) * dt;
+      const engaging = this.shiftPause > 0 ? 0.1 : 1;
+      this.thrust = pull * engaging;
+      fwd += engaging * gear.accel * pull * (offTrack ? OFF_TRACK_THRUST : 1) * dt;
     }
-    // Above the top gear's speed (e.g. after a boost) it slowly settles back.
+    // Above the top gear's speed (e.g. after a downhill bump) it slowly settles back.
     const vmax = GEARS[GEARS.length - 1].top;
     if (fwd > vmax) fwd -= (fwd - vmax) * 0.8 * dt;
 
@@ -114,22 +112,8 @@ export class Craft {
     this.vel.x = fx * fwd - fy * side;
     this.vel.y = fy * fwd + fx * side;
 
-    // Drift boost: charge while sliding, pay out when the slide is caught.
-    const slip = Math.abs(this.slip);
-    if (!this.drifting && slip > DRIFT_START && speed > 200) this.drifting = true;
-    if (this.drifting) {
-      this.boostCharge = Math.min(BOOST_MAX, this.boostCharge + BOOST_RATE * dt * (slip / DRIFT_START));
-      if (slip < DRIFT_END || speed < 120) {
-        this.drifting = false;
-        if (this.boostCharge > 40 && speed >= 120) {
-          this.addForwardSpeed(this.boostCharge);
-          this.boostFlash = 0.5;
-        }
-        this.boostCharge = 0;
-      }
-    }
+    this.drifting = Math.abs(this.slip) > DRIFT_START && speed > 200;
 
-    this.boostFlash = Math.max(0, this.boostFlash - dt);
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
   }
@@ -144,13 +128,13 @@ export class Craft {
     this.vel.x *= 0.8;
     this.vel.y *= 0.8;
     this.drifting = false;
-    this.boostCharge = 0;
   }
 
   /** Automatic gearbox: up when the gear is nearly maxed under throttle, down when too slow for it. */
   private autoShift(dt: number, fwd: number, throttle: boolean): void {
     this.shifted = 0;
     this.shiftTimer = Math.max(0, this.shiftTimer - dt);
+    this.shiftPause = Math.max(0, this.shiftPause - dt);
     if (this.shiftTimer > 0) return;
     const speed = Math.max(fwd, 0);
     if (throttle && this.gear < GEARS.length - 1 && speed >= GEARS[this.gear].top * UPSHIFT_AT) {
@@ -161,13 +145,25 @@ export class Craft {
       this.shifted = -1;
     }
     if (this.shifted) this.shiftTimer = SHIFT_COOLDOWN;
+    if (this.shifted === 1) this.shiftPause = SHIFT_TIME;
   }
 
-  private addForwardSpeed(amount: number): void {
-    const fx = Math.cos(this.heading), fy = Math.sin(this.heading);
-    this.vel.x += fx * amount;
-    this.vel.y += fy * amount;
-  }
+}
+
+/** Bump two craft apart (circles). Returns the closing speed of the hit, 0 if none. */
+export function collideCrafts(a: Craft, b: Craft, radius = 22): number {
+  const dx = b.pos.x - a.pos.x, dy = b.pos.y - a.pos.y;
+  const d = Math.hypot(dx, dy), min = radius * 2;
+  if (d >= min || d === 0) return 0;
+  const nx = dx / d, ny = dy / d, push = (min - d) / 2;
+  a.pos.x -= nx * push; a.pos.y -= ny * push;
+  b.pos.x += nx * push; b.pos.y += ny * push;
+  const closing = (b.vel.x - a.vel.x) * nx + (b.vel.y - a.vel.y) * ny;
+  if (closing >= 0) return 0;
+  const j = (-(1 + 0.5) * closing) / 2;
+  a.vel.x -= j * nx; a.vel.y -= j * ny;
+  b.vel.x += j * nx; b.vel.y += j * ny;
+  return -closing;
 }
 
 export function wrapAngle(a: number): number {

@@ -143,6 +143,12 @@ export class RaceState {
   }
 
   current(now: number): number { return this.lapStart < 0 ? 0 : now - this.lapStart; }
+
+  /** Distance into the race in track samples (laps done + way into this lap), for positions. */
+  progress(track: Track): number {
+    const behindLine = this.nextSector === 1 && this.index > track.length / 2;
+    return this.lap * track.length + (behindLine ? this.index - track.length : this.index);
+  }
 }
 
 /** Keep the craft inside the barriers. Returns impact speed lost (0 = no hit) for screen shake. */
@@ -161,13 +167,18 @@ export function collideWalls(track: Track, craft: Craft, race: RaceState): numbe
   return before - craft.speed;
 }
 
-/** Place a craft on the grid, just behind the start line and pointing down the straight. */
-export function placeOnGrid(track: Track, craft: Craft): void {
-  const back = track.length - 6;
+/**
+ * Place a craft in a grid slot behind the start line, pointing down the straight.
+ * Slot 0 is pole; slots stagger left/right like an F1 grid. Returns the sample index used.
+ */
+export function placeOnGrid(track: Track, craft: Craft, slot = 0): number {
+  const back = track.length - 8 - slot * 9;
   const p = track.pts[back];
-  craft.pos = { x: p.x, y: p.y };
+  const side = slot % 2 === 0 ? 55 : -55;
+  craft.pos = { x: p.x + p.nx * side, y: p.y + p.ny * side };
   craft.vel = { x: 0, y: 0 };
   craft.heading = track.direction(back);
+  return back;
 }
 
 function catmull(p0: number, p1: number, p2: number, p3: number, t: number): number {
