@@ -13,7 +13,7 @@ const AI_SKILL_MIN = 0.7;
 const AI_SKILL_MAX = 0.9;
 const RESULTS_DELAY = 2.5;    // seconds after the player finishes before the results screen
 const CATCH_UP_PER_PLACE = 0.01;  // +1% pace for every place behind the leader
-// Turbo start: press W in this window around GO for a perfect launch. Holding W from earlier is a jump start.
+// Turbo start: let go of the brake in this window around GO for a perfect launch; earlier is a jump start.
 const LAUNCH_EARLY = 0.3;     // s before GO a press still counts as perfect
 const LAUNCH_LATE = 0.15;     // s after GO a press still counts as perfect
 // DRS: from this lap on, being within DRS_GAP seconds of the car ahead when entering a zone opens the wing.
@@ -72,8 +72,9 @@ let resultsRefresh = 0;
 let lastCount = 0;            // countdown number last beeped
 // Launch judging for the player, and whether the AI have rolled their starts.
 let launchJudged = false;
-let lastPressAt = -Infinity;
-let prevThrottle = false;
+let prevBrake = false;
+let launchArmed = false;      // brake held during the countdown
+let releasedAt = -1;          // race time the brake was let go (-1 = not yet)
 let aiLaunched = false;
 /** Per car: the DRS zone it's in (-1 = none) and whether it earned DRS on entering it. */
 const drs = new Map<Car, { zone: number; earned: boolean }>();
@@ -113,8 +114,9 @@ function startRace(): void {
   lastCount = COUNTDOWN + 1;
   launchJudged = false;
   drs.clear();
-  lastPressAt = -Infinity;
-  prevThrottle = input.throttle;
+  prevBrake = input.brake;
+  launchArmed = false;
+  releasedAt = -1;
   aiLaunched = false;
   particles.length = 0;
   goTime = time + COUNTDOWN;
@@ -283,7 +285,8 @@ function update(dt: number): void {
     pc.step(dt, c.aim, c.throttle, c.brake);
   } else {
     pc.deploy = racing && input.deploy;
-    pc.step(dt, racing ? aim : pc.heading, racing && input.throttle, racing && input.brake);
+    // The throttle is always on; holding brake slows down (and the gearbox shifts down with it).
+    pc.step(dt, racing ? aim : pc.heading, racing && !input.brake, racing && input.brake);
   }
   sound.engine(pc.gear, pc.rev, pc.thrust, clamp(pc.speed / 880, 0, 1));
   if (pc.shifted === 1) sound.whoosh();
@@ -497,25 +500,23 @@ function raceHud(): RaceHud {
 }
 
 /**
- * Turbo start. The player gets a perfect launch for pressing W within a short window around GO
- * and a stall for holding it from earlier (a jump start). The AI roll their own starts at GO.
+ * Turbo start, clutch-style: hold the brake through the countdown and let go right on GO for a
+ * perfect launch. Letting go too early is a jump start and stalls; never holding it is a normal
+ * start. The AI roll their own starts at GO.
  */
 function judgeLaunches(racing: boolean): void {
-  const pressed = input.throttle && !prevThrottle;
-  prevThrottle = input.throttle;
+  const released = !input.brake && prevBrake;
+  prevBrake = input.brake;
   if (!launchJudged) {
-    if (pressed) lastPressAt = time;
+    if (!racing && input.brake) launchArmed = true;
+    if (released) releasedAt = time;
     if (racing) {
       const sinceGo = time - goTime;
       let result: 'perfect' | 'stall' | 'normal' | null = null;
-      if (sinceGo < 1e-9 + 1 / 60 && input.throttle) {
-        // Already holding W as the lights go out: perfect if it went down just before GO.
-        result = lastPressAt >= goTime - LAUNCH_EARLY ? 'perfect' : 'stall';
-      } else if (pressed) {
-        result = sinceGo <= LAUNCH_LATE ? 'perfect' : 'normal';
-      } else if (sinceGo > LAUNCH_LATE) {
-        result = 'normal';
-      }
+      if (!launchArmed) result = 'normal';
+      else if (releasedAt >= 0 && releasedAt < goTime - LAUNCH_EARLY) result = 'stall';
+      else if (releasedAt >= goTime - LAUNCH_EARLY && releasedAt <= goTime + LAUNCH_LATE) result = 'perfect';
+      else if (sinceGo > LAUNCH_LATE) result = 'normal';
       if (result) {
         launchJudged = true;
         if (result === 'perfect') {

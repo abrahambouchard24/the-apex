@@ -41,13 +41,13 @@ const WAKE_SPREAD = 0.1;         // the wake widens by this many px per px behin
 const WAKE_MIN_SPEED = 300;      // px/s: slower cars leave no usable wake
 const WAKE_ALIGN = 0.85;         // both cars must be moving within ~30° of the same direction
 // Heat: hitting walls and other cars heats the craft; a hot craft loses top speed until it cools.
-const HEAT_PER_IMPACT = 1 / 700;  // heat per px/s of into-the-wall speed
-const HEAT_PER_SCRAPE = 0.4;      // heat per second of grinding along a wall
-const HEAT_COOL = 0.07;           // heat shed per second (a full bar takes ~14 s to clear)
-const LANE_COOL = 0.35;           // heat shed per second on the cooling lane (5x faster)
-const HEAT_WARM = 0.6;            // above this, top speed starts to drop...
+const HEAT_PER_IMPACT = 1 / 560;  // heat per px/s of into-the-wall speed
+const HEAT_PER_SCRAPE = 0.55;     // heat per second of grinding along a wall
+const HEAT_COOL = 0.05;           // heat shed per second (a full bar takes 20 s to clear)
+const LANE_COOL = 0.35;           // heat shed per second on the cooling lane (7x faster)
+const HEAT_WARM = 0.5;            // above this, top speed starts to drop...
 const HEAT_WARM_LOSS = 0.1;       // ...by up to this much just before overheating
-const OVERHEAT_LOSS = 0.22;       // top speed lost while overheated
+const OVERHEAT_LOSS = 0.25;       // top speed lost while overheated
 const OVERHEAT_CLEAR = 0.35;      // overheating ends once heat cools below this
 // Turbo start: a perfectly timed launch pulls harder for a moment; a jump start stalls.
 const LAUNCH_PULL = 1.9;          // thrust multiplier during a perfect launch
