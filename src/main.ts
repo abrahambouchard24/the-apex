@@ -3,7 +3,7 @@ import { Craft, LAUNCH_TIME, STALL_TIME, clamp, collideCrafts, lerp } from './cr
 import { Input } from './input';
 import { Menus } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
-import { RaceState, Track, collideWalls, placeOnGrid } from './track';
+import { RaceState, Track, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
 const RACE_LAPS = 3;
@@ -138,7 +138,7 @@ function fitCanvas(): void {
 if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
   (window as unknown as { game: object }).game = {
     get player() { return player; }, get rivals() { return rivals; }, track,
-    get time() { return time; }, get goTime() { return goTime; },
+    get time() { return time; }, get goTime() { return goTime; }, cam,
   };
 }
 
@@ -199,6 +199,7 @@ function update(dt: number): void {
   }
 
   for (const car of cars) {
+    car.craft.cooling = inCoolingLane(track, car.craft, car.race.index);
     emitTrail(car.craft, car.hue);
     emitHeat(car.craft);
   }
@@ -290,6 +291,17 @@ function judgeLaunches(racing: boolean): void {
 
 /** Smoke puffs off a craft running hot; thicker and redder as it nears overheating. */
 function emitHeat(craft: Craft): void {
+  if (craft.cooling && craft.heat > 0.02) {
+    // Blue vapor boiling off while the lane pulls the heat out.
+    particles.push({
+      x: craft.pos.x + (Math.random() - 0.5) * 30,
+      y: craft.pos.y + (Math.random() - 0.5) * 30,
+      vx: -craft.vel.x * 0.25 + (Math.random() - 0.5) * 50,
+      vy: -craft.vel.y * 0.25 + (Math.random() - 0.5) * 50,
+      life: 0.6, max: 0.6, hue: 195, size: 5 + craft.heat * 5,
+    });
+    return;
+  }
   if (craft.heat < 0.5 || Math.random() > craft.heat * 0.6) return;
   const hot = craft.overheated ? 1 : (craft.heat - 0.5) / 0.5;
   particles.push({

@@ -37,6 +37,12 @@ const SAMPLES_PER_SEGMENT = 40;
 const CRAFT_HALF_WIDTH = 22;      // how close the craft's center gets to a wall face
 export const SECTORS = 10;         // checkpoints per lap; all must be passed in order
 
+/**
+ * Cooling lane: a strip along the outside edge of the main straight (right-hand side heading
+ * down it, away from the infield). Driving over it sheds heat fast.
+ */
+export const COOL_LANE = { from: 6, to: 32, side: -1, width: 52 };
+
 export interface TrackPoint { x: number; y: number; nx: number; ny: number; curve: number }
 
 export class Track {
@@ -104,6 +110,18 @@ export class Track {
     if (Math.sqrt(bestD) > WALL_DIST * 1.5) scan(0, m - 1);
     return { index: best, dist: Math.sqrt(bestD) };
   }
+}
+
+/** Signed distance from the centerline at a sample (+ = track-left, toward the normal). */
+export function lateral(track: Track, craft: Craft, index: number): number {
+  const p = track.pts[index];
+  return (craft.pos.x - p.x) * p.nx + (craft.pos.y - p.y) * p.ny;
+}
+
+/** Whether a craft is over the cooling lane right now. */
+export function inCoolingLane(track: Track, craft: Craft, index: number): boolean {
+  if (index < COOL_LANE.from || index > COOL_LANE.to) return false;
+  return lateral(track, craft, index) * COOL_LANE.side >= HALF_WIDTH - COOL_LANE.width;
 }
 
 /** Per-craft race state: where it is on the track, sectors passed, lap times. */

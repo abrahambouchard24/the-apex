@@ -4,7 +4,7 @@
 // Pure logic, like craft.ts.
 
 import { Craft, clamp } from './craft';
-import { HALF_WIDTH, RaceState, Track } from './track';
+import { COOL_LANE, HALF_WIDTH, RaceState, Track, lateral } from './track';
 
 export interface Controls { aim: number; throttle: boolean; brake: boolean }
 
@@ -30,7 +30,7 @@ export class Driver {
   private mistake: Mistake = null;
   private lastTime = 0;
   /** What the driver is doing right now, for debugging and tests. */
-  state: 'racing' | 'passing' | 'defending' | 'mistake' = 'racing';
+  state: 'racing' | 'passing' | 'defending' | 'cooling' | 'mistake' = 'racing';
 
   /** skill 1 = near the grip limit with no mistakes; lower = slower corners, more weave, more errors. */
   constructor(public skill = 0.92, private seed = 1) {}
@@ -91,6 +91,12 @@ export class Driver {
       this.state = 'defending';
     }
 
+    // Running hot with the cooling lane coming up (or underneath us): move over onto it.
+    const toLane = (COOL_LANE.from - i + m) % m;
+    const onLaneStretch = i >= COOL_LANE.from && i <= COOL_LANE.to;
+    const wantLane = c.heat > 0.45 && (onLaneStretch || toLane < 40);
+    if (wantLane) this.state = 'cooling';
+
     // Mistakes: now and then brake too late or run wide for a moment.
     if (this.mistake) {
       this.mistake.left -= dt;
@@ -104,6 +110,8 @@ export class Driver {
     }
 
     off = clamp(off, -MAX_OFFSET, MAX_OFFSET);
+    // The lane hugs the wall, past the normal line limit: aim right along it.
+    if (wantLane && this.state === 'cooling') off = COOL_LANE.side * (HALF_WIDTH - 16);
     // Steer for the chosen line at the look-ahead point.
     const tx = ahead.x + ahead.nx * off, ty = ahead.y + ahead.ny * off;
     const aim = Math.atan2(ty - c.pos.y, tx - c.pos.x);
@@ -123,12 +131,6 @@ export class Driver {
     if (r > 1 - 0.25 * (1 - this.skill)) return 'stall';
     return 'normal';
   }
-}
-
-/** Signed distance from the centerline (+ = track-left). */
-export function lateral(track: Track, craft: Craft, index: number): number {
-  const p = track.pts[index];
-  return (craft.pos.x - p.x) * p.nx + (craft.pos.y - p.y) * p.ny;
 }
 
 /** Tuned so a skill-1 driver takes corners near the grip limit (see lap simulation). */

@@ -40,6 +40,7 @@ const WAKE_ALIGN = 0.85;         // both cars must be moving within ~30° of the
 const HEAT_PER_IMPACT = 1 / 1100; // heat per px/s of into-the-wall or closing speed
 const HEAT_PER_SCRAPE = 0.22;     // heat per second of grinding along a wall
 const HEAT_COOL = 0.07;           // heat shed per second (a full bar takes ~14 s to clear)
+const LANE_COOL = 0.35;           // heat shed per second on the cooling lane (5x faster)
 const HEAT_WARM = 0.6;            // above this, top speed starts to drop...
 const HEAT_WARM_LOSS = 0.06;      // ...by up to this much just before overheating
 const OVERHEAT_LOSS = 0.15;       // top speed lost while overheated
@@ -78,6 +79,8 @@ export class Craft {
   /** Seconds left on a perfect-launch boost / a jump-start stall. */
   launch = 0;
   stall = 0;
+  /** True while over the cooling lane (set by the race each step). */
+  cooling = false;
 
   get speed(): number { return Math.hypot(this.vel.x, this.vel.y); }
 
@@ -153,7 +156,7 @@ export class Craft {
 
     this.launch = Math.max(0, this.launch - dt);
     this.stall = Math.max(0, this.stall - dt);
-    this.heat = Math.max(0, this.heat - HEAT_COOL * dt);
+    this.heat = Math.max(0, this.heat - (this.cooling ? LANE_COOL : HEAT_COOL) * dt);
     if (this.overheated && this.heat < OVERHEAT_CLEAR) this.overheated = false;
   }
 

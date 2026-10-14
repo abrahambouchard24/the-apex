@@ -1,7 +1,7 @@
 // Everything drawn to the canvas. Reads game state, never changes it.
 
 import { Craft, GEARS, clamp } from './craft';
-import { HALF_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
+import { COOL_LANE, HALF_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
 
 export interface Camera { x: number; y: number; zoom: number; shake: number }
 
@@ -106,7 +106,7 @@ function drawGround(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: nu
 }
 
 /** Static track geometry as Path2Ds, built once per track. */
-interface TrackPaths { center: Path2D; kerbRed: Path2D; kerbWhite: Path2D; strips: Path2D; lights: Path2D }
+interface TrackPaths { center: Path2D; kerbRed: Path2D; kerbWhite: Path2D; strips: Path2D; lights: Path2D; coolLane: Path2D; coolLine: Path2D }
 const pathCache = new WeakMap<Track, TrackPaths>();
 
 const KERB_CURVE = 1 / 900;   // corners tighter than this radius get kerbs
@@ -151,7 +151,21 @@ function trackPaths(track: Track): TrackPaths {
     }
   }
 
-  const built = { center, kerbRed, kerbWhite, strips, lights };
+  // Cooling lane: a band along the outside edge of the straight, plus its center line for the chevrons.
+  const coolLane = new Path2D(), coolLine = new Path2D();
+  const inner = COOL_LANE.side * (HALF_WIDTH - COOL_LANE.width), outer = COOL_LANE.side * HALF_WIDTH;
+  for (let i = COOL_LANE.from; i <= COOL_LANE.to; i++) {
+    const [x, y] = off(i, inner);
+    if (i === COOL_LANE.from) coolLane.moveTo(x, y); else coolLane.lineTo(x, y);
+  }
+  for (let i = COOL_LANE.to; i >= COOL_LANE.from; i--) { const [x, y] = off(i, outer); coolLane.lineTo(x, y); }
+  coolLane.closePath();
+  for (let i = COOL_LANE.from; i <= COOL_LANE.to; i++) {
+    const [x, y] = off(i, COOL_LANE.side * (HALF_WIDTH - COOL_LANE.width / 2));
+    if (i === COOL_LANE.from) coolLine.moveTo(x, y); else coolLine.lineTo(x, y);
+  }
+
+  const built = { center, kerbRed, kerbWhite, strips, lights, coolLane, coolLine };
   pathCache.set(track, built);
   return built;
 }
@@ -198,7 +212,50 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
   ctx.fillStyle = `rgba(255, 79, 216, ${pulse})`;
   ctx.fill(p.lights);
 
+  drawCoolLane(ctx, track, p, time);
+
   drawStartLine(ctx, track);
+  ctx.restore();
+}
+
+function drawCoolLane(ctx: CanvasRenderingContext2D, track: Track, p: TrackPaths, time: number): void {
+  ctx.save();
+  ctx.fillStyle = 'rgba(90, 210, 255, 0.16)';
+  ctx.fill(p.coolLane);
+  ctx.strokeStyle = 'rgba(150, 235, 255, 0.85)';
+  ctx.lineWidth = 2;
+  ctx.stroke(p.coolLane);
+  // Chevrons flowing down the lane.
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = 'rgba(150, 235, 255, 0.5)';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  const span = COOL_LANE.to - COOL_LANE.from;
+  for (let k = 0; k < 8; k++) {
+    const t = ((k / 8 + time * 0.35) % 1);
+    const i = COOL_LANE.from + Math.floor(t * span);
+    const pt = track.pts[i];
+    const mid = COOL_LANE.side * (HALF_WIDTH - COOL_LANE.width / 2);
+    const cx = pt.x + pt.nx * mid, cy = pt.y + pt.ny * mid;
+    const dir = track.direction(i), fx = Math.cos(dir), fy = Math.sin(dir);
+    const half = COOL_LANE.width * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(cx - fx * 10 + pt.nx * half, cy - fy * 10 + pt.ny * half);
+    ctx.lineTo(cx + fx * 6, cy + fy * 6);
+    ctx.lineTo(cx - fx * 10 - pt.nx * half, cy - fy * 10 - pt.ny * half);
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  // Label at the start of the lane.
+  const s = track.pts[COOL_LANE.from + 2];
+  const mid = COOL_LANE.side * (HALF_WIDTH - COOL_LANE.width / 2);
+  ctx.translate(s.x + s.nx * mid, s.y + s.ny * mid);
+  ctx.rotate(track.direction(COOL_LANE.from + 2));
+  ctx.font = '800 15px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(200, 245, 255, 0.9)';
+  ctx.fillText('COOL', 0, 0);
   ctx.restore();
 }
 
@@ -484,7 +541,8 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   const heatColor = c.overheated ? '#ff3d3d' : c.heat > 0.6 ? '#ffb02e' : '#4dff9a';
   ctx.font = '700 11px system-ui, sans-serif';
   ctx.fillStyle = c.overheated ? heatColor : '#8a93c0';
-  ctx.fillText(c.overheated ? 'OVERHEAT' : 'HEAT', bx, y + 116);
+  ctx.fillStyle = c.cooling ? '#8feaff' : ctx.fillStyle;
+  ctx.fillText(c.cooling ? 'COOLING' : c.overheated ? 'OVERHEAT' : 'HEAT', bx, y + 116);
   ctx.fillStyle = '#1b2040';
   ctx.fillRect(bx + 80, y + 108, bw - 80, 6);
   ctx.globalAlpha = c.overheated ? 0.55 + 0.45 * Math.sin(performance.now() / 90) : 1;
