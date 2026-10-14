@@ -22,6 +22,8 @@ Project brief (vision, visual reference, art prompts, roadmap): https://claude.a
 
 - Music (`src/music.ts`) is synthesized live and scheduled on a 16th-note grid. The menu and results screen play chill house (118 BPM, A minor); racing plays deep / nu-disco house (122 BPM, F# minor). The pause menu muffles the race music. Effects and music use separate buses in `src/audio.ts`, so menus silence the engine without stopping the music. Music starts on the first click or key press, since browsers block autoplay.
 
+- Tracks (`TRACKS` in `src/track.ts`): Apex Grand Prix, Velocity Ring, Neon Streets, Summit Pass, Harbor Lights, Crystal Canyon, Desert Mirage, Skyline Carousel. Each starts on a straight heading east and runs counter-clockwise (infield on the left), so the grid, cooling lane and DRS work without per-track setup. New tracks should keep non-adjacent sections at least about 410 px apart and corners no tighter than about 170 px radius.
+
 ## Layout
 - `src/craft.ts` holds the physics and pure game logic, with no DOM access.
 - `src/input.ts` handles the mouse (with pointer lock) and the keyboard.

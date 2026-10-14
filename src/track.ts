@@ -127,6 +127,130 @@ export const TRACKS: TrackDef[] = [
       [-1500, 1500],
     ],
   },
+  {
+    name: 'HARBOR LIGHTS',
+    blurb: 'Waterfront speedway: fast sweepers, one big hairpin',
+    theme: { wall: '#3fd0ff', wallFace: '#c9f3ff', lights: '255, 210, 90', kerb: '#2f8cff', surface: '#1d2536' },
+    control: [
+      [0, 1400],      // start/finish on the quay
+      [1600, 1400],
+      [2600, 1300],   // T1: a long fast left
+      [3200, 800],
+      [3300, 0],
+      [2900, -500],   // T2: tightens heading west
+      [2200, -550],
+      [1700, -250],   // T3-T4: a quick right-left kink
+      [1100, -300],
+      [600, -800],
+      [650, -1500],   // T5: the lighthouse hairpin
+      [200, -2000],
+      [-500, -1900],
+      [-700, -1300],
+      [-1300, -900],  // T7: back along the docks
+      [-2200, -1100],
+      [-2900, -700],  // T8-T9: the long sweep home
+      [-3000, 200],
+      [-2500, 900],
+      [-1600, 1300],
+      [-800, 1400],
+    ],
+  },
+  {
+    name: 'CRYSTAL CANYON',
+    blurb: 'Technical canyon run: tight switchbacks, few straights',
+    theme: { wall: '#b98cff', wallFace: '#eadcff', lights: '120, 220, 255', kerb: '#8f5cff', surface: '#221f35' },
+    control: [
+      [0, 1200],
+      [1400, 1200],
+      [2000, 900],    // T1-T2: left into the canyon
+      [1950, 400],
+      [1400, 200],
+      [900, 400],     // T3: right, dropping back
+      [450, 150],
+      [450, -350],    // T4: left, climbing
+      [950, -750],
+      [1700, -850],
+      [2300, -1250],  // T6: up the far wall
+      [2200, -1950],
+      [1500, -2250],  // T7: across the top
+      [700, -2050],
+      [200, -1550],   // T8-T9: the crystal switchbacks
+      [-400, -1650],
+      [-1000, -2150],
+      [-1750, -2050],
+      [-2050, -1350], // T10: down the west wall
+      [-1650, -750],
+      [-1950, -100],
+      [-2450, 450],
+      [-2250, 1050],  // T13: onto the straight
+      [-1300, 1200],
+      [-600, 1200],
+    ],
+  },
+  {
+    name: 'DESERT MIRAGE',
+    blurb: 'Long straights into heavy-braking hairpins',
+    theme: { wall: '#ffb347', wallFace: '#ffe6c2', lights: '255, 120, 60', kerb: '#ff6a2b', surface: '#2a2420' },
+    control: [
+      [0, 1500],
+      [2500, 1500],
+      [3200, 1350],   // T1: hairpin at the end of the main straight
+      [3350, 850],
+      [2900, 600],
+      [1000, 550],    // the long run back west
+      [250, 350],     // T2: up and right
+      [100, -200],
+      [500, -700],
+      [2500, -800],   // the second long straight
+      [3200, -1100],  // T4: hairpin at the far end
+      [3200, -1700],
+      [2600, -1950],
+      [400, -1950],   // the back straight
+      [-900, -1850],  // T6: down the west side
+      [-1700, -1350],
+      [-1700, -600],  // T7-T8: chicane
+      [-2100, -100],
+      [-1800, 400],
+      [-2050, 950],   // T9: the long sweep onto the main straight
+      [-1950, 1350],
+      [-1550, 1500],
+      [-900, 1500],
+    ],
+  },
+  {
+    name: 'SKYLINE CAROUSEL',
+    blurb: 'Rooftop circuit with a long, banked carousel',
+    theme: { wall: '#ff5e8a', wallFace: '#ffd3e0', lights: '255, 240, 120', kerb: '#ff3060', surface: '#251c2a' },
+    control: [
+      [0, 1300],
+      [1700, 1300],
+      [2500, 1000],   // T1
+      [2700, 300],
+      [2400, -300],   // T2: left, heading west
+      [1800, -500],
+      [1400, -200],   // T3-T4: the rooftop dip
+      [1000, -400],
+      [600, -1000],
+      [700, -1700],   // T5: into the carousel
+      [300, -2300],
+      [-500, -2500],  // the carousel: one long, steady left
+      [-1300, -2300],
+      [-1800, -1700],
+      [-1900, -1000],
+      [-1600, -400],
+      [-1000, -200],  // out of the carousel, heading east
+      [-550, 150],    // T8: a wide right, dropping south
+      [-850, 600],
+      [-1500, 650],
+      [-1950, 520],   // T9-T10: a wide loop back onto the straight
+      [-2400, 460],
+      [-2697, 583],
+      [-2820, 880],
+      [-2697, 1177],
+      [-2400, 1300],
+      [-1600, 1300],
+    ],
+  },
 ];
 
 export const HALF_WIDTH = 130;     // half the racing surface width, px

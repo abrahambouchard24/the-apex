@@ -60,7 +60,7 @@ const CSS = `
 }
 .hr-car:hover { transform: translateY(-3px); border-color: #4a5590; }
 .hr-car.selected { border-color: var(--c); box-shadow: 0 0 22px -4px var(--c); transform: translateY(-3px); }
-.hr-car img { height: 96px; display: block; margin: 0 auto 10px; }
+.hr-car img { height: 80px; display: block; margin: 0 auto 8px; }
 .hr-car span { font-weight: 800; font-size: 14px; letter-spacing: 0.08em; }
 .hr-btns { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .hr-btn {
@@ -72,17 +72,17 @@ const CSS = `
 .hr-btn.secondary { background: #1d2346; color: #e8ecff; }
 .hr-keys { margin-top: 18px; color: #8a93c0; font-size: 13px; }
 .hr-h2 { margin: 0 0 22px; font-size: 44px; font-weight: 900; letter-spacing: 0.1em; }
-.hr-tracks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+.hr-tracks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
 @media (max-width: 760px) { .hr-tracks { grid-template-columns: repeat(2, 1fr); } }
 .hr-track {
-  background: rgba(20,24,48,0.85); border: 2px solid #252b52; border-radius: 14px; padding: 10px 10px 12px;
+  background: rgba(20,24,48,0.85); border: 2px solid #252b52; border-radius: 14px; padding: 8px 10px 9px;
   cursor: pointer; color: inherit; font: inherit; text-align: left; transition: transform 120ms, border-color 120ms, box-shadow 120ms;
 }
 .hr-track:hover { transform: translateY(-3px); border-color: #4a5590; }
 .hr-track.selected { border-color: var(--c); box-shadow: 0 0 22px -4px var(--c); transform: translateY(-3px); }
-.hr-track svg { display: block; width: 100%; height: 72px; margin-bottom: 6px; }
-.hr-track b { display: block; font-size: 14px; letter-spacing: 0.08em; }
-.hr-track small { display: block; color: #8a93c0; font-size: 12px; margin-top: 3px; line-height: 1.3; }
+.hr-track svg { display: block; width: 100%; height: 46px; margin-bottom: 4px; }
+.hr-track b { display: block; font-size: 13px; letter-spacing: 0.08em; }
+.hr-track small { display: block; color: #8a93c0; font-size: 11px; margin-top: 2px; line-height: 1.25; }
 .hr-options { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; margin-bottom: 22px; }
 .hr-option { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .hr-option.hidden { visibility: hidden; }
