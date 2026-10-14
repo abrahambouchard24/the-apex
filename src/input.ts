@@ -1,14 +1,14 @@
 // Mouse + keyboard. The mouse drives a virtual cursor so steering keeps working under pointer lock.
 
-const SHIFT_KEYS = new Set(['KeyW', 'ArrowUp', 'ShiftLeft', 'ShiftRight']);
-const BRAKE_KEYS = new Set(['KeyS', 'ArrowDown', 'Space']);
+const THROTTLE_KEYS = new Set(['KeyW', 'ArrowUp']);
+const BRAKE_KEYS = new Set(['KeyD', 'KeyS', 'ArrowDown', 'Space']);
 
 export class Input {
   /** Virtual cursor in canvas CSS pixels. */
   cursor = { x: 0, y: 0 };
+  throttle = false;
   brake = false;
   locked = false;
-  private shiftQueued = 0;
   private resetQueued = false;
   private held = new Set<string>();
 
@@ -32,21 +32,25 @@ export class Input {
       }
     });
     addEventListener('keydown', (e) => {
-      if (SHIFT_KEYS.has(e.code) && !e.repeat) this.shiftQueued++;
-      if (BRAKE_KEYS.has(e.code)) this.held.add(e.code);
+      if (THROTTLE_KEYS.has(e.code) || BRAKE_KEYS.has(e.code)) {
+        this.held.add(e.code);
+        e.preventDefault();
+      }
       if (e.code === 'KeyR') this.resetQueued = true;
-      if (SHIFT_KEYS.has(e.code) || BRAKE_KEYS.has(e.code)) e.preventDefault();
-      this.brake = this.held.size > 0;
+      this.refresh();
     });
     addEventListener('keyup', (e) => {
       this.held.delete(e.code);
-      this.brake = this.held.size > 0;
+      this.refresh();
     });
-    addEventListener('blur', () => { this.held.clear(); this.brake = false; });
+    addEventListener('blur', () => { this.held.clear(); this.refresh(); });
   }
 
-  /** Number of shift-up presses since the last call. */
-  takeShifts(): number { const n = this.shiftQueued; this.shiftQueued = 0; return n; }
+  private refresh(): void {
+    this.throttle = [...THROTTLE_KEYS].some((k) => this.held.has(k));
+    this.brake = [...BRAKE_KEYS].some((k) => this.held.has(k));
+  }
+
   takeReset(): boolean { const r = this.resetQueued; this.resetQueued = false; return r; }
 }
 

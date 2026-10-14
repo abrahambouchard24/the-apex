@@ -32,11 +32,6 @@ function update(dt: number): void {
 
   if (input.takeReset()) { craft = new Craft(); particles.length = 0; }
 
-  for (let n = input.takeShifts(); n > 0; n--) {
-    const result = craft.shiftUp();
-    if (result === 'perfect') showToast('PERFECT SHIFT', '#ffd23f');
-  }
-
   // Aim from the craft's on-screen position toward the cursor.
   const csx = (craft.pos.x - cam.x) * cam.zoom + innerWidth / 2;
   const csy = (craft.pos.y - cam.y) * cam.zoom + innerHeight / 2;
@@ -44,7 +39,7 @@ function update(dt: number): void {
   const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : craft.heading;
 
   const boostBefore = craft.boostCharge;
-  craft.step(dt, aim, input.brake);
+  craft.step(dt, aim, input.throttle, input.brake);
   if (boostBefore > 40 && craft.boostCharge === 0 && craft.boostFlash > 0.45) {
     showToast(`DRIFT BOOST +${Math.round(boostBefore / 4)}`, '#ff4fd8');
   }

@@ -201,14 +201,12 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.fillStyle = c.rev > 0.9 ? '#ffd23f' : '#6ff3ff';
   ctx.fillText(String(c.gear + 1), x + 172, y + 70);
 
-  // Rev bar: fills through the gear's speed band; turns gold in the perfect-shift window.
+  // Rev bar: fills through the gear's speed band; the gearbox shifts up near the end.
   const bx = x + 16, by = y + 86, bw = 204, bh = 10;
   ctx.fillStyle = '#1b2040';
   ctx.fillRect(bx, by, bw, bh);
   ctx.fillStyle = c.rev > 0.9 ? '#ffd23f' : '#3fa9ff';
   ctx.fillRect(bx, by, bw * c.rev, bh);
-  ctx.fillStyle = 'rgba(255,210,63,0.35)';
-  ctx.fillRect(bx + bw * 0.9, by, bw * 0.1, bh);
 
   // Drift boost meter.
   ctx.fillStyle = '#1b2040';
@@ -235,8 +233,8 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
   const help = locked
-    ? 'Mouse: steer   W / Shift: shift up   S / Space: brake (drops gears when slow)   R: reset   Esc: release mouse'
-    : 'Click to lock the mouse   Mouse: steer   W / Shift: shift up   S / Space: brake   R: reset';
+    ? 'Mouse: steer   W: accelerate   D / S / Space: brake   Gears are automatic   R: reset   Esc: release mouse'
+    : 'Click to lock the mouse   Mouse: steer   W: accelerate   D / S / Space: brake   R: reset';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }
