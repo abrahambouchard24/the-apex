@@ -1,7 +1,7 @@
 import { Craft, clamp, lerp } from './craft';
 import { Input } from './input';
-import { Camera, Particle, Toast, drawFrame } from './render';
-import { collide, makePylons } from './world';
+import { Camera, Particle, Toast, drawFrame, formatTime } from './render';
+import { RaceState, Track, collideWalls, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
 
@@ -9,12 +9,30 @@ const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const input = new Input(canvas);
 
+const track = new Track();
 let craft = new Craft();
-const pylons = makePylons();
+let race = new RaceState();
 const particles: Particle[] = [];
 const cam: Camera = { x: 0, y: 0, zoom: 1, shake: 0 };
 let toast: Toast | null = null;
 let time = 0;
+
+/** Put the craft back on the grid with a fresh lap timer (best lap is kept). */
+function startRun(): void {
+  const best = race.bestLap;
+  craft = new Craft();
+  race = new RaceState();
+  race.bestLap = best;
+  placeOnGrid(track, craft);
+  race.index = track.length - 6;
+  particles.length = 0;
+  cam.x = craft.pos.x;
+  cam.y = craft.pos.y;
+  // Point the cursor down the straight so the craft doesn't swerve on the first frame.
+  input.cursor.x = innerWidth / 2 + Math.cos(craft.heading) * 220;
+  input.cursor.y = innerHeight / 2 + Math.sin(craft.heading) * 220;
+}
+startRun();
 
 // Checked every frame: zoom and display changes alter devicePixelRatio without a resize event.
 function fitCanvas(): void {
@@ -29,7 +47,7 @@ function fitCanvas(): void {
 
 // Dev-only handle for poking at game state from the console.
 if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
-  (window as unknown as { game: object }).game = { get craft() { return craft; } };
+  (window as unknown as { game: object }).game = { get craft() { return craft; }, get race() { return race; }, track };
 }
 
 function showToast(text: string, color: string): void { toast = { text, color, t: 1.1 }; }
@@ -37,7 +55,7 @@ function showToast(text: string, color: string): void { toast = { text, color, t
 function update(dt: number): void {
   time += dt;
 
-  if (input.takeReset()) { craft = new Craft(); particles.length = 0; }
+  if (input.takeReset()) startRun();
 
   // Aim from the craft's on-screen position toward the cursor.
   const csx = (craft.pos.x - cam.x) * cam.zoom + innerWidth / 2;
@@ -46,12 +64,16 @@ function update(dt: number): void {
   const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : craft.heading;
 
   const boostBefore = craft.boostCharge;
-  craft.step(dt, aim, input.throttle, input.brake);
+  craft.step(dt, aim, input.throttle, input.brake, race.offTrack);
   if (boostBefore > 40 && craft.boostCharge === 0 && craft.boostFlash > 0.45) {
     showToast(`DRIFT BOOST +${Math.round(boostBefore / 4)}`, '#ff4fd8');
   }
 
-  const impact = collide(craft, pylons);
+  const lap = race.update(track, craft, time, input.throttle);
+  if (lap === 'best') showToast(`BEST LAP  ${formatTime(race.lastLap)}`, '#c77dff');
+  else if (lap === 'lap') showToast(`LAP  ${formatTime(race.lastLap)}`, '#ffffff');
+
+  const impact = collideWalls(track, craft, race);
   if (impact > 60) cam.shake = Math.min(18, impact / 25);
 
   emitTrail();
@@ -102,7 +124,7 @@ function frame(now: number): void {
   last = now;
   while (acc >= STEP) { update(STEP); acc -= STEP; }
   fitCanvas();
-  drawFrame(ctx, innerWidth, innerHeight, time, cam, craft, pylons, particles, input.cursor, toast, input.locked);
+  drawFrame(ctx, innerWidth, innerHeight, { time, cam, craft, track, race, particles, cursor: input.cursor, toast, locked: input.locked });
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

@@ -19,6 +19,8 @@ const GRIP = 2.0;             // how fast sideways velocity bleeds off (1/s); lo
 const BRAKE_GRIP = 1.2;       // grip while braking: looser, so a brake tap swings the tail
 const BRAKE_TURN_BONUS = 1.35;
 const DRAG = 0.12;            // forward air drag (1/s)
+const OFF_TRACK_DRAG = 1.4;   // extra drag over the runoff (1/s)
+const OFF_TRACK_THRUST = 0.5; // thrust multiplier over the runoff
 const BRAKE_DECEL = 700;      // px/s²
 const BOG_FRACTION = 0.55;    // the rev band of a gear starts at this fraction of the previous gear's top
 const UPSHIFT_AT = 0.96;      // auto upshift once forward speed reaches this fraction of the gear's top
@@ -66,8 +68,9 @@ export class Craft {
    * @param aimAngle world angle the player is steering toward
    * @param throttle whether the accelerate key is held
    * @param brake whether the brake key is held
+   * @param offTrack whether the craft is over the runoff instead of the racing surface
    */
-  step(dt: number, aimAngle: number, throttle: boolean, brake: boolean): void {
+  step(dt: number, aimAngle: number, throttle: boolean, brake: boolean, offTrack = false): void {
     this.braking = brake;
     const speed = this.speed;
     const gear = GEARS[this.gear];
@@ -93,7 +96,7 @@ export class Craft {
       const top = this.gear === GEARS.length - 1;
       const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
       this.thrust = pull;
-      fwd += gear.accel * pull * dt;
+      fwd += gear.accel * pull * (offTrack ? OFF_TRACK_THRUST : 1) * dt;
     }
     // Above the top gear's speed (e.g. after a boost) it slowly settles back.
     const vmax = GEARS[GEARS.length - 1].top;
@@ -101,6 +104,7 @@ export class Craft {
 
     // Air drag only while coasting; under throttle the gear curves already set the pace.
     if (!accelerating) fwd -= fwd * DRAG * dt;
+    if (offTrack) fwd -= fwd * OFF_TRACK_DRAG * dt;
     if (brake) fwd = moveToward(fwd, 0, BRAKE_DECEL * dt);
 
     this.autoShift(dt, fwd, throttle && !brake);

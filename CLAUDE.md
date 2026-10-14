@@ -13,8 +13,8 @@ Project brief (vision, visual reference, art prompts, roadmap): https://claude.a
 ## Layout
 - `src/craft.ts` holds the physics and pure game logic, with no DOM access.
 - `src/input.ts` handles the mouse (with pointer lock) and the keyboard.
-- `src/world.ts` has the test arena, pylons and collisions.
-- `src/render.ts` does all canvas drawing; it only reads game state.
+- `src/track.ts` holds the F1-style circuit (a Catmull-Rom spline through `CONTROL` points), walls, off-track detection and lap/sector timing.
+- `src/render.ts` does all canvas drawing (track, kerbs, minimap, HUD, arrow cursor); it only reads game state.
 - `src/main.ts` runs the fixed 60 Hz loop, the camera and particles.
 
-Run with `npm run dev`. The current milestone is a drivable craft in an arena; the next one is a real track with checkpoints, laps and a lap timer.
+Run with `npm run dev`. Milestone 2 is done: one circuit with kerbs, runoff that slows the craft, walls, 10 sector checkpoints and a lap timer that keeps the best lap. Next is milestone 3, the feel pass.
