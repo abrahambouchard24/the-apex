@@ -1,6 +1,7 @@
 import { Driver } from './ai';
 import { Craft, clamp, collideCrafts, lerp } from './craft';
 import { Input } from './input';
+import { Menus } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
 import { RaceState, Track, collideWalls, placeOnGrid } from './track';
 
@@ -16,15 +17,20 @@ const ctx = canvas.getContext('2d')!;
 const input = new Input(canvas);
 
 const track = new Track();
-/** The field: the player drives 01; the rest are AI. hue = exhaust flame color. */
-const PLAYER_LIVERY = { sprite: loadSprite('/sprites/craft-red.png'), color: '#ff3d6e', hue: 190 };
-const AI_LIVERIES = [
-  { sprite: loadSprite('/sprites/craft-cyan.webp'), color: '#3ff0ff', hue: 190 },
-  { sprite: loadSprite('/sprites/craft-green.png'), color: '#2fd16b', hue: 120 },
-  { sprite: loadSprite('/sprites/craft-orange.png'), color: '#ff8a1f', hue: 35 },
-  { sprite: loadSprite('/sprites/craft-purple.png'), color: '#a46bff', hue: 275 },
-  { sprite: loadSprite('/sprites/craft-blue.png'), color: '#3d7bff', hue: 215 },
-];
+/** The field. The player picks one on the start screen; the rest are AI. hue = exhaust flame color. */
+const LIVERIES = [
+  { name: '01 RED', url: '/sprites/craft-red.png', color: '#ff3d6e', hue: 190 },
+  { name: '02 CYAN', url: '/sprites/craft-cyan.webp', color: '#3ff0ff', hue: 190 },
+  { name: '03 GREEN', url: '/sprites/craft-green.png', color: '#2fd16b', hue: 120 },
+  { name: '04 ORANGE', url: '/sprites/craft-orange.png', color: '#ff8a1f', hue: 35 },
+  { name: '05 PURPLE', url: '/sprites/craft-purple.png', color: '#a46bff', hue: 275 },
+  { name: '06 BLUE', url: '/sprites/craft-blue.png', color: '#3d7bff', hue: 215 },
+].map((l) => ({ ...l, sprite: loadSprite(l.url) }));
+
+/** menu = start screen; paused = pause menu; racing = the simulation runs. */
+let mode: 'menu' | 'racing' | 'paused' = 'menu';
+let playerLivery = 0;
+let pausedAt = 0;             // performance.now() when the pause menu opened
 
 let player: Car;
 let rivals: { car: Car; driver: Driver }[] = [];
@@ -37,14 +43,19 @@ let time = 0;
 let goTime = 0;               // race time when the lights go out
 let finishOrder: Car[] = [];
 
+function livery(i: number) {
+  const { sprite, color, hue } = LIVERIES[i];
+  return { sprite, color, hue };
+}
+
 /** Line everyone up on the grid and start the countdown. */
 function startRace(): void {
-  rivals = AI_LIVERIES.map((livery, i) => {
+  rivals = LIVERIES.map((_, i) => i).filter((i) => i !== playerLivery).map((li, k) => {
     const skill = lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random());
-    const driver = new Driver(skill, i + 1);
-    return { car: { craft: driver.craft, race: driver.race, ...livery }, driver };
+    const driver = new Driver(skill, k + 1);
+    return { car: { craft: driver.craft, race: driver.race, ...livery(li) }, driver };
   });
-  player = { craft: new Craft(), race: new RaceState(), ...PLAYER_LIVERY };
+  player = { craft: new Craft(), race: new RaceState(), ...livery(playerLivery) };
   player.race.bestLap = bestLap;
   cars = [...rivals.map((r) => r.car), player];
 
@@ -65,7 +76,39 @@ function startRace(): void {
   input.cursor.x = innerWidth / 2 + Math.cos(player.craft.heading) * 220;
   input.cursor.y = innerHeight / 2 + Math.sin(player.craft.heading) * 220;
 }
-startRace();
+startRace();   // lines up the grid behind the start screen
+
+const menus = new Menus(LIVERIES, {
+  start(carIndex) {
+    playerLivery = carIndex;
+    startRace();
+    play();
+  },
+  resume: play,
+  restart() { startRace(); play(); },
+  changeCar() { mode = 'menu'; menus.select(playerLivery); menus.showStart(); },
+});
+
+function play(): void {
+  mode = 'racing';
+  menus.hide();
+  input.release();
+  input.takePause();   // drop keys pressed while in a menu
+  input.takeReset();
+  input.lock();
+}
+
+function pause(): void {
+  if (mode !== 'racing') return;
+  mode = 'paused';
+  pausedAt = performance.now();
+  input.release();
+  input.unlock();
+  menus.showPause();
+}
+
+// Losing the mouse lock mid-race (the browser eats the first Esc for this) pauses the game.
+input.onUnlock = pause;
 
 // Checked every frame: zoom and display changes alter devicePixelRatio without a resize event.
 function fitCanvas(): void {
@@ -91,6 +134,7 @@ function showToast(text: string, color: string): void { toast = { text, color, t
 function ordinal(n: number): string { return ['1ST', '2ND', '3RD'][n - 1] ?? `${n}TH`; }
 
 function update(dt: number): void {
+  if (input.takePause()) { pause(); return; }
   time += dt;
   if (input.takeReset()) startRace();
   const racing = time >= goTime;
@@ -163,7 +207,7 @@ function raceHud(): RaceHud {
     return b.race.progress(track) - a.race.progress(track);
   });
   const left = goTime - time;
-  const countdown = left > 0 ? String(Math.ceil(left)) : left > -0.8 ? 'GO' : null;
+  const countdown = mode === 'menu' ? null : left > 0 ? String(Math.ceil(left)) : left > -0.8 ? 'GO' : null;
   const place = finishOrder.indexOf(player);
   const banner = place < 0 ? null : place === 0 ? 'YOU WIN!' : `FINISHED ${ordinal(place + 1)}`;
   return { position: ranked.indexOf(player) + 1, racers: cars.length, laps: RACE_LAPS, countdown, banner };
@@ -205,7 +249,14 @@ let acc = 0;
 function frame(now: number): void {
   acc += Math.min(0.25, (now - last) / 1000);
   last = now;
-  while (acc >= STEP) { update(STEP); acc -= STEP; }
+  if (mode === 'racing') {
+    while (acc >= STEP && mode === 'racing') { update(STEP); acc -= STEP; }
+  } else {
+    acc = 0;
+    // Esc / P on the pause menu resumes.
+    // (Ignored briefly after pausing: one Esc can both release the mouse lock and arrive as a key.)
+    if (input.takePause() && mode === 'paused' && now - pausedAt > 300) play();
+  }
   fitCanvas();
   drawFrame(ctx, innerWidth, innerHeight, {
     time, cam, player, cars, track, hud: raceHud(),

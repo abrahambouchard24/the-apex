@@ -295,7 +295,7 @@ function drawRaceBanners(ctx: CanvasRenderingContext2D, w: number, h: number, hu
     ctx.fillText(hud.banner, w / 2, h * 0.3 + 2);
     ctx.font = '600 15px system-ui, sans-serif';
     ctx.fillStyle = '#c8d2ff';
-    ctx.fillText('Press R to race again', w / 2, h * 0.3 + 32);
+    ctx.fillText('R: race again   ·   Esc: menu', w / 2, h * 0.3 + 32);
   }
   ctx.restore();
 }
@@ -441,8 +441,8 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
   const help = locked
-    ? 'Mouse: steer   W: accelerate   D / S / Space: brake   Gears are automatic   R: reset   Esc: release mouse'
-    : 'Click to lock the mouse   Mouse: steer   W: accelerate   D / S / Space: brake   R: reset';
+    ? 'Mouse: steer   W: accelerate   D / S / Space: brake   R: restart   Esc: pause'
+    : 'Click to lock the mouse   Mouse: steer   W: accelerate   D / S / Space: brake   R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }

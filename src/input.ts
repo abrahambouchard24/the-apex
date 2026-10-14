@@ -10,6 +10,9 @@ export class Input {
   brake = false;
   locked = false;
   private resetQueued = false;
+  private pauseQueued = false;
+  /** Called when pointer lock is lost (e.g. the browser's own Esc handling). */
+  onUnlock: (() => void) | null = null;
   private held = new Set<string>();
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -20,7 +23,9 @@ export class Input {
       if (!this.locked) canvas.requestPointerLock();
     });
     document.addEventListener('pointerlockchange', () => {
+      const was = this.locked;
       this.locked = document.pointerLockElement === canvas;
+      if (was && !this.locked) this.onUnlock?.();
     });
     addEventListener('mousemove', (e) => {
       if (this.locked) {
@@ -37,6 +42,7 @@ export class Input {
         e.preventDefault();
       }
       if (e.code === 'KeyR') this.resetQueued = true;
+      if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) this.pauseQueued = true;
       this.refresh();
     });
     addEventListener('keyup', (e) => {
@@ -52,6 +58,19 @@ export class Input {
   }
 
   takeReset(): boolean { const r = this.resetQueued; this.resetQueued = false; return r; }
+  takePause(): boolean { const p = this.pauseQueued; this.pauseQueued = false; return p; }
+
+  /** Lock the mouse to the game. Must be called from a click or key handler. */
+  lock(): void {
+    if (!this.locked) this.canvas.requestPointerLock?.();
+  }
+
+  unlock(): void {
+    if (this.locked) document.exitPointerLock();
+  }
+
+  /** Drop held keys so nothing stays pressed across a pause. */
+  release(): void { this.held.clear(); this.refresh(); }
 }
 
 function clampTo(v: number, lo: number, hi: number): number { return Math.max(lo, Math.min(hi, v)); }
