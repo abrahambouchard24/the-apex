@@ -7,17 +7,24 @@ import { RaceState, Track, collideWalls, placeOnGrid } from './track';
 const STEP = 1 / 60;
 const RACE_LAPS = 3;
 const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
-const AI_SKILL = 0.75;        // 1 = drives near the grip limit; lower brakes earlier and corners slower
+// AI skill range: 1 = drives near the grip limit; lower brakes earlier and corners slower.
+const AI_SKILL_MIN = 0.7;
+const AI_SKILL_MAX = 0.9;
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const input = new Input(canvas);
 
 const track = new Track();
-const SPRITES = {
-  red: loadSprite('/sprites/craft-red.png'),
-  cyan: loadSprite('/sprites/craft-cyan.webp'),
-};
+/** The field: the player drives 01; the rest are AI. hue = exhaust flame color. */
+const PLAYER_LIVERY = { sprite: loadSprite('/sprites/craft-red.png'), color: '#ff3d6e', hue: 190 };
+const AI_LIVERIES = [
+  { sprite: loadSprite('/sprites/craft-cyan.webp'), color: '#3ff0ff', hue: 190 },
+  { sprite: loadSprite('/sprites/craft-green.png'), color: '#2fd16b', hue: 120 },
+  { sprite: loadSprite('/sprites/craft-orange.png'), color: '#ff8a1f', hue: 35 },
+  { sprite: loadSprite('/sprites/craft-purple.png'), color: '#a46bff', hue: 275 },
+  { sprite: loadSprite('/sprites/craft-blue.png'), color: '#3d7bff', hue: 215 },
+];
 
 let player: Car;
 let rivals: { car: Car; driver: Driver }[] = [];
@@ -32,16 +39,23 @@ let finishOrder: Car[] = [];
 
 /** Line everyone up on the grid and start the countdown. */
 function startRace(): void {
-  const driver = new Driver(AI_SKILL, 1);
-  const rival: Car = { craft: driver.craft, race: driver.race, sprite: SPRITES.cyan, color: '#3ff0ff' };
-  rival.race.index = placeOnGrid(track, rival.craft, 0);
-  rivals = [{ car: rival, driver }];
-
-  player = { craft: new Craft(), race: new RaceState(), sprite: SPRITES.red, color: '#ff3d6e' };
-  player.race.index = placeOnGrid(track, player.craft, 1);
+  rivals = AI_LIVERIES.map((livery, i) => {
+    const skill = lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random());
+    const driver = new Driver(skill, i + 1);
+    return { car: { craft: driver.craft, race: driver.race, ...livery }, driver };
+  });
+  player = { craft: new Craft(), race: new RaceState(), ...PLAYER_LIVERY };
   player.race.bestLap = bestLap;
+  cars = [...rivals.map((r) => r.car), player];
 
-  cars = [rival, player];
+  // Random grid: shuffle everyone (player included) into the slots.
+  const slots = cars.map((_, i) => i);
+  for (let i = slots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [slots[i], slots[j]] = [slots[j], slots[i]];
+  }
+  cars.forEach((car, i) => { car.race.index = placeOnGrid(track, car.craft, slots[i]); });
+
   finishOrder = [];
   particles.length = 0;
   goTime = time + COUNTDOWN;
@@ -90,7 +104,7 @@ function update(dt: number): void {
   pc.step(dt, racing ? aim : pc.heading, racing && input.throttle, racing && input.brake);
 
   for (const { car, driver } of rivals) {
-    const c = racing ? driver.think(track, time) : { aim: car.craft.heading, throttle: false, brake: false };
+    const c = racing ? driver.think(track, time, cars.map((o) => o.craft)) : { aim: car.craft.heading, throttle: false, brake: false };
     car.craft.step(dt, c.aim, c.throttle, c.brake);
   }
 
@@ -118,7 +132,7 @@ function update(dt: number): void {
     }
   }
 
-  for (const car of cars) emitTrail(car.craft);
+  for (const car of cars) emitTrail(car.craft, car.hue);
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.life -= dt;
@@ -168,12 +182,12 @@ function emitSparks(x: number, y: number, craft: Craft): void {
   }
 }
 
-function emitTrail(craft: Craft): void {
+function emitTrail(craft: Craft, baseHue: number): void {
   if (craft.speed < 20) return;
   const fx = Math.cos(craft.heading), fy = Math.sin(craft.heading);
   const slip = Math.abs(craft.slip);
-  // Trail shifts cyan -> magenta with drift angle.
-  const hue = lerp(190, 310, clamp(slip / 0.6, 0, 1));
+  // Trail starts in the car's exhaust color and shifts toward magenta with drift angle.
+  const hue = lerp(baseHue, 310, clamp(slip / 0.6, 0, 1));
   for (const side of [-NOZZLE_SIDE, NOZZLE_SIDE]) {
     const x = craft.pos.x - fx * NOZZLE_BACK - fy * side;
     const y = craft.pos.y - fy * NOZZLE_BACK + fx * side;

@@ -5,8 +5,7 @@ import type { Craft, Vec } from './craft';
 
 /** Control points of the circuit, driven in this order. Screen coords: +y is down. */
 const CONTROL: [number, number][] = [
-  [-1800, 1200],  // start/finish straight, heading east
-  [0, 1200],
+  [0, 1200],      // start/finish line, halfway down the main straight heading east
   [1800, 1200],
   [2450, 950],    // T1: long left-hander
   [2600, 350],
@@ -28,6 +27,7 @@ const CONTROL: [number, number][] = [
   [-2150, -100],
   [-2550, 500],
   [-2500, 1050],  // final corner onto the straight
+  [-1800, 1200],  // main straight: the grid lines up here
 ];
 
 export const HALF_WIDTH = 130;     // half the racing surface width, px

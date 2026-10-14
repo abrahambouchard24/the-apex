@@ -14,7 +14,7 @@ export class Driver {
   /** Seconds of reaction lag-free driving; lower skill = earlier, softer braking and a wobblier line. */
   constructor(public skill = 0.92, private seed = 1) {}
 
-  think(track: Track, time: number): Controls {
+  think(track: Track, time: number, others: Craft[] = []): Controls {
     const m = track.length;
     const c = this.craft;
     const i = this.race.index;
@@ -26,7 +26,19 @@ export class Driver {
     const inside = clamp(ahead.curve * this.insideBias, -1, 1) * HALF_WIDTH * 0.45;
     // A slow weave so the AI doesn't drive a robotic perfect line.
     const wobble = Math.sin(time * 0.7 + this.seed * 2.1) * HALF_WIDTH * 0.25 * (1.05 - this.skill);
-    const off = inside + wobble;
+    // Traffic: if someone is just ahead in our path, pull out to the side they're not on.
+    let dodge = 0;
+    const hx = Math.cos(c.heading), hy = Math.sin(c.heading);
+    for (const o of others) {
+      if (o === c) continue;
+      const ox = o.pos.x - c.pos.x, oy = o.pos.y - c.pos.y;
+      const along = ox * hx + oy * hy, across = -ox * hy + oy * hx;
+      if (along > 0 && along < 160 && Math.abs(across) < 50 && o.speed < speed + 30) {
+        // across > 0 means they're to our right; the track normal points left.
+        dodge += (across > 0 ? 1 : -1) * HALF_WIDTH * 0.45;
+      }
+    }
+    const off = clamp(inside + wobble + dodge, -HALF_WIDTH * 0.7, HALF_WIDTH * 0.7);
     const tx = ahead.x + ahead.nx * off, ty = ahead.y + ahead.ny * off;
     const aim = Math.atan2(ty - c.pos.y, tx - c.pos.x);
 

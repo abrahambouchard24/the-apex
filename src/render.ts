@@ -45,7 +45,8 @@ export function loadSprite(url: string, height = 256): Sprite {
   return sprite;
 }
 
-export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string }
+/** One racer: physics, race progress, art, minimap color and exhaust flame hue. */
+export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number }
 
 export interface RaceHud { position: number; racers: number; laps: number; countdown: string | null; banner: string | null }
 
@@ -68,7 +69,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   drawGround(ctx, cam, w, h);
   drawTrack(ctx, s.track, s.time);
   drawParticles(ctx, s.particles);
-  for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite);
+  for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite, car.hue);
 
   ctx.restore();
 
@@ -342,7 +343,7 @@ export const CRAFT_LENGTH = 80;
 export const NOZZLE_BACK = CRAFT_LENGTH / 2 - 4;
 export const NOZZLE_SIDE = 5.5;
 
-function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite): void {
+function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite, hue: number): void {
   const bob = Math.sin(time * 5 + c.pos.x * 0.001) * 2.5;
   const hoverHeight = 10 + bob;
   const width = CRAFT_LENGTH * sprite.aspect;
@@ -369,7 +370,6 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
   const flame = 10 + c.thrust * 22 + Math.random() * 4;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const hue = 190;
   for (const side of [-NOZZLE_SIDE, NOZZLE_SIDE]) {
     const g = ctx.createLinearGradient(-NOZZLE_BACK, 0, -NOZZLE_BACK - flame, 0);
     g.addColorStop(0, `hsla(${hue}, 100%, 75%, 0.95)`);
