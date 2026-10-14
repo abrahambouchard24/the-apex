@@ -139,6 +139,9 @@ function update(dt: number): void {
   if (input.takeReset()) startRace();
   const racing = time >= goTime;
 
+  const crafts = cars.map((c) => c.craft);
+  for (const c of crafts) c.feelWake(crafts, dt);
+
   // Player: aim from the craft's on-screen position toward the cursor.
   const pc = player.craft;
   const csx = (pc.pos.x - cam.x) * cam.zoom + innerWidth / 2;

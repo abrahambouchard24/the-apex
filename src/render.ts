@@ -382,6 +382,25 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
   ctx.restore();
 
   if (sprite.canvas) drawSprite(ctx, sprite);
+  if (c.slipstream > 0.05) drawWindStreaks(ctx, c.slipstream, time, width);
+  ctx.restore();
+}
+
+/** Air rushing past the body while the craft is towed in a slipstream (local frame, nose +x). */
+function drawWindStreaks(ctx: CanvasRenderingContext2D, amount: number, time: number, width: number): void {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const side = i % 2 ? 1 : -1;
+    const lane = side * (width / 2 + 4 + (i >> 1) * 5);
+    // Each streak sweeps from the nose to past the tail, staggered so they don't move in step.
+    const t = (time * 2.6 + i * 0.37) % 1;
+    const x = CRAFT_LENGTH * (0.6 - t * 1.4);
+    ctx.strokeStyle = `rgba(220, 240, 255, ${amount * 0.6 * Math.sin(t * Math.PI)})`;
+    ctx.beginPath(); ctx.moveTo(x, lane); ctx.lineTo(x - 26, lane); ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -421,6 +440,19 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.fillRect(bx, by, bw, bh);
   ctx.fillStyle = c.rev > 0.9 ? '#ffd23f' : '#3fa9ff';
   ctx.fillRect(bx, by, bw * c.rev, bh);
+
+  // Slipstream meter: only shown while towing.
+  if (c.slipstream > 0.05) {
+    ctx.globalAlpha = clamp(c.slipstream * 2, 0, 1);
+    ctx.font = '700 11px system-ui, sans-serif';
+    ctx.fillStyle = '#dff4ff';
+    ctx.fillText('SLIPSTREAM', bx, y + 116);
+    ctx.fillStyle = '#1b2040';
+    ctx.fillRect(bx + 80, y + 108, bw - 80, 6);
+    ctx.fillStyle = '#dff4ff';
+    ctx.fillRect(bx + 80, y + 108, (bw - 80) * c.slipstream, 6);
+    ctx.globalAlpha = 1;
+  }
 
   // Gear pips.
   for (let i = 0; i < GEARS.length; i++) {

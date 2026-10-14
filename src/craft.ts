@@ -28,6 +28,16 @@ const DOWNSHIFT_AT = 0.8;     // auto downshift once speed falls below this frac
 const SHIFT_COOLDOWN = 0.6;   // seconds between automatic shifts, so it never hunts between gears
 const SHIFT_TIME = 0.4;       // seconds of cut thrust while an upshift engages
 const DRIFT_START = 0.26;     // rad (~15°) of slip that counts as drifting (for effects)
+// Slipstream: tucked into the wake behind another car, a craft gets a few percent more pace.
+const SLIPSTREAM_BONUS = 0.05;   // extra top speed and pull at full slipstream
+const SLIPSTREAM_DRAG_CUT = 0.5; // fraction of air drag removed at full slipstream
+const WAKE_LENGTH = 340;         // px behind a car that its wake reaches
+const WAKE_HALF_WIDTH = 28;      // px either side of the wake's center line, right behind the car
+const WAKE_SPREAD = 0.1;         // the wake widens by this many px per px behind the car
+const WAKE_MIN_SPEED = 300;      // px/s: slower cars leave no usable wake
+const WAKE_ALIGN = 0.85;         // both cars must be moving within ~30° of the same direction
+const SLIPSTREAM_RISE = 2.0;     // how fast the tow builds (1/s)
+const SLIPSTREAM_FALL = 4.0;     // and how fast it fades after pulling out (1/s)
 
 export class Craft {
   pos: Vec = { x: 0, y: 0 };
@@ -43,6 +53,8 @@ export class Craft {
   private shiftTimer = 0;
   /** Seconds left on the current upshift; thrust is cut while it engages. */
   shiftPause = 0;
+  /** 0..1 how deep in another car's wake the craft is; set by feelWake each step. */
+  slipstream = 0;
 
   get speed(): number { return Math.hypot(this.vel.x, this.vel.y); }
 
@@ -69,7 +81,8 @@ export class Craft {
   step(dt: number, aimAngle: number, throttle: boolean, brake: boolean): void {
     this.braking = brake;
     const speed = this.speed;
-    const gear = GEARS[this.gear];
+    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream;
+    const gear = { top: GEARS[this.gear].top * tow, accel: GEARS[this.gear].accel * tow };
 
     // Steering: turn toward the aim at a capped rate that tightens a little with speed.
     const speedFrac = clamp(speed / GEARS[GEARS.length - 1].top, 0, 1);
@@ -96,11 +109,11 @@ export class Craft {
       fwd += engaging * gear.accel * pull * dt;
     }
     // Above the top gear's speed (e.g. after a downhill bump) it slowly settles back.
-    const vmax = GEARS[GEARS.length - 1].top;
+    const vmax = GEARS[GEARS.length - 1].top * tow;
     if (fwd > vmax) fwd -= (fwd - vmax) * 0.8 * dt;
 
     // Air drag only while coasting; under throttle the gear curves already set the pace.
-    if (!accelerating) fwd -= fwd * DRAG * dt;
+    if (!accelerating) fwd -= fwd * DRAG * (1 - SLIPSTREAM_DRAG_CUT * this.slipstream) * dt;
     if (brake) fwd = moveToward(fwd, 0, BRAKE_DECEL * dt);
 
     this.autoShift(dt, fwd, throttle && !brake);
@@ -114,6 +127,32 @@ export class Craft {
 
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
+  }
+
+  /**
+   * Build or fade the slipstream from the wakes of the other craft. A wake trails straight back
+   * from a moving car along its direction of travel and is strongest right behind it.
+   */
+  feelWake(others: Craft[], dt: number): void {
+    let target = 0;
+    const mySpeed = this.speed;
+    if (mySpeed > WAKE_MIN_SPEED * 0.5) {
+      for (const o of others) {
+        if (o === this) continue;
+        const os = o.speed;
+        if (os < WAKE_MIN_SPEED) continue;
+        const dx = o.vel.x / os, dy = o.vel.y / os;
+        if ((this.vel.x * dx + this.vel.y * dy) / mySpeed < WAKE_ALIGN) continue;
+        const rx = this.pos.x - o.pos.x, ry = this.pos.y - o.pos.y;
+        const behind = -(rx * dx + ry * dy);
+        if (behind <= 0 || behind > WAKE_LENGTH) continue;
+        const across = Math.abs(rx * -dy + ry * dx);
+        if (across > WAKE_HALF_WIDTH + behind * WAKE_SPREAD) continue;
+        target = Math.max(target, 1 - 0.5 * (behind / WAKE_LENGTH));
+      }
+    }
+    const rate = target > this.slipstream ? SLIPSTREAM_RISE : SLIPSTREAM_FALL;
+    this.slipstream = moveToward(this.slipstream, target, rate * dt);
   }
 
   /**
