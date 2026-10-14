@@ -429,7 +429,7 @@ function drawRaceBanners(ctx: CanvasRenderingContext2D, w: number, h: number, hu
       ctx.shadowBlur = 0;
       ctx.font = '700 16px system-ui, sans-serif';
       ctx.fillStyle = '#c8d2ff';
-      ctx.fillText('Hold brake, release it right on GO for a turbo start', w / 2, h * 0.38 + 40);
+      ctx.fillText('Hold left click (brake), release it right on GO for a turbo start', w / 2, h * 0.38 + 40);
     }
   }
   if (hud.banner) {
@@ -684,8 +684,8 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
   const help = locked
-    ? 'Mouse: steer   Auto-accelerate   D / S / Space: brake   Shift: deploy energy   R: restart   Esc: pause'
-    : 'Click to lock the mouse   Mouse: steer   Auto-accelerate   D / S / Space: brake   Shift: deploy energy   R: restart   Esc: pause';
+    ? 'Mouse: steer   Auto-accelerate   Left click: brake   Right click: boost   R: restart   Esc: pause'
+    : 'Click to lock the mouse   Mouse: steer   Auto-accelerate   Left click: brake   Right click: boost   R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }

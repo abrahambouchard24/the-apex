@@ -5,7 +5,7 @@ The Apex (working folder and package name: hover-racer) is a futuristic 2D top-d
 Project brief (vision, visual reference, art prompts, roadmap): https://claude.ai/code/artifact/aa070345-1401-4a8b-8651-8a145accf77f
 
 ## Decisions so far
-- Controls: the mouse steers (the craft turns toward the cursor). The throttle is always on, and D / S / Space brake (the gearbox shifts down as speed drops). Gears are automatic: 5 gears, shifting up near each gear's top speed and down when the craft slows.
+- Controls: the mouse steers (the craft turns toward the cursor). The throttle is always on. Left click (or D / S / Space) brakes, and the gearbox shifts down as speed drops. Right click (or Shift / E) deploys ERS. The context menu is suppressed over the canvas. Gears are automatic: 5 gears, shifting up near each gear's top speed and down when the craft slows.
 - Walls sit at the track edge; you scrape along them, losing the speed going into the wall plus some friction, with sparks. There is no runoff.
 - Slipstream: tucking into a car's wake gives up to +5% pace. It's drawn as flowing dashed draft lines from the follower's nose to the leader's tail.
 - ERS: braking charges a battery (0.45/s at speed), coasting off the throttle charges it slowly (0.06/s), and holding Shift or E deploys it: 1.55x pull and +9% top speed, draining 0.25/s. Each race starts at 50%. The AI deploys on straights when attacking or defending, or when the battery is over 60%.

@@ -1,8 +1,9 @@
 // Mouse + keyboard. The mouse drives a virtual cursor so steering keeps working under pointer lock.
 
 const THROTTLE_KEYS = new Set(['KeyW', 'ArrowUp']);
-const BRAKE_KEYS = new Set(['KeyD', 'KeyS', 'ArrowDown', 'Space']);
-const DEPLOY_KEYS = new Set(['ShiftLeft', 'ShiftRight', 'KeyE']);
+// Mouse buttons count as held keys too: left click brakes, right click deploys ERS.
+const BRAKE_KEYS = new Set(['KeyD', 'KeyS', 'ArrowDown', 'Space', 'Mouse0']);
+const DEPLOY_KEYS = new Set(['ShiftLeft', 'ShiftRight', 'KeyE', 'Mouse2']);
 
 export class Input {
   /** Virtual cursor in canvas CSS pixels. */
@@ -54,6 +55,19 @@ export class Input {
       this.held.delete(e.code);
       this.refresh();
     });
+    // Mouse buttons on the game canvas (under pointer lock every click lands here).
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0 || e.button === 2) {
+        this.held.add(`Mouse${e.button}`);
+        this.refresh();
+      }
+    });
+    addEventListener('mouseup', (e) => {
+      this.held.delete(`Mouse${e.button}`);
+      this.refresh();
+    });
+    // Right click is the boost, so no browser context menu over the game.
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('blur', () => { this.held.clear(); this.refresh(); });
   }
 
