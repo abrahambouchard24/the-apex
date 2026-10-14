@@ -1,6 +1,6 @@
 import { Driver } from './ai';
 import { Sound } from './audio';
-import { Craft, clamp, collideCrafts, lerp } from './craft';
+import { Craft, LAUNCH_TIME, STALL_TIME, clamp, collideCrafts, lerp } from './craft';
 import { Input } from './input';
 import { Menus, ResultRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
@@ -13,6 +13,10 @@ const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
 const AI_SKILL_MIN = 0.7;
 const AI_SKILL_MAX = 0.9;
 const RESULTS_DELAY = 2.5;    // seconds after the player finishes before the results screen
+const CATCH_UP_PER_PLACE = 0.01;  // +1% pace for every place behind the leader
+// Turbo start: press W in this window around GO for a perfect launch. Holding W from earlier is a jump start.
+const LAUNCH_EARLY = 0.3;     // s before GO a press still counts as perfect
+const LAUNCH_LATE = 0.15;     // s after GO a press still counts as perfect
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -54,6 +58,11 @@ let autopilot: Driver | null = null;          // drives the player's car once it
 let resultsAt = 0;            // race time to show the results screen; 0 = not yet
 let resultsRefresh = 0;
 let lastCount = 0;            // countdown number last beeped
+// Launch judging for the player, and whether the AI have rolled their starts.
+let launchJudged = false;
+let lastPressAt = -Infinity;
+let prevThrottle = false;
+let aiLaunched = false;
 
 function livery(i: number) {
   const { sprite, color, hue } = LIVERIES[i];
@@ -88,6 +97,10 @@ function startRace(): void {
   autopilot = null;
   resultsAt = 0;
   lastCount = COUNTDOWN + 1;
+  launchJudged = false;
+  lastPressAt = -Infinity;
+  prevThrottle = input.throttle;
+  aiLaunched = false;
   particles.length = 0;
   goTime = time + COUNTDOWN;
   cam.x = player.craft.pos.x;
@@ -200,9 +213,14 @@ function update(dt: number): void {
     if (count <= COUNTDOWN) sound.beep(count === 0);
     lastCount = count;
   }
+  judgeLaunches(racing);
 
   const crafts = cars.map((c) => c.craft);
   for (const c of crafts) c.feelWake(crafts, dt);
+  // Rubber band: each place behind the leader is worth +1% pace (none before the start or once finished).
+  rankCars().forEach((car, place) => {
+    car.craft.catchUp = racing && !finishOrder.includes(car) ? place * CATCH_UP_PER_PLACE : 0;
+  });
 
   // Player: aim from the craft's on-screen position toward the cursor.
   const pc = player.craft;
@@ -211,7 +229,7 @@ function update(dt: number): void {
   const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
   const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
   if (autopilot && racing) {
-    const c = autopilot.think(track, time, crafts);
+    const c = autopilot.think(track, time, cars);
     pc.step(dt, c.aim, c.throttle, c.brake);
   } else {
     pc.step(dt, racing ? aim : pc.heading, racing && input.throttle, racing && input.brake);
@@ -220,7 +238,7 @@ function update(dt: number): void {
   if (pc.shifted === 1) sound.whoosh();
 
   for (const { car, driver } of rivals) {
-    const c = racing ? driver.think(track, time, cars.map((o) => o.craft)) : { aim: car.craft.heading, throttle: false, brake: false };
+    const c = racing ? driver.think(track, time, cars) : { aim: car.craft.heading, throttle: false, brake: false };
     car.craft.step(dt, c.aim, c.throttle, c.brake);
   }
 
@@ -267,7 +285,10 @@ function update(dt: number): void {
     }
   }
 
-  for (const car of cars) emitTrail(car.craft, car.hue);
+  for (const car of cars) {
+    emitTrail(car.craft, car.hue);
+    emitHeat(car.craft);
+  }
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.life -= dt;
@@ -300,7 +321,7 @@ function update(dt: number): void {
   }
 }
 
-/** Finished cars rank by finishing order; everyone else by distance covered. */
+/** Race order: finished cars by finishing order, everyone else by distance covered. */
 function rankCars(): Car[] {
   return [...cars].sort((a, b) => {
     const fa = finishOrder.indexOf(a), fb = finishOrder.indexOf(b);
@@ -329,9 +350,68 @@ function raceHud(): RaceHud {
   const ranked = rankCars();
   const left = goTime - time;
   const countdown = mode === 'menu' ? null : left > 0 ? String(Math.ceil(left)) : left > -0.8 ? 'GO' : null;
+  const launchHint = mode !== 'menu' && left > 0;
   const place = finishOrder.indexOf(player);
   const banner = place < 0 ? null : place === 0 ? 'YOU WIN!' : `FINISHED ${ordinal(place + 1)}`;
-  return { position: ranked.indexOf(player) + 1, racers: cars.length, laps: RACE_LAPS, countdown, banner };
+  return {
+    position: ranked.indexOf(player) + 1, racers: cars.length, laps: RACE_LAPS, countdown, banner,
+    catchUp: player.craft.catchUp, launchHint,
+  };
+}
+
+/**
+ * Turbo start. The player gets a perfect launch for pressing W within a short window around GO
+ * and a stall for holding it from earlier (a jump start). The AI roll their own starts at GO.
+ */
+function judgeLaunches(racing: boolean): void {
+  const pressed = input.throttle && !prevThrottle;
+  prevThrottle = input.throttle;
+  if (!launchJudged) {
+    if (pressed) lastPressAt = time;
+    if (racing) {
+      const sinceGo = time - goTime;
+      let result: 'perfect' | 'stall' | 'normal' | null = null;
+      if (sinceGo < 1e-9 + 1 / 60 && input.throttle) {
+        // Already holding W as the lights go out: perfect if it went down just before GO.
+        result = lastPressAt >= goTime - LAUNCH_EARLY ? 'perfect' : 'stall';
+      } else if (pressed) {
+        result = sinceGo <= LAUNCH_LATE ? 'perfect' : 'normal';
+      } else if (sinceGo > LAUNCH_LATE) {
+        result = 'normal';
+      }
+      if (result) {
+        launchJudged = true;
+        if (result === 'perfect') {
+          player.craft.launch = LAUNCH_TIME;
+          showToast('PERFECT START!', '#4dff9a');
+        } else if (result === 'stall') {
+          player.craft.stall = STALL_TIME;
+          showToast('JUMP START - STALLED', '#ffb02e');
+        }
+      }
+    }
+  }
+  if (racing && !aiLaunched) {
+    aiLaunched = true;
+    for (const { car, driver } of rivals) {
+      const roll = driver.rollLaunch();
+      if (roll === 'perfect') car.craft.launch = LAUNCH_TIME;
+      if (roll === 'stall') car.craft.stall = STALL_TIME;
+    }
+  }
+}
+
+/** Smoke puffs off a craft running hot; thicker and redder as it nears overheating. */
+function emitHeat(craft: Craft): void {
+  if (craft.heat < 0.5 || Math.random() > craft.heat * 0.6) return;
+  const hot = craft.overheated ? 1 : (craft.heat - 0.5) / 0.5;
+  particles.push({
+    x: craft.pos.x + (Math.random() - 0.5) * 20,
+    y: craft.pos.y + (Math.random() - 0.5) * 20,
+    vx: -craft.vel.x * 0.1 + (Math.random() - 0.5) * 40,
+    vy: -craft.vel.y * 0.1 + (Math.random() - 0.5) * 40 - 30,
+    life: 0.7, max: 0.7, hue: lerp(40, 5, hot), size: 6 + hot * 6,
+  });
 }
 
 /** Orange sparks thrown back along the wall while a craft grinds against it. */

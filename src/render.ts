@@ -48,7 +48,13 @@ export function loadSprite(url: string, height = 256): Sprite {
 /** One racer: physics, race progress, art, minimap color and exhaust flame hue. */
 export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number }
 
-export interface RaceHud { position: number; racers: number; laps: number; countdown: string | null; banner: string | null }
+export interface RaceHud {
+  position: number; racers: number; laps: number; countdown: string | null; banner: string | null;
+  /** The player's catch-up pace bonus as a fraction (0.03 = +3%). */
+  catchUp: number;
+  /** Show the turbo-start tip under the countdown. */
+  launchHint: boolean;
+}
 
 export interface Scene {
   time: number; cam: Camera; player: Car; cars: Car[]; track: Track; hud: RaceHud;
@@ -69,6 +75,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   drawGround(ctx, cam, w, h);
   drawTrack(ctx, s.track, s.time);
   drawParticles(ctx, s.particles);
+  drawSlipstreams(ctx, s.cars, s.time);
   for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite, car.hue);
 
   ctx.restore();
@@ -268,8 +275,13 @@ function drawLapPanel(ctx: CanvasRenderingContext2D, race: RaceState, now: numbe
   ctx.font = '600 13px system-ui, sans-serif';
   ctx.fillStyle = '#8a93c0';
   ctx.fillText(`/${hud.racers}`, x + 204, y + 46);
+  if (hud.catchUp > 0) {
+    ctx.fillStyle = '#4dff9a';
+    ctx.fillText(`+${Math.round(hud.catchUp * 100)}% PACE`, x + 204, y + 110);
+  }
   ctx.textAlign = 'left';
   ctx.font = '700 28px ui-monospace, Consolas, monospace';
+  ctx.fillStyle = '#fff';
   ctx.fillText(formatTime(race.current(now)), x + 16, y + 66);
   ctx.font = '600 14px ui-monospace, Consolas, monospace';
   ctx.fillStyle = '#8a93c0';
@@ -288,6 +300,12 @@ function drawRaceBanners(ctx: CanvasRenderingContext2D, w: number, h: number, hu
     ctx.shadowColor = 'rgba(0,0,0,0.6)';
     ctx.shadowBlur = 16;
     ctx.fillText(hud.countdown, w / 2, h * 0.38);
+    if (hud.launchHint) {
+      ctx.shadowBlur = 0;
+      ctx.font = '700 16px system-ui, sans-serif';
+      ctx.fillStyle = '#c8d2ff';
+      ctx.fillText('Press W right on GO for a turbo start', w / 2, h * 0.38 + 40);
+    }
   }
   if (hud.banner) {
     ctx.fillStyle = 'rgba(8,10,22,0.8)';
@@ -385,24 +403,45 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
   ctx.restore();
 
   if (sprite.canvas) drawSprite(ctx, sprite);
-  if (c.slipstream > 0.05) drawWindStreaks(ctx, c.slipstream, time, width);
   ctx.restore();
 }
 
-/** Air rushing past the body while the craft is towed in a slipstream (local frame, nose +x). */
-function drawWindStreaks(ctx: CanvasRenderingContext2D, amount: number, time: number, width: number): void {
+/**
+ * The draft: while a car is towed, flowing wavy air lines run from its nose up to the tail of
+ * the car it's following, in the follower's exhaust color, drifting forward as if sucked along.
+ */
+function drawSlipstreams(ctx: CanvasRenderingContext2D, cars: Car[], time: number): void {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.lineWidth = 1.5;
   ctx.lineCap = 'round';
-  for (let i = 0; i < 6; i++) {
-    const side = i % 2 ? 1 : -1;
-    const lane = side * (width / 2 + 4 + (i >> 1) * 5);
-    // Each streak sweeps from the nose to past the tail, staggered so they don't move in step.
-    const t = (time * 2.6 + i * 0.37) % 1;
-    const x = CRAFT_LENGTH * (0.6 - t * 1.4);
-    ctx.strokeStyle = `rgba(220, 240, 255, ${amount * 0.6 * Math.sin(t * Math.PI)})`;
-    ctx.beginPath(); ctx.moveTo(x, lane); ctx.lineTo(x - 26, lane); ctx.stroke();
+  for (const car of cars) {
+    const c = car.craft, lead = c.slipFrom;
+    if (!lead || c.slipstream < 0.05) continue;
+    const ax = c.pos.x + Math.cos(c.heading) * CRAFT_LENGTH * 0.45;
+    const ay = c.pos.y + Math.sin(c.heading) * CRAFT_LENGTH * 0.45;
+    const bx = lead.pos.x - Math.cos(lead.heading) * CRAFT_LENGTH * 0.5;
+    const by = lead.pos.y - Math.sin(lead.heading) * CRAFT_LENGTH * 0.5;
+    const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+    if (len < 4) continue;
+    const ux = dx / len, uy = dy / len, px = -uy, py = ux;
+    const steps = Math.max(6, Math.round(len / 8));
+    for (const lane of [-1, 0, 1]) {
+      ctx.strokeStyle = `hsla(${car.hue}, 100%, 72%, ${c.slipstream * (lane === 0 ? 0.55 : 0.35)})`;
+      ctx.lineWidth = lane === 0 ? 2.5 : 1.5;
+      ctx.setLineDash([14, 12]);
+      ctx.lineDashOffset = -time * 160;     // dashes stream toward the car ahead
+      ctx.beginPath();
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        // Lanes start wide at our nose and pinch in to the leader's tail, with a travelling wave.
+        const spread = lane * 16 * (1 - t * 0.75);
+        const wave = Math.sin(t * len / 22 - time * 14 + lane) * 2.5 * (1 - t * 0.5);
+        const x = ax + ux * len * t + px * (spread + wave);
+        const y = ay + uy * len * t + py * (spread + wave);
+        if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -415,10 +454,10 @@ function drawSprite(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
 }
 
 function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean): void {
-  const x = w - 260, y = h - 150;
+  const x = w - 260, y = h - 172;
   ctx.save();
   ctx.fillStyle = 'rgba(8,10,22,0.7)';
-  roundRect(ctx, x, y, 236, 126, 12);
+  roundRect(ctx, x, y, 236, 148, 12);
   ctx.fill();
 
   ctx.font = '600 13px system-ui, sans-serif';
@@ -444,16 +483,28 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.fillStyle = c.rev > 0.9 ? '#ffd23f' : '#3fa9ff';
   ctx.fillRect(bx, by, bw * c.rev, bh);
 
+  // Heat meter: green while cool, orange once it's costing speed, flashing red when overheated.
+  const heatColor = c.overheated ? '#ff3d3d' : c.heat > 0.6 ? '#ffb02e' : '#4dff9a';
+  ctx.font = '700 11px system-ui, sans-serif';
+  ctx.fillStyle = c.overheated ? heatColor : '#8a93c0';
+  ctx.fillText(c.overheated ? 'OVERHEAT' : 'HEAT', bx, y + 116);
+  ctx.fillStyle = '#1b2040';
+  ctx.fillRect(bx + 80, y + 108, bw - 80, 6);
+  ctx.globalAlpha = c.overheated ? 0.55 + 0.45 * Math.sin(performance.now() / 90) : 1;
+  ctx.fillStyle = heatColor;
+  ctx.fillRect(bx + 80, y + 108, (bw - 80) * c.heat, 6);
+  ctx.globalAlpha = 1;
+
   // Slipstream meter: only shown while towing.
   if (c.slipstream > 0.05) {
     ctx.globalAlpha = clamp(c.slipstream * 2, 0, 1);
     ctx.font = '700 11px system-ui, sans-serif';
     ctx.fillStyle = '#dff4ff';
-    ctx.fillText('SLIPSTREAM', bx, y + 116);
+    ctx.fillText('SLIPSTREAM', bx, y + 136);
     ctx.fillStyle = '#1b2040';
-    ctx.fillRect(bx + 80, y + 108, bw - 80, 6);
+    ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
     ctx.fillStyle = '#dff4ff';
-    ctx.fillRect(bx + 80, y + 108, (bw - 80) * c.slipstream, 6);
+    ctx.fillRect(bx + 80, y + 128, (bw - 80) * c.slipstream, 6);
     ctx.globalAlpha = 1;
   }
 
