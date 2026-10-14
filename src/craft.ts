@@ -85,10 +85,13 @@ export class Craft {
     let fwd = this.vel.x * fx + this.vel.y * fy;
     let side = this.vel.x * -fy + this.vel.y * fx;
 
-    // Thrust while the throttle is held, fading out as the craft nears the gear's top speed.
+    // Thrust while the throttle is held. Lower gears pull at full strength right up to the
+    // shift point; only the top gear fades out as it nears top speed.
     this.thrust = 0;
-    if (throttle && !brake) {
-      const pull = Math.sqrt(clamp(1 - fwd / gear.top, 0, 1));
+    const accelerating = throttle && !brake;
+    if (accelerating) {
+      const top = this.gear === GEARS.length - 1;
+      const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
       this.thrust = pull;
       fwd += gear.accel * pull * dt;
     }
@@ -96,7 +99,8 @@ export class Craft {
     const vmax = GEARS[GEARS.length - 1].top;
     if (fwd > vmax) fwd -= (fwd - vmax) * 0.8 * dt;
 
-    fwd -= fwd * DRAG * dt;
+    // Air drag only while coasting; under throttle the gear curves already set the pace.
+    if (!accelerating) fwd -= fwd * DRAG * dt;
     if (brake) fwd = moveToward(fwd, 0, BRAKE_DECEL * dt);
 
     this.autoShift(dt, fwd, throttle && !brake);

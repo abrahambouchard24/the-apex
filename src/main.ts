@@ -16,14 +16,21 @@ const cam: Camera = { x: 0, y: 0, zoom: 1, shake: 0 };
 let toast: Toast | null = null;
 let time = 0;
 
-function resize(): void {
+// Checked every frame: zoom and display changes alter devicePixelRatio without a resize event.
+function fitCanvas(): void {
   const dpr = devicePixelRatio || 1;
-  canvas.width = innerWidth * dpr;
-  canvas.height = innerHeight * dpr;
+  const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-addEventListener('resize', resize);
-resize();
+
+// Dev-only handle for poking at game state from the console.
+if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
+  (window as unknown as { game: object }).game = { get craft() { return craft; } };
+}
 
 function showToast(text: string, color: string): void { toast = { text, color, t: 1.1 }; }
 
@@ -94,6 +101,7 @@ function frame(now: number): void {
   acc += Math.min(0.25, (now - last) / 1000);
   last = now;
   while (acc >= STEP) { update(STEP); acc -= STEP; }
+  fitCanvas();
   drawFrame(ctx, innerWidth, innerHeight, time, cam, craft, pylons, particles, input.cursor, toast, input.locked);
   requestAnimationFrame(frame);
 }
