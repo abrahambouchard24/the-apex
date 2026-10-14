@@ -17,6 +17,7 @@ const TURN_RATE = 3.6;        // rad/s at low speed
 const TURN_RATE_FAST = 2.4;   // rad/s at top speed
 const GRIP = 2.0;             // how fast sideways velocity bleeds off (1/s); low = floaty
 const BRAKE_GRIP = 1.2;       // grip while braking: looser, so a brake tap swings the tail
+const GRIP_KEEP = 0.9;        // share of sideways momentum grip turns into forward speed (the rest scrubs off)
 const BRAKE_TURN_BONUS = 1.35;
 const DRAG = 0.12;            // forward air drag (1/s)
 const SCRAPE_FRICTION = 2.2;  // speed lost per second while grinding along a wall (1/s)
@@ -26,7 +27,8 @@ const BOG_FRACTION = 0.55;    // the rev band of a gear starts at this fraction 
 const UPSHIFT_AT = 0.96;      // auto upshift once forward speed reaches this fraction of the gear's top
 const DOWNSHIFT_AT = 0.8;     // auto downshift once speed falls below this fraction of the lower gear's top
 const SHIFT_COOLDOWN = 0.6;   // seconds between automatic shifts, so it never hunts between gears
-const SHIFT_TIME = 0.4;       // seconds of cut thrust while an upshift engages
+const SHIFT_TIME = 0.12;      // seconds of reduced thrust while an upshift engages
+const SHIFT_PULL = 0.65;      // thrust kept during that dip: a felt shift, not a stall
 const DRIFT_START = 0.26;     // rad (~15°) of slip that counts as drifting (for effects)
 // Slipstream: tucked into the wake behind another car, a craft gets a few percent more pace.
 const SLIPSTREAM_BONUS = 0.05;   // extra top speed and pull at full slipstream
@@ -130,7 +132,7 @@ export class Craft {
     if (accelerating) {
       const top = this.gear === GEARS.length - 1;
       const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
-      const engaging = (this.shiftPause > 0 ? 0.1 : 1) * (this.stall > 0 ? 0 : this.launch > 0 ? LAUNCH_PULL : 1);
+      const engaging = (this.shiftPause > 0 ? SHIFT_PULL : 1) * (this.stall > 0 ? 0 : this.launch > 0 ? LAUNCH_PULL : 1);
       this.thrust = pull * engaging;
       fwd += engaging * gear.accel * pull * dt;
     }
@@ -144,7 +146,12 @@ export class Craft {
 
     this.autoShift(dt, fwd, throttle && !brake, tow);
 
+    // Grip pulls the craft back in line with its heading. It redirects that sideways momentum
+    // forward instead of throwing it away, so turning doesn't brake for you: carry too much speed
+    // into a corner and you slide wide. Only a small share is scrubbed off.
+    const sideBefore = side;
     side *= Math.exp(-(brake ? BRAKE_GRIP : GRIP) * dt);
+    if (fwd > 0) fwd = Math.sqrt(fwd * fwd + (sideBefore * sideBefore - side * side) * GRIP_KEEP);
 
     this.vel.x = fx * fwd - fy * side;
     this.vel.y = fy * fwd + fx * side;

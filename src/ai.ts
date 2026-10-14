@@ -24,6 +24,8 @@ export class Driver {
   race = new RaceState();
   cornerK = CORNER_K;
   insideBias = INSIDE_BIAS;
+  /** How much of the slip angle the AI steers against (sign from testing; see CLAUDE.md). */
+  slipCorrect = 0.3;
   /** Which side we're passing on (+1 = track-left, -1 = track-right), and for how long. */
   private passSide = 0;
   private passTimer = 0;
@@ -114,7 +116,9 @@ export class Driver {
     if (wantLane && this.state === 'cooling') off = COOL_LANE.side * (HALF_WIDTH - 16);
     // Steer for the chosen line at the look-ahead point.
     const tx = ahead.x + ahead.nx * off, ty = ahead.y + ahead.ny * off;
-    const aim = Math.atan2(ty - c.pos.y, tx - c.pos.x);
+    // Steer so the car's actual travel (not just its nose) heads for the line: when sliding,
+    // point further into the turn by the slip angle.
+    const aim = Math.atan2(ty - c.pos.y, tx - c.pos.x) - c.slip * this.slipCorrect;
 
     // Corner speed from the tightest curvature ahead; a late-brake mistake carries too much in.
     const late = this.mistake?.kind === 'late-brake' ? 1.18 : 1;
@@ -134,6 +138,6 @@ export class Driver {
 }
 
 /** Tuned so a skill-1 driver takes corners near the grip limit (see lap simulation). */
-export const CORNER_K = 40;
+export const CORNER_K = 38;
 /** How hard the line cuts to the inside of bends (sign picks the side). */
 export const INSIDE_BIAS = -500;

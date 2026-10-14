@@ -13,7 +13,8 @@ Project brief (vision, visual reference, art prompts, roadmap): https://claude.a
 - Heat: wall hits, grinding along walls and car contact add heat (one 600 px/s head-on hit is about 0.55). Above 0.6 the car loses up to 6% top speed; at 1.0 it overheats (-15%) until it cools below 0.35. It cools at 0.07/s, or at 0.35/s over the cooling lane (`COOL_LANE` in track.ts: samples 6 to 32 on the outside edge of the main straight). AI cars hotter than 0.45 head for the lane. The shift points scale with the speed multiplier, so a hot car can't get stuck in a gear.
 - AI racecraft (`src/ai.ts`): commits to a passing side (the inside of a coming corner if there's room) for 1.6 s, covers the inside when someone is within about 150 px behind into a corner, and makes occasional mistakes (late braking or running wide; the rate scales with 1 - skill).
 - Drift: heading and velocity are separate, so the craft slides. There is no drift boost (removed on purpose).
-- Acceleration is deliberately slow: about 5 s to reach 5th gear and about 10 s to top speed, with a 0.4 s thrust cut on each upshift.
+- Acceleration builds gradually: about 3.7 s to reach 5th gear. Each upshift is a light 0.12 s dip to 65% thrust (a felt shift, not a stall).
+- Turning does not brake for you. Grip redirects sideways momentum forward (`GRIP_KEEP` 0.9, so about 10% scrubs off) instead of deleting it. Carry too much speed into a corner and you slide wide, so slowing for corners is the driver's job. The AI brakes on its own and steers against its slide (`slipCorrect` 0.3, `CORNER_K` 38).
 - The 2.5D look is faked: one rotated sprite plus an offset shadow and hover bob for now, with sprite stacking later.
 - Visual reference: the mobile drift racer Hot Slide (stylized, bright, readable from above), reimagined with neon and hovercraft.
 
