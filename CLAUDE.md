@@ -20,9 +20,11 @@ Project brief (vision, visual reference, art prompts, roadmap): https://claude.a
 ## Layout
 - `src/craft.ts` holds the physics and pure game logic, with no DOM access.
 - `src/input.ts` handles the mouse (with pointer lock) and the keyboard.
-- `src/track.ts` holds the F1-style circuit (a Catmull-Rom spline through `CONTROL` points), walls, off-track detection and lap/sector timing.
+- `src/track.ts` holds the circuits in `TRACKS` (each a Catmull-Rom spline through control points, with a color theme), walls and lap/sector timing. Four tracks: Apex Grand Prix (balanced), Velocity Ring (fast oval), Neon Streets (tight street circuit) and Summit Pass (mountain sweepers). Keep corner radii above about 170 px and separate parts of a track at least about 330 px apart, or the walls misbehave.
 - `src/ai.ts` holds the AI driver: look-ahead steering with an inside-line bias and corner-speed braking. `CORNER_K` and `skill` set its pace (skill 0.75 is about 30.5 s a lap).
 - `src/render.ts` does all canvas drawing (track, kerbs, minimap, HUD, arrow cursor); it only reads game state.
-- `src/main.ts` runs the fixed 60 Hz loop, the camera and particles.
+- `src/menu.ts` holds the DOM overlays: start screen (car and track select), pause menu and the results screen.
+- `src/audio.ts` synthesizes all sound with Web Audio (engine, upshift whoosh, wall scrape and thuds, countdown beeps, lap chimes); M mutes. No sound files.
+- `src/main.ts` runs the fixed 60 Hz loop, the camera, particles and the race flow (menu → countdown → race → results). In dev, `window.game` has `advance(seconds)` to step the game while the tab is hidden and `autodrive()` to let the AI drive your car.
 
 Run with `npm run dev`. Done so far: one circuit with kerbs, runoff, walls, 10 sector checkpoints and lap timing; and a 3-lap, 6-car race: the player's red 01 against 5 AI cars (cyan 02, green 3, orange 4, purple 5, blue 6), each with a random skill from 0.7 to 0.9, starting from a shuffled grid, with a countdown, positions, car-to-car contact and a finish banner. Car art lives in `public/sprites/` and is trimmed to its visible pixels at load time.

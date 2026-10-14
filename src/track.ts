@@ -1,33 +1,132 @@
-// The circuit: a closed Catmull-Rom spline through hand-placed control points, sampled into a
+// A circuit: a closed Catmull-Rom spline through hand-placed control points, sampled into a
 // centerline polyline. Everything else (edges, kerbs, walls, laps) is measured from that line.
 
 import type { Craft, Vec } from './craft';
 
-/** Control points of the circuit, driven in this order. Screen coords: +y is down. */
-const CONTROL: [number, number][] = [
-  [0, 1200],      // start/finish line, halfway down the main straight heading east
-  [1800, 1200],
-  [2450, 950],    // T1: long left-hander
-  [2600, 350],
-  [2250, -50],
-  [1650, -50],    // T3-T4: chicane
-  [1350, 200],
-  [950, 200],
-  [600, -150],
-  [700, -850],    // T5: fast sweeper
-  [1250, -1250],
-  [1350, -1800],  // T7: hairpin
-  [950, -2150],
-  [450, -1900],
-  [-100, -1350],  // back straight, diving south-west
-  [-800, -1250],
-  [-1500, -1550],
-  [-2250, -1350],
-  [-2550, -650],  // T11-T12: esses
-  [-2150, -100],
-  [-2550, 500],
-  [-2500, 1050],  // final corner onto the straight
-  [-1800, 1200],  // main straight: the grid lines up here
+/** Colors a track is drawn in: the barrier neon, its pulsing lights and the kerb stripe. */
+export interface TrackTheme { wall: string; wallFace: string; lights: string; kerb: string; surface: string }
+
+/** A circuit: control points of a closed spline, driven in order. Screen coords: +y is down. */
+export interface TrackDef {
+  name: string;
+  blurb: string;
+  /** The first point is the start/finish line; the last few should lie on the straight before it (the grid). */
+  control: [number, number][];
+  theme: TrackTheme;
+}
+
+const NEON: TrackTheme = { wall: '#4fe3ff', wallFace: '#bff6ff', lights: '255, 79, 216', kerb: '#ff2d75', surface: '#23283f' };
+
+export const TRACKS: TrackDef[] = [
+  {
+    name: 'APEX GRAND PRIX',
+    blurb: 'Balanced F1 circuit: chicane, hairpin, esses',
+    theme: NEON,
+    control: [
+      [0, 1200],      // start/finish line, halfway down the main straight heading east
+      [1800, 1200],
+      [2450, 950],    // T1: long left-hander
+      [2600, 350],
+      [2250, -50],
+      [1650, -50],    // T3-T4: chicane
+      [1350, 200],
+      [950, 200],
+      [600, -150],
+      [700, -850],    // T5: fast sweeper
+      [1250, -1250],
+      [1350, -1800],  // T7: hairpin
+      [950, -2150],
+      [450, -1900],
+      [-100, -1350],  // back straight, diving south-west
+      [-800, -1250],
+      [-1500, -1550],
+      [-2250, -1350],
+      [-2550, -650],  // T11-T12: esses
+      [-2150, -100],
+      [-2550, 500],
+      [-2500, 1050],  // final corner onto the straight
+      [-1800, 1200],  // main straight: the grid lines up here
+    ],
+  },
+  {
+    name: 'VELOCITY RING',
+    blurb: 'Fast oval: flat out, slipstream battles',
+    theme: { wall: '#ffd23f', wallFace: '#fff3c4', lights: '255, 140, 40', kerb: '#ff8a1f', surface: '#26252f' },
+    control: [
+      [0, 1400],
+      [2000, 1400],
+      [3300, 1200],   // T1-T2: one long sweep round the east end
+      [3900, 500],
+      [3800, -400],
+      [3100, -950],
+      [1900, -1100],  // back straight with a gentle kink
+      [700, -900],
+      [-600, -1100],
+      [-1900, -1100],
+      [-3100, -800],  // T3-T4
+      [-3800, -100],
+      [-3600, 800],
+      [-2600, 1350],
+      [-1500, 1400],
+    ],
+  },
+  {
+    name: 'NEON STREETS',
+    blurb: 'Tight street circuit: square corners, short straights',
+    theme: { wall: '#ff4fd8', wallFace: '#ffd1f4', lights: '79, 227, 255', kerb: '#4fe3ff', surface: '#211f33' },
+    control: [
+      [0, 1000],
+      [1300, 1000],
+      [1650, 850],    // T1: right-angle left, heading north
+      [1700, 450],
+      [1550, 150],    // T2: left, heading west
+      [1050, 100],
+      [750, -100],    // T3: right, heading north
+      [700, -600],
+      [900, -880],    // T4: right, heading east
+      [1400, -900],
+      [1720, -1150],  // T5: left, heading north
+      [1760, -1450],
+      [1450, -1780],  // T6: left, the long run west
+      [-200, -1780],
+      [-560, -1600],  // T7: left, heading south
+      [-640, -1280],
+      [-600, -1000],
+      [-300, -700],   // T8-T9: chicane
+      [-250, -400],
+      [-550, -200],
+      [-1150, -200],
+      [-1500, 50],    // T10: left, heading south
+      [-1500, 650],
+      [-1250, 980],   // T11: left onto the straight
+      [-700, 1000],
+    ],
+  },
+  {
+    name: 'SUMMIT PASS',
+    blurb: 'Mountain road: long sweepers, flowing esses',
+    theme: { wall: '#7dffb0', wallFace: '#dcffe9', lights: '200, 255, 120', kerb: '#2fd16b', surface: '#1f2a2a' },
+    control: [
+      [0, 1500],
+      [1800, 1500],
+      [3000, 1100],   // the long climb: one sweeper after another
+      [3600, 200],
+      [3300, -800],
+      [2300, -1300],
+      [1400, -1150],
+      [800, -1700],   // esses over the ridge
+      [600, -2450],
+      [-200, -3000],
+      [-1300, -2700],
+      [-1800, -1900], // the descent
+      [-1700, -1000],
+      [-2150, -200],
+      [-3000, 200],
+      [-3300, 1100],
+      [-2600, 1500],
+      [-1500, 1500],
+    ],
+  },
 ];
 
 export const HALF_WIDTH = 130;     // half the racing surface width, px
@@ -46,11 +145,16 @@ export const COOL_LANE = { from: 6, to: 32, side: -1, width: 52 };
 export interface TrackPoint { x: number; y: number; nx: number; ny: number; curve: number }
 
 export class Track {
+  name: string;
+  theme: TrackTheme;
   /** Centerline samples with unit left-normals and signed curvature. Index 0 is the start line. */
   pts: TrackPoint[] = [];
   bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
 
-  constructor() {
+  constructor(def: TrackDef = TRACKS[0]) {
+    this.name = def.name;
+    this.theme = def.theme;
+    const CONTROL = def.control;
     const n = CONTROL.length;
     const raw: Vec[] = [];
     for (let i = 0; i < n; i++) {

@@ -172,6 +172,7 @@ function trackPaths(track: Track): TrackPaths {
 
 function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): void {
   const p = trackPaths(track);
+  const theme = track.theme;
   ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -179,23 +180,25 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
   // Barriers: a soft glow, the shadow they cast outward, then the barrier band itself with a
   // bright rim on its outer edge. Each is a wide stroke along the centerline; the racing
   // surface is drawn over the middle afterwards, so only the outer edges remain visible.
-  ctx.strokeStyle = 'rgba(80, 220, 255, 0.16)';
+  ctx.strokeStyle = theme.wall;
+  ctx.globalAlpha = 0.16;
   ctx.lineWidth = WALL_DIST * 2 + 34;
   ctx.stroke(p.center);
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
   ctx.lineWidth = WALL_DIST * 2 + 16;
   ctx.stroke(p.center);
-  ctx.strokeStyle = '#4fe3ff';
+  ctx.strokeStyle = theme.wall;
   ctx.lineWidth = WALL_DIST * 2;
   ctx.stroke(p.center);
   ctx.strokeStyle = '#1d2a55';
   ctx.lineWidth = WALL_DIST * 2 - 6;
   ctx.stroke(p.center);
   // Bright inner face of the barrier, where you scrape.
-  ctx.strokeStyle = '#bff6ff';
+  ctx.strokeStyle = theme.wallFace;
   ctx.lineWidth = HALF_WIDTH * 2 + 6;
   ctx.stroke(p.center);
-  ctx.strokeStyle = '#23283f';
+  ctx.strokeStyle = theme.surface;
   ctx.lineWidth = HALF_WIDTH * 2;
   ctx.stroke(p.center);
 
@@ -203,13 +206,13 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
   ctx.lineWidth = 6;
   ctx.stroke(p.strips);
 
-  ctx.fillStyle = '#ff2d75';
+  ctx.fillStyle = theme.kerb;
   ctx.fill(p.kerbRed);
   ctx.fillStyle = '#f2f4ff';
   ctx.fill(p.kerbWhite);
 
   const pulse = 0.55 + 0.45 * Math.sin(time * 4);
-  ctx.fillStyle = `rgba(255, 79, 216, ${pulse})`;
+  ctx.fillStyle = `rgba(${theme.lights}, ${pulse})`;
   ctx.fill(p.lights);
 
   drawCoolLane(ctx, track, p, time);
