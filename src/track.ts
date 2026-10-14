@@ -144,12 +144,18 @@ export const COOL_LANE = { from: 6, to: 32, side: -1, width: 52 };
 
 export interface TrackPoint { x: number; y: number; nx: number; ny: number; curve: number }
 
+const DRS_STRAIGHT_CURVE = 1 / 2500; // gentler than this counts as straight
+const DRS_MIN_SAMPLES = 36;          // a straight must be at least this long (~650 px) to get a zone
+const DRS_TRIM = 4;                  // zone starts/ends this many samples inside the straight
+
 export class Track {
   name: string;
   theme: TrackTheme;
   /** Centerline samples with unit left-normals and signed curvature. Index 0 is the start line. */
   pts: TrackPoint[] = [];
   bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  /** DRS zones: sample ranges on the long straights (from may be > to when a zone wraps the line). */
+  drsZones: { from: number; to: number }[] = [];
 
   constructor(def: TrackDef = TRACKS[0]) {
     this.name = def.name;
@@ -187,9 +193,36 @@ export class Track {
       minX: Math.min(...this.pts.map((p) => p.x)) - WALL_DIST, maxX: Math.max(...this.pts.map((p) => p.x)) + WALL_DIST,
       minY: Math.min(...this.pts.map((p) => p.y)) - WALL_DIST, maxY: Math.max(...this.pts.map((p) => p.y)) + WALL_DIST,
     };
+    this.findDrsZones();
   }
 
   get length(): number { return this.pts.length; }
+
+  /** Whether a sample lies in a DRS zone; returns the zone's index or -1. */
+  drsZoneAt(i: number): number {
+    return this.drsZones.findIndex((z) => (z.from <= z.to ? i >= z.from && i <= z.to : i >= z.from || i <= z.to));
+  }
+
+  /** Mark every long straight as a DRS zone. Runs that wrap past index 0 are joined up. */
+  private findDrsZones(): void {
+    const m = this.pts.length;
+    const straight = this.pts.map((p) => Math.abs(p.curve) < DRS_STRAIGHT_CURVE);
+    // Start scanning just after a curved sample so a straight that wraps the line isn't split.
+    const start = straight.findIndex((s) => !s);
+    if (start < 0) return;
+    let runStart = -1;
+    for (let k = 1; k <= m; k++) {
+      const i = (start + k) % m;
+      if (straight[i] && runStart < 0) runStart = k;
+      if ((!straight[i] || k === m) && runStart >= 0) {
+        const len = k - runStart;
+        if (len >= DRS_MIN_SAMPLES) {
+          this.drsZones.push({ from: (start + runStart + DRS_TRIM) % m, to: (start + k - 1 - DRS_TRIM) % m });
+        }
+        runStart = -1;
+      }
+    }
+  }
 
   /** Heading (radians) of the track at a sample. */
   direction(i: number): number {
@@ -231,6 +264,8 @@ export function inCoolingLane(track: Track, craft: Craft, index: number): boolea
 /** Per-craft race state: where it is on the track, sectors passed, lap times. */
 export class RaceState {
   index = 0;
+  /** Race time this car last passed each track sample (NaN = not yet), for time gaps. */
+  passTimes: number[] = [];
   nextSector = 1;
   lap = 0;               // laps completed
   lapStart = -1;         // race time the current lap started; -1 = timer not started
@@ -240,8 +275,15 @@ export class RaceState {
   /** Returns 'lap' or 'best' when a lap is completed this step. */
   update(track: Track, craft: Craft, now: number, started: boolean): 'lap' | 'best' | null {
     if (started && this.lapStart < 0) this.lapStart = now;
+    if (this.passTimes.length !== track.length) this.passTimes = new Array(track.length).fill(NaN);
+    const before = this.index;
     const near = track.nearest(craft.pos, this.index);
     this.index = near.index;
+    // Stamp every sample crossed going forward (at speed a step can skip one or two).
+    const moved = (this.index - before + track.length) % track.length;
+    if (started && moved > 0 && moved < 40) {
+      for (let k = 1; k <= moved; k++) this.passTimes[(before + k) % track.length] = now;
+    }
 
     const sector = Math.floor((this.index / track.length) * SECTORS);
     if (sector === this.nextSector % SECTORS) {
@@ -264,6 +306,16 @@ export class RaceState {
   }
 
   current(now: number): number { return this.lapStart < 0 ? 0 : now - this.lapStart; }
+
+  /**
+   * Seconds this car is behind `ahead`: how long ago `ahead` passed the spot we're at now.
+   * NaN if `ahead` isn't actually ahead (within a lap) or hasn't passed here yet.
+   */
+  gapBehind(ahead: RaceState, track: Track, now: number): number {
+    const d = ahead.progress(track) - this.progress(track);
+    if (d <= 0 || d >= track.length) return NaN;
+    return now - ahead.passTimes[this.index];
+  }
 
   /** Distance into the race in track samples (laps done + way into this lap), for positions. */
   progress(track: Track): number {

@@ -53,6 +53,15 @@ const OVERHEAT_CLEAR = 0.35;      // overheating ends once heat cools below this
 const LAUNCH_PULL = 1.9;          // thrust multiplier during a perfect launch
 export const LAUNCH_TIME = 1.4;   // seconds a perfect launch lasts
 export const STALL_TIME = 0.8;    // seconds of no thrust after a jump start
+// ERS: braking charges a battery; deploying it adds pull and a little top speed.
+const ERS_CHARGE = 0.33;          // energy per second of braking at speed (about 3 s from empty to full)
+const ERS_COAST = 0.06;           // energy per second while coasting off the throttle at speed
+const ERS_DRAIN = 0.25;           // energy per second while deploying (4 s from full)
+const ERS_PULL = 1.3;             // thrust multiplier while deploying
+const ERS_TOP = 0.05;             // extra top speed while deploying
+export const ERS_START = 0.5;     // charge at the start of a race
+// DRS: an open wing on a DRS straight sheds drag for extra top speed.
+const DRS_TOP = 0.07;
 const SLIPSTREAM_RISE = 2.0;     // how fast the tow builds (1/s)
 const SLIPSTREAM_FALL = 4.0;     // and how fast it fades after pulling out (1/s)
 
@@ -83,6 +92,12 @@ export class Craft {
   /** Seconds left on a perfect-launch boost / a jump-start stall. */
   launch = 0;
   stall = 0;
+  /** ERS battery 0..1, whether the driver wants to deploy it, and whether it's deploying now. */
+  energy = ERS_START;
+  deploy = false;
+  deploying = false;
+  /** DRS wing open (set by the race: in a zone, within a second of the car ahead, not braking). */
+  drsOpen = false;
   /** True while over the cooling lane (set by the race each step). */
   cooling = false;
 
@@ -111,7 +126,12 @@ export class Craft {
   step(dt: number, aimAngle: number, throttle: boolean, brake: boolean): void {
     this.braking = brake;
     const speed = this.speed;
-    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp - this.heatLoss;
+    this.deploying = this.deploy && this.energy > 0 && throttle && !brake;
+    if (this.deploying) this.energy = Math.max(0, this.energy - ERS_DRAIN * dt);
+    const regen = brake ? ERS_CHARGE : !throttle ? ERS_COAST : 0;
+    if (regen && speed > 100) this.energy = Math.min(1, this.energy + regen * clamp(speed / 600, 0, 1) * dt);
+    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp - this.heatLoss
+      + (this.deploying ? ERS_TOP : 0) + (this.drsOpen ? DRS_TOP : 0);
     const gear = { top: GEARS[this.gear].top * tow, accel: GEARS[this.gear].accel * tow };
 
     // Steering: turn toward the aim at a capped rate that tightens a little with speed.
@@ -134,7 +154,8 @@ export class Craft {
     if (accelerating) {
       const top = this.gear === GEARS.length - 1;
       const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
-      const engaging = (this.shiftPause > 0 ? SHIFT_PULL : 1) * (this.stall > 0 ? 0 : this.launch > 0 ? LAUNCH_PULL : 1);
+      const engaging = (this.shiftPause > 0 ? SHIFT_PULL : 1) * (this.stall > 0 ? 0 : this.launch > 0 ? LAUNCH_PULL : 1)
+        * (this.deploying ? ERS_PULL : 1);
       this.thrust = pull * engaging;
       fwd += engaging * gear.accel * pull * dt;
     }
