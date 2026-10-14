@@ -87,11 +87,11 @@ function update(dt: number): void {
   const csy = (pc.pos.y - cam.y) * cam.zoom + innerHeight / 2;
   const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
   const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
-  pc.step(dt, racing ? aim : pc.heading, racing && input.throttle, racing && input.brake, player.race.offTrack);
+  pc.step(dt, racing ? aim : pc.heading, racing && input.throttle, racing && input.brake);
 
   for (const { car, driver } of rivals) {
     const c = racing ? driver.think(track, time) : { aim: car.craft.heading, throttle: false, brake: false };
-    car.craft.step(dt, c.aim, c.throttle, c.brake, car.race.offTrack);
+    car.craft.step(dt, c.aim, c.throttle, c.brake);
   }
 
   for (const car of cars) {
@@ -103,8 +103,11 @@ function update(dt: number): void {
       if (lap === 'best') showToast(`BEST LAP  ${formatTime(player.race.lastLap)}`, '#c77dff');
       else showToast(`LAP  ${formatTime(player.race.lastLap)}`, '#ffffff');
     }
-    const impact = collideWalls(track, car.craft, car.race);
-    if (car === player && impact > 60) cam.shake = Math.min(18, impact / 25);
+    const contact = collideWalls(track, car.craft, car.race, dt);
+    if (contact) {
+      emitSparks(contact.x, contact.y, car.craft);
+      if (car === player && contact.impact > 80) cam.shake = Math.min(16, contact.impact / 25);
+    }
   }
   bestLap = player.race.bestLap;
 
@@ -150,6 +153,19 @@ function raceHud(): RaceHud {
   const place = finishOrder.indexOf(player);
   const banner = place < 0 ? null : place === 0 ? 'YOU WIN!' : `FINISHED ${ordinal(place + 1)}`;
   return { position: ranked.indexOf(player) + 1, racers: cars.length, laps: RACE_LAPS, countdown, banner };
+}
+
+/** Orange sparks thrown back along the wall while a craft grinds against it. */
+function emitSparks(x: number, y: number, craft: Craft): void {
+  if (craft.speed < 40) return;
+  for (let k = 0; k < 3; k++) {
+    particles.push({
+      x, y,
+      vx: craft.vel.x * 0.35 + (Math.random() - 0.5) * 160,
+      vy: craft.vel.y * 0.35 + (Math.random() - 0.5) * 160,
+      life: 0.35, max: 0.35, hue: 30 + Math.random() * 25, size: 2 + Math.random() * 2,
+    });
+  }
 }
 
 function emitTrail(craft: Craft): void {

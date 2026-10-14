@@ -1,7 +1,7 @@
 // Everything drawn to the canvas. Reads game state, never changes it.
 
 import { Craft, GEARS, clamp } from './craft';
-import { HALF_WIDTH, RaceState, Track, WALL_DIST } from './track';
+import { HALF_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
 
 export interface Camera { x: number; y: number; zoom: number; shake: number }
 
@@ -74,7 +74,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
 
   drawMinimap(ctx, w, s.track, s.cars, s.player);
   drawLapPanel(ctx, s.player.race, s.time, s.hud);
-  drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.player.race.offTrack);
+  drawHud(ctx, w, h, s.player.craft, s.toast, s.locked);
   drawRaceBanners(ctx, w, h, s.hud);
   drawCursor(ctx, s.cursor);
 }
@@ -120,8 +120,8 @@ function trackPaths(track: Track): TrackPaths {
     if (Math.abs(pts[i].curve) < KERB_CURVE) continue;
     const path = Math.floor(i / 2) % 2 ? kerbRed : kerbWhite;
     for (const side of [1, -1]) {
-      const a = off(i, side * (HALF_WIDTH - 12)), b = off(i + 1, side * (HALF_WIDTH - 12));
-      const c = off(i + 1, side * (HALF_WIDTH + 6)), d = off(i, side * (HALF_WIDTH + 6));
+      const a = off(i, side * (HALF_WIDTH - 16)), b = off(i + 1, side * (HALF_WIDTH - 16));
+      const c = off(i + 1, side * HALF_WIDTH), d = off(i, side * HALF_WIDTH);
       path.moveTo(a[0], a[1]); path.lineTo(b[0], b[1]); path.lineTo(c[0], c[1]); path.lineTo(d[0], d[1]); path.closePath();
     }
   }
@@ -133,15 +133,13 @@ function trackPaths(track: Track): TrackPaths {
     strips.moveTo(a[0], a[1]); strips.lineTo(b[0], b[1]);
   }
 
-  // Barrier lights along the walls; skip the inside of tight bends, where that wall folds up.
+  // Lights set into the top of both barriers.
   const lights = new Path2D();
   for (let i = 0; i < m; i += 6) {
-    const tight = Math.abs(pts[i].curve) * WALL_DIST > 0.6;
-    const sides = tight ? [pts[i].curve > 0 ? -1 : 1] : [1, -1];
-    for (const side of sides) {
-      const [x, y] = off(i, side * (WALL_DIST - 4));
-      lights.moveTo(x + 5, y);
-      lights.arc(x, y, 5, 0, Math.PI * 2);
+    for (const side of [1, -1]) {
+      const [x, y] = off(i, side * (HALF_WIDTH + WALL_THICKNESS / 2));
+      lights.moveTo(x + 3.5, y);
+      lights.arc(x, y, 3.5, 0, Math.PI * 2);
     }
   }
 
@@ -156,20 +154,24 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
 
-  // Barrier glow, then runoff on top of it, leaving a neon rim at the wall line.
-  ctx.strokeStyle = 'rgba(80, 220, 255, 0.18)';
-  ctx.lineWidth = WALL_DIST * 2 + 40;
+  // Barriers: a soft glow, the shadow they cast outward, then the barrier band itself with a
+  // bright rim on its outer edge. Each is a wide stroke along the centerline; the racing
+  // surface is drawn over the middle afterwards, so only the outer edges remain visible.
+  ctx.strokeStyle = 'rgba(80, 220, 255, 0.16)';
+  ctx.lineWidth = WALL_DIST * 2 + 34;
+  ctx.stroke(p.center);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.lineWidth = WALL_DIST * 2 + 16;
   ctx.stroke(p.center);
   ctx.strokeStyle = '#4fe3ff';
-  ctx.lineWidth = WALL_DIST * 2 + 10;
-  ctx.stroke(p.center);
-  ctx.strokeStyle = '#151a30';
   ctx.lineWidth = WALL_DIST * 2;
   ctx.stroke(p.center);
-
-  // Edge lines, then the racing surface.
-  ctx.strokeStyle = '#e8ecff';
-  ctx.lineWidth = HALF_WIDTH * 2 + 8;
+  ctx.strokeStyle = '#1d2a55';
+  ctx.lineWidth = WALL_DIST * 2 - 6;
+  ctx.stroke(p.center);
+  // Bright inner face of the barrier, where you scrape.
+  ctx.strokeStyle = '#bff6ff';
+  ctx.lineWidth = HALF_WIDTH * 2 + 6;
   ctx.stroke(p.center);
   ctx.strokeStyle = '#23283f';
   ctx.lineWidth = HALF_WIDTH * 2;
@@ -390,7 +392,7 @@ function drawSprite(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
   ctx.drawImage(sprite.canvas!, -width / 2, -CRAFT_LENGTH / 2, width, CRAFT_LENGTH);
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean, offTrack: boolean): void {
+function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean): void {
   const x = w - 260, y = h - 150;
   ctx.save();
   ctx.fillStyle = 'rgba(8,10,22,0.7)';
@@ -433,14 +435,6 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
     ctx.fillStyle = toast.color;
     ctx.fillText(toast.text, w / 2, h * 0.22);
     ctx.globalAlpha = 1;
-    ctx.textAlign = 'left';
-  }
-
-  if (offTrack) {
-    ctx.font = '800 18px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffb02e';
-    ctx.fillText('OFF TRACK', w / 2, h - 60);
     ctx.textAlign = 'left';
   }
 

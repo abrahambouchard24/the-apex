@@ -31,9 +31,10 @@ const CONTROL: [number, number][] = [
 ];
 
 export const HALF_WIDTH = 130;     // half the racing surface width, px
-export const WALL_DIST = 270;      // centerline to barrier, px (runoff is the gap)
+export const WALL_THICKNESS = 14;  // barrier band drawn just outside the racing surface, px
+export const WALL_DIST = HALF_WIDTH + WALL_THICKNESS;  // centerline to the outside of the barrier
 const SAMPLES_PER_SEGMENT = 40;
-const CRAFT_RADIUS = 24;
+const CRAFT_HALF_WIDTH = 22;      // how close the craft's center gets to a wall face
 export const SECTORS = 10;         // checkpoints per lap; all must be passed in order
 
 export interface TrackPoint { x: number; y: number; nx: number; ny: number; curve: number }
@@ -108,7 +109,6 @@ export class Track {
 /** Per-craft race state: where it is on the track, sectors passed, lap times. */
 export class RaceState {
   index = 0;
-  offTrack = false;
   nextSector = 1;
   lap = 0;               // laps completed
   lapStart = -1;         // race time the current lap started; -1 = timer not started
@@ -120,7 +120,6 @@ export class RaceState {
     if (started && this.lapStart < 0) this.lapStart = now;
     const near = track.nearest(craft.pos, this.index);
     this.index = near.index;
-    this.offTrack = near.dist > HALF_WIDTH;
 
     const sector = Math.floor((this.index / track.length) * SECTORS);
     if (sector === this.nextSector % SECTORS) {
@@ -151,20 +150,21 @@ export class RaceState {
   }
 }
 
-/** Keep the craft inside the barriers. Returns impact speed lost (0 = no hit) for screen shake. */
-export function collideWalls(track: Track, craft: Craft, race: RaceState): number {
+export interface WallContact { impact: number; x: number; y: number }
+
+/** Keep the craft between the walls, scraping along them. Returns the contact, or null if clear. */
+export function collideWalls(track: Track, craft: Craft, race: RaceState, dt: number): WallContact | null {
   const p = track.pts[race.index];
   const dx = craft.pos.x - p.x, dy = craft.pos.y - p.y;
   const d = Math.hypot(dx, dy);
-  const lim = WALL_DIST - CRAFT_RADIUS;
-  if (d <= lim) return 0;
-  // Push back inside and bounce off a wall facing the centerline.
+  const lim = HALF_WIDTH - CRAFT_HALF_WIDTH;
+  if (d <= lim) return null;
+  // Push back to the wall face and grind along it.
   const n = { x: -dx / d, y: -dy / d };
   craft.pos.x = p.x - n.x * lim;
   craft.pos.y = p.y - n.y * lim;
-  const before = craft.speed;
-  craft.bounce(n);
-  return before - craft.speed;
+  const impact = craft.scrape(n, dt);
+  return { impact, x: p.x - n.x * HALF_WIDTH, y: p.y - n.y * HALF_WIDTH };
 }
 
 /**

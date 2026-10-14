@@ -19,8 +19,8 @@ const GRIP = 2.0;             // how fast sideways velocity bleeds off (1/s); lo
 const BRAKE_GRIP = 1.2;       // grip while braking: looser, so a brake tap swings the tail
 const BRAKE_TURN_BONUS = 1.35;
 const DRAG = 0.12;            // forward air drag (1/s)
-const OFF_TRACK_DRAG = 1.4;   // extra drag over the runoff (1/s)
-const OFF_TRACK_THRUST = 0.5; // thrust multiplier over the runoff
+const SCRAPE_FRICTION = 2.2;  // speed lost per second while grinding along a wall (1/s)
+const SCRAPE_BOUNCE = 0.12;   // how much of the into-the-wall speed comes back out
 const BRAKE_DECEL = 700;      // px/s²
 const BOG_FRACTION = 0.55;    // the rev band of a gear starts at this fraction of the previous gear's top
 const UPSHIFT_AT = 0.96;      // auto upshift once forward speed reaches this fraction of the gear's top
@@ -65,9 +65,8 @@ export class Craft {
    * @param aimAngle world angle the player is steering toward
    * @param throttle whether the accelerate key is held
    * @param brake whether the brake key is held
-   * @param offTrack whether the craft is over the runoff instead of the racing surface
    */
-  step(dt: number, aimAngle: number, throttle: boolean, brake: boolean, offTrack = false): void {
+  step(dt: number, aimAngle: number, throttle: boolean, brake: boolean): void {
     this.braking = brake;
     const speed = this.speed;
     const gear = GEARS[this.gear];
@@ -94,7 +93,7 @@ export class Craft {
       const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
       const engaging = this.shiftPause > 0 ? 0.1 : 1;
       this.thrust = pull * engaging;
-      fwd += engaging * gear.accel * pull * (offTrack ? OFF_TRACK_THRUST : 1) * dt;
+      fwd += engaging * gear.accel * pull * dt;
     }
     // Above the top gear's speed (e.g. after a downhill bump) it slowly settles back.
     const vmax = GEARS[GEARS.length - 1].top;
@@ -102,7 +101,6 @@ export class Craft {
 
     // Air drag only while coasting; under throttle the gear curves already set the pace.
     if (!accelerating) fwd -= fwd * DRAG * dt;
-    if (offTrack) fwd -= fwd * OFF_TRACK_DRAG * dt;
     if (brake) fwd = moveToward(fwd, 0, BRAKE_DECEL * dt);
 
     this.autoShift(dt, fwd, throttle && !brake);
@@ -118,16 +116,21 @@ export class Craft {
     this.pos.y += this.vel.y * dt;
   }
 
-  /** Bounce off an axis-aligned wall. normal points away from the wall. */
-  bounce(normal: Vec): void {
+  /**
+   * Grind along a wall. normal points away from the wall, into the track. The speed going into
+   * the wall is soaked up (a head-on hit hurts), and sliding along it costs a little friction.
+   * Returns the into-the-wall speed of this contact.
+   */
+  scrape(normal: Vec, dt: number): number {
     const vn = this.vel.x * normal.x + this.vel.y * normal.y;
-    if (vn >= 0) return;
-    const restitution = 0.45;
-    this.vel.x -= (1 + restitution) * vn * normal.x;
-    this.vel.y -= (1 + restitution) * vn * normal.y;
-    this.vel.x *= 0.8;
-    this.vel.y *= 0.8;
-    this.drifting = false;
+    if (vn < 0) {
+      this.vel.x -= (1 + SCRAPE_BOUNCE) * vn * normal.x;
+      this.vel.y -= (1 + SCRAPE_BOUNCE) * vn * normal.y;
+    }
+    const keep = Math.exp(-SCRAPE_FRICTION * dt);
+    this.vel.x *= keep;
+    this.vel.y *= keep;
+    return Math.max(0, -vn);
   }
 
   /** Automatic gearbox: up when the gear is nearly maxed under throttle, down when too slow for it. */

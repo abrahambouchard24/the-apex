@@ -44,4 +44,4 @@ export class Driver {
 /** Tuned so a skill-1 driver takes corners near the grip limit (see lap simulation). */
 export const CORNER_K = 40;
 /** How hard the line cuts to the inside of bends (sign picks the side). */
-export const INSIDE_BIAS = -1000;
+export const INSIDE_BIAS = -500;
