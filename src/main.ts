@@ -132,7 +132,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
   restart() { startRace(); play(); },
   changeCar() {
     mode = 'menu';
-    sound.pause();
+    sound.menu();
     input.unlock();
     menus.select(playerLivery);
     menus.selectTrack(trackIndex);
@@ -143,6 +143,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
 function play(): void {
   mode = 'racing';
   sound.unlock();
+  sound.race();
   menus.hide();
   input.release();
   input.takePause();   // drop keys pressed while in a menu
@@ -159,6 +160,15 @@ function pause(): void {
   input.unlock();
   menus.showPause();
 }
+
+// Browsers only allow audio after a click or key press: start the menu music on the first one.
+const startAudio = () => {
+  sound.unlock();
+  removeEventListener('pointerdown', startAudio);
+  removeEventListener('keydown', startAudio);
+};
+addEventListener('pointerdown', startAudio);
+addEventListener('keydown', startAudio);
 
 // Losing the mouse lock mid-race (the browser eats the first Esc for this) pauses the game.
 input.onUnlock = pause;
@@ -313,6 +323,7 @@ function update(dt: number): void {
 
   if (mode === 'racing' && resultsAt && time >= resultsAt) {
     mode = 'results';
+    sound.menu();
     input.release();
     input.unlock();
   }

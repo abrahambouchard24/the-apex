@@ -17,6 +17,8 @@ Project brief (vision, visual reference, art prompts, roadmap): https://claude.a
 - The 2.5D look is faked: one rotated sprite plus an offset shadow and hover bob for now, with sprite stacking later.
 - Visual reference: the mobile drift racer Hot Slide (stylized, bright, readable from above), reimagined with neon and hovercraft.
 
+- Music (`src/music.ts`) is synthesized live and scheduled on a 16th-note grid. The menu and results screen play chill house (118 BPM, A minor); racing plays deep / nu-disco house (122 BPM, F# minor). The pause menu muffles the race music. Effects and music use separate buses in `src/audio.ts`, so menus silence the engine without stopping the music. Music starts on the first click or key press, since browsers block autoplay.
+
 ## Layout
 - `src/craft.ts` holds the physics and pure game logic, with no DOM access.
 - `src/input.ts` handles the mouse (with pointer lock) and the keyboard.

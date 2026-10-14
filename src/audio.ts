@@ -1,11 +1,19 @@
 // Sound: everything is synthesized with Web Audio, so there are no sound files to load.
 // The browser only allows audio after a click or key press, so nothing plays until unlock().
+// Effects (engine, scrapes, beeps) and music have separate buses: menus silence the effects
+// while the music keeps playing.
+
+import { Music } from './music';
 
 const MASTER_VOLUME = 0.5;
 
 export class Sound {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
+  private sfx!: GainNode;
+  private music: Music | null = null;
+  /** What the music should be doing; applied as soon as audio is unlocked. */
+  private scene: 'menu' | 'race' | 'paused' = 'menu';
   private engineGain!: GainNode;
   private engineFilter!: BiquadFilterNode;
   private engineOscs: OscillatorNode[] = [];
@@ -17,10 +25,25 @@ export class Sound {
   unlock(): void {
     if (!this.ctx) this.build();
     void this.ctx!.resume();
+    this.apply();
   }
 
-  /** Silence everything (menus and pause). */
-  pause(): void { void this.ctx?.suspend(); }
+  /** Start screen / results: chill house, no engine. */
+  menu(): void { this.scene = 'menu'; this.apply(); }
+
+  /** Racing: race music and effects on. */
+  race(): void { this.scene = 'race'; this.apply(); }
+
+  /** Pause menu: effects off, race music muffled. */
+  pause(): void { this.scene = 'paused'; this.apply(); }
+
+  private apply(): void {
+    if (!this.ctx || !this.music) return;
+    const t = this.ctx.currentTime;
+    this.sfx.gain.setTargetAtTime(this.scene === 'race' ? 1 : 0, t, 0.05);
+    this.music.play(this.scene === 'menu' ? 'menu' : 'race');
+    this.music.setMuffled(this.scene === 'paused');
+  }
 
   toggleMute(): boolean {
     this.muted = !this.muted;
@@ -64,7 +87,7 @@ export class Sound {
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(0.28, t + 0.05);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
-    src.connect(band).connect(g).connect(this.master);
+    src.connect(band).connect(g).connect(this.sfx);
     src.start(t);
     src.stop(t + 0.45);
   }
@@ -81,7 +104,7 @@ export class Sound {
     const g = ctx.createGain();
     g.gain.setValueAtTime(Math.min(0.5, impact / 600), t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-    osc.connect(g).connect(this.master);
+    osc.connect(g).connect(this.sfx);
     osc.start(t);
     osc.stop(t + 0.32);
   }
@@ -109,7 +132,7 @@ export class Sound {
     g.gain.linearRampToValueAtTime(volume, t + 0.01);
     g.gain.setValueAtTime(volume, t + length - 0.04);
     g.gain.linearRampToValueAtTime(0, t + length);
-    osc.connect(g).connect(this.master);
+    osc.connect(g).connect(this.sfx);
     osc.start(t);
     osc.stop(t + length + 0.02);
   }
@@ -131,6 +154,9 @@ export class Sound {
     this.master = ctx.createGain();
     this.master.gain.value = this.muted ? 0 : MASTER_VOLUME;
     this.master.connect(ctx.destination);
+    this.sfx = ctx.createGain();
+    this.sfx.gain.value = 0;
+    this.sfx.connect(this.master);
 
     // One second of white noise, reused by the scrape loop and the whooshes.
     this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -143,7 +169,7 @@ export class Sound {
     this.engineFilter.Q.value = 4;
     this.engineGain = ctx.createGain();
     this.engineGain.gain.value = 0;
-    this.engineFilter.connect(this.engineGain).connect(this.master);
+    this.engineFilter.connect(this.engineGain).connect(this.sfx);
     const parts: [OscillatorType, number][] = [['sawtooth', 0.6], ['square', 0.35], ['sawtooth', 0.12]];
     this.engineOscs = parts.map(([type, level]) => {
       const osc = ctx.createOscillator();
@@ -164,7 +190,9 @@ export class Sound {
     this.scrapeGain = ctx.createGain();
     this.scrapeGain.gain.value = 0;
     const scrapeSrc = this.noiseSource();
-    scrapeSrc.connect(scrapeBand).connect(this.scrapeGain).connect(this.master);
+    scrapeSrc.connect(scrapeBand).connect(this.scrapeGain).connect(this.sfx);
     scrapeSrc.start();
+
+    this.music = new Music(ctx, this.master, this.noise);
   }
 }
