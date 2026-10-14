@@ -20,7 +20,9 @@ const BRAKE_GRIP = 1.2;       // grip while braking: looser, so a brake tap swin
 const GRIP_KEEP = 0.9;        // share of sideways momentum grip turns into forward speed (the rest scrubs off)
 const BRAKE_TURN_BONUS = 1.35;
 const DRAG = 0.12;            // forward air drag (1/s)
-const SCRAPE_FRICTION = 2.2;  // speed lost per second while grinding along a wall (1/s)
+const SCRAPE_FRICTION = 3.2;  // speed lost per second while grinding along a wall (1/s)
+const WALL_HIT_LOSS = 1 / 1800; // extra share of speed lost per px/s of into-the-wall speed on a hit...
+const WALL_HIT_LOSS_MAX = 0.3;  // ...capped, so a full-speed head-on costs at most 30% on top
 const SCRAPE_BOUNCE = 0.12;   // how much of the into-the-wall speed comes back out
 const BRAKE_DECEL = 700;      // px/s²
 const BOG_FRACTION = 0.55;    // the rev band of a gear starts at this fraction of the previous gear's top
@@ -39,13 +41,13 @@ const WAKE_SPREAD = 0.1;         // the wake widens by this many px per px behin
 const WAKE_MIN_SPEED = 300;      // px/s: slower cars leave no usable wake
 const WAKE_ALIGN = 0.85;         // both cars must be moving within ~30° of the same direction
 // Heat: hitting walls and other cars heats the craft; a hot craft loses top speed until it cools.
-const HEAT_PER_IMPACT = 1 / 1100; // heat per px/s of into-the-wall or closing speed
-const HEAT_PER_SCRAPE = 0.22;     // heat per second of grinding along a wall
+const HEAT_PER_IMPACT = 1 / 700;  // heat per px/s of into-the-wall speed
+const HEAT_PER_SCRAPE = 0.4;      // heat per second of grinding along a wall
 const HEAT_COOL = 0.07;           // heat shed per second (a full bar takes ~14 s to clear)
 const LANE_COOL = 0.35;           // heat shed per second on the cooling lane (5x faster)
 const HEAT_WARM = 0.6;            // above this, top speed starts to drop...
-const HEAT_WARM_LOSS = 0.06;      // ...by up to this much just before overheating
-const OVERHEAT_LOSS = 0.15;       // top speed lost while overheated
+const HEAT_WARM_LOSS = 0.1;       // ...by up to this much just before overheating
+const OVERHEAT_LOSS = 0.22;       // top speed lost while overheated
 const OVERHEAT_CLEAR = 0.35;      // overheating ends once heat cools below this
 // Turbo start: a perfectly timed launch pulls harder for a moment; a jump start stalls.
 const LAUNCH_PULL = 1.9;          // thrust multiplier during a perfect launch
@@ -224,6 +226,10 @@ export class Craft {
     this.vel.x *= keep;
     this.vel.y *= keep;
     const impact = Math.max(0, -vn);
+    // A real hit (not just grinding) also knocks speed off along the wall.
+    const knock = 1 - Math.min(WALL_HIT_LOSS_MAX, impact * WALL_HIT_LOSS);
+    this.vel.x *= knock;
+    this.vel.y *= knock;
     if (this.speed > 40) this.addHeat(impact, dt);
     return impact;
   }
@@ -261,9 +267,6 @@ export function collideCrafts(a: Craft, b: Craft, radius = 22): number {
   const j = (-(1 + 0.5) * closing) / 2;
   a.vel.x -= j * nx; a.vel.y -= j * ny;
   b.vel.x += j * nx; b.vel.y += j * ny;
-  // Contact heats both cars, half as much as a wall.
-  a.addHeat(-closing * 0.5);
-  b.addHeat(-closing * 0.5);
   return -closing;
 }
 
