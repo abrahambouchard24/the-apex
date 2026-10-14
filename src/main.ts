@@ -300,6 +300,7 @@ function update(dt: number): void {
   let scraping = 0;
   for (const car of cars) {
     const lap = car.race.update(track, car.craft, time, racing);
+    if (lap) car.craft.harvested = 0;   // a fresh ERS harvest allowance each lap
     if (lap && car.race.lap === raceLaps && !finishOrder.includes(car)) {
       finishOrder.push(car);
       finishTimes.set(car, time - goTime);

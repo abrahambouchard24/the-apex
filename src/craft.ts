@@ -57,9 +57,11 @@ const OVERHEAT_CLEAR = 0.35;      // overheating ends once heat cools below this
 const LAUNCH_PULL = 1.9;          // thrust multiplier during a perfect launch
 export const LAUNCH_TIME = 1.4;   // seconds a perfect launch lasts
 export const STALL_TIME = 0.8;    // seconds of no thrust after a jump start
-// ERS: braking charges a battery; deploying it adds pull and a little top speed.
-const ERS_CHARGE = 0.45;          // energy per second of braking at speed (just over 2 s from empty to full)
-const ERS_COAST = 0.06;           // energy per second while coasting off the throttle at speed
+// ERS: drifting charges a battery; deploying it adds pull and a little top speed.
+const ERS_DRIFT = 0.55;           // energy per second in a deep, fast drift (under 2 s from empty to full)
+export const HARVEST_PER_LAP = 1;  // most energy a craft can harvest in one lap (one full battery)
+const DRIFT_CHARGE_FROM = 0.4;    // rad (~23°) of slip before a slide counts as a charging drift
+const DRIFT_DEEP = 0.8;           // rad (~46°) of slip that charges at the full rate
 const ERS_DRAIN = 0.25;           // energy per second while deploying (4 s from full)
 const ERS_PULL = 1.55;            // thrust multiplier while deploying
 const ERS_TOP = 0.09;             // extra top speed while deploying
@@ -100,6 +102,8 @@ export class Craft {
   energy = ERS_START;
   deploy = false;
   deploying = false;
+  /** Energy harvested so far this lap (capped at HARVEST_PER_LAP; the race resets it each lap). */
+  harvested = 0;
   /** DRS wing open (set by the race: in a zone, within a second of the car ahead, not braking). */
   drsOpen = false;
   /** True while over the cooling lane (set by the race each step). */
@@ -132,8 +136,6 @@ export class Craft {
     const speed = this.speed;
     this.deploying = this.deploy && this.energy > 0 && throttle && !brake;
     if (this.deploying) this.energy = Math.max(0, this.energy - ERS_DRAIN * dt);
-    const regen = brake ? ERS_CHARGE : !throttle ? ERS_COAST : 0;
-    if (regen && speed > 100) this.energy = Math.min(1, this.energy + regen * clamp(speed / 600, 0, 1) * dt);
     const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp - this.heatLoss
       + (this.deploying ? ERS_TOP : 0) + (this.drsOpen ? DRS_TOP : 0);
     const gear = { top: GEARS[this.gear].top * tow, accel: GEARS[this.gear].accel * tow };
@@ -186,6 +188,12 @@ export class Craft {
     this.vel.y = fy * fwd + fx * side;
 
     this.drifting = Math.abs(this.slip) > DRIFT_START && speed > 200;
+    // ERS charges from drifting: the deeper and faster the slide, the quicker it fills.
+    if (this.drifting && Math.abs(this.slip) > DRIFT_CHARGE_FROM) {
+      const depth = clamp((Math.abs(this.slip) - DRIFT_CHARGE_FROM) / (DRIFT_DEEP - DRIFT_CHARGE_FROM), 0.25, 1);
+      const gain = Math.min(ERS_DRIFT * depth * clamp(speed / 600, 0, 1) * dt, HARVEST_PER_LAP - this.harvested, 1 - this.energy);
+      if (gain > 0) { this.energy += gain; this.harvested += gain; }
+    }
 
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
