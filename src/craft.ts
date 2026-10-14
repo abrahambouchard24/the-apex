@@ -15,8 +15,12 @@ export const GEARS: Gear[] = [
 
 const TURN_RATE = 3.6;        // rad/s at low speed
 const TURN_RATE_FAST = 2.4;   // rad/s at top speed
-const GRIP = 2.0;             // how fast sideways velocity bleeds off (1/s); low = floaty
-const BRAKE_GRIP = 1.2;       // grip while braking: looser, so a brake tap swings the tail
+// Grip: how fast sideways velocity bleeds off (1/s); low = floaty. It fades with speed, so
+// a fast craft slides wide unless the driver scrubs speed off first: braking matters.
+const GRIP_SLOW = 2.6;        // grip at a standstill
+const GRIP_FAST = 0.95;       // grip at top speed
+const BRAKE_GRIP_SLOW = 1.6;  // grip while braking: looser, so braking into a corner swings the tail
+const BRAKE_GRIP_FAST = 0.6;
 const GRIP_KEEP = 0.9;        // share of sideways momentum grip turns into forward speed (the rest scrubs off)
 const BRAKE_TURN_BONUS = 1.35;
 const DRAG = 0.12;            // forward air drag (1/s)
@@ -54,11 +58,11 @@ const LAUNCH_PULL = 1.9;          // thrust multiplier during a perfect launch
 export const LAUNCH_TIME = 1.4;   // seconds a perfect launch lasts
 export const STALL_TIME = 0.8;    // seconds of no thrust after a jump start
 // ERS: braking charges a battery; deploying it adds pull and a little top speed.
-const ERS_CHARGE = 0.33;          // energy per second of braking at speed (about 3 s from empty to full)
+const ERS_CHARGE = 0.45;          // energy per second of braking at speed (just over 2 s from empty to full)
 const ERS_COAST = 0.06;           // energy per second while coasting off the throttle at speed
 const ERS_DRAIN = 0.25;           // energy per second while deploying (4 s from full)
-const ERS_PULL = 1.3;             // thrust multiplier while deploying
-const ERS_TOP = 0.05;             // extra top speed while deploying
+const ERS_PULL = 1.55;            // thrust multiplier while deploying
+const ERS_TOP = 0.09;             // extra top speed while deploying
 export const ERS_START = 0.5;     // charge at the start of a race
 // DRS: an open wing on a DRS straight sheds drag for extra top speed.
 const DRS_TOP = 0.07;
@@ -173,7 +177,9 @@ export class Craft {
     // forward instead of throwing it away, so turning doesn't brake for you: carry too much speed
     // into a corner and you slide wide. Only a small share is scrubbed off.
     const sideBefore = side;
-    side *= Math.exp(-(brake ? BRAKE_GRIP : GRIP) * dt);
+    const gripFade = Math.pow(speedFrac, 1.3);
+    const grip = brake ? lerp(BRAKE_GRIP_SLOW, BRAKE_GRIP_FAST, gripFade) : lerp(GRIP_SLOW, GRIP_FAST, gripFade);
+    side *= Math.exp(-grip * dt);
     if (fwd > 0) fwd = Math.sqrt(fwd * fwd + (sideBefore * sideBefore - side * side) * GRIP_KEEP);
 
     this.vel.x = fx * fwd - fy * side;

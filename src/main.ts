@@ -9,8 +9,8 @@ import { RaceState, TRACKS, Track, collideWalls, inCoolingLane, placeOnGrid } fr
 const STEP = 1 / 60;
 const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
 // AI skill range: 1 = drives near the grip limit; lower brakes earlier and corners slower.
-const AI_SKILL_MIN = 0.7;
-const AI_SKILL_MAX = 0.9;
+const AI_SKILL_MIN = 0.82;
+const AI_SKILL_MAX = 0.97;
 const RESULTS_DELAY = 2.5;    // seconds after the player finishes before the results screen
 const CATCH_UP_PER_PLACE = 0.01;  // +1% pace for every place behind the leader
 // Turbo start: let go of the brake in this window around GO for a perfect launch; earlier is a jump start.

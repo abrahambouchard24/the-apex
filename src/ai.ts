@@ -25,7 +25,7 @@ export class Driver {
   cornerK = CORNER_K;
   insideBias = INSIDE_BIAS;
   /** How much of the slip angle the AI steers against (sign from testing; see CLAUDE.md). */
-  slipCorrect = 0.3;
+  slipCorrect = 0.5;
   /** Which side we're passing on (+1 = track-left, -1 = track-right), and for how long. */
   private passSide = 0;
   private passTimer = 0;
@@ -142,6 +142,6 @@ export class Driver {
 }
 
 /** Tuned so a skill-1 driver takes corners near the grip limit (see lap simulation). */
-export const CORNER_K = 38;
+export const CORNER_K = 40;
 /** How hard the line cuts to the inside of bends (sign picks the side). */
 export const INSIDE_BIAS = -500;
