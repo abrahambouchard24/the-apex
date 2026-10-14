@@ -20,7 +20,7 @@ export class Input {
     this.cursor.y = innerHeight / 2 - 150;
 
     canvas.addEventListener('click', () => {
-      if (!this.locked) canvas.requestPointerLock();
+      if (!this.locked) this.lock();
     });
     document.addEventListener('pointerlockchange', () => {
       const was = this.locked;
@@ -62,7 +62,10 @@ export class Input {
 
   /** Lock the mouse to the game. Must be called from a click or key handler. */
   lock(): void {
-    if (!this.locked) this.canvas.requestPointerLock?.();
+    if (this.locked) return;
+    // Some embedded browsers refuse pointer lock; the game still plays with a free cursor.
+    const result = this.canvas.requestPointerLock?.() as unknown as Promise<void> | undefined;
+    result?.catch?.(() => {});
   }
 
   unlock(): void {

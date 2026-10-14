@@ -58,7 +58,7 @@ export class Menus {
 
     this.start = overlay(`
       <div class="hr-panel">
-        <h1 class="hr-title">HOVER RACER</h1>
+        <h1 class="hr-title">THE APEX</h1>
         <p class="hr-sub">CHOOSE YOUR CAR</p>
         <div class="hr-cars"></div>
         <div class="hr-btns"><button class="hr-btn" data-act="start">START RACE</button></div>
