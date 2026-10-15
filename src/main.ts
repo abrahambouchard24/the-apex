@@ -83,7 +83,7 @@ function raceConfig(): RaceConfig {
   if (mission !== null && save) {
     const m = MISSIONS[mission];
     return {
-      field: m.rivals.map((e) => ({ livery: e.livery, name: e.name, skill: e.skill, mods: rivalMods(m, e), who: e.who })),
+      field: m.rivals.map((e) => ({ livery: e.livery, name: e.name, skill: e.skill, mods: rivalMods(m, e, playerMods(save!)), who: e.who })),
       playerName: save.name, playerMods: playerMods(save), grid: m.grid, startHeat: m.startHeat ?? 0,
     };
   }
@@ -280,8 +280,12 @@ function finishMission(): void {
   if (mission === null || !save) return;
   const m = MISSIONS[mission];
   const ranked = rankCars();
+  const winnerCar = ranked[0];
+  const winner = winnerCar === player ? 'player' as const
+    : [...whoDrives.entries()].find(([, car]) => car === winnerCar)?.[0] ?? null;
   const outcome = {
     place: ranked.indexOf(player) + 1,
+    winner,
     ahead: (who: Speaker) => {
       const car = whoDrives.get(who);
       return !car || ranked.indexOf(player) < ranked.indexOf(car);
@@ -290,6 +294,7 @@ function finishMission(): void {
     overheated: overheatedThisRace,
   };
   const goal = met(m.goal, outcome);
+  const beatJudahNow = whoDrives.has('judah') && outcome.ahead('judah');
   // The bonus is shown as met or not either way, but only pays out with the main goal.
   const bonus = !!m.bonus && met(m.bonus, outcome);
   const first = !save.done.includes(m.id);
@@ -304,7 +309,11 @@ function finishMission(): void {
   const index = mission;
   mission = null;
   menus.setStory(false);
-  storyUI.finish({ index, success: goal, goal, bonus, earned, first: goal && first }, save);
+  storyUI.finish({ index, success: goal, goal, bonus, earned, first: goal && first, outcome }, save);
+  if (beatJudahNow && !(save.flags ?? []).includes('beat-judah')) {
+    save.flags = [...(save.flags ?? []), 'beat-judah'];
+    writeSave(save);
+  }
 }
 
 /** Load a track and start a race on it (in a season, announce which round it is). */

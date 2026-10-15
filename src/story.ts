@@ -21,7 +21,11 @@ export const CHARACTERS: Record<Speaker, Character> = {
   announcer: { name: 'ANNOUNCER', role: 'Apex Series broadcast', color: '#8a93c0' },
 };
 
-export interface Line { who: Speaker; text: string }
+/**
+ * A line of dialogue. `if` makes it conditional on how the race actually went, so the
+ * post-race talk matches what happened. Text can use {name} and {place} (e.g. P3).
+ */
+export interface Line { who: Speaker; text: string; if?: Cond }
 
 // --- the field ----------------------------------------------------------------------------------
 
@@ -36,12 +40,14 @@ export interface Entrant {
   skill: number;
   /** Extra pace on top of the mission's AI buff (Judah's edge). */
   edge?: number;
+  /** Also gets the player's own garage upgrades, so upgrades can't buy a win against them. */
+  matchPlayer?: boolean;
   /** A story character this car belongs to, so goals can name it. */
   who?: Speaker;
 }
 
 const CHARLIE = (skill: number): Entrant => ({ name: 'CHARLIE', livery: 3, skill, who: 'charlie' });
-const JUDAH = (skill: number, edge: number): Entrant => ({ name: 'JUDAH', livery: 4, skill, edge, who: 'judah' });
+const JUDAH = (skill: number, edge: number, matchPlayer = false): Entrant => ({ name: 'JUDAH', livery: 4, skill, edge, matchPlayer, who: 'judah' });
 const ROOK = (skill: number): Entrant => ({ name: 'ROOK', livery: 5, skill, who: 'rook' });
 /** Local racers and other teams' drivers, to fill out a grid. */
 const LOCALS: Entrant[] = [
@@ -136,7 +142,8 @@ export const MISSIONS: Mission[] = [
       { who: 'charlie', text: 'Get on the podium and people start paying attention. Win it and they won\'t forget you.' },
     ],
     win: [
-      { who: 'announcer', text: 'A rookie on the County Cup podium! Somebody find out who that red car belongs to!' },
+      { who: 'announcer', text: 'A rookie WINS the County Cup! Somebody find out who that red car belongs to!', if: { kind: 'win' } },
+      { who: 'announcer', text: 'A rookie on the County Cup podium! Somebody find out who that red car belongs to!', if: { kind: 'not', cond: { kind: 'win' } } },
       { who: 'lupis', text: 'Excuse me. Lupis. Team Secretary, Leopard GP. Perhaps you\'ve heard of us.' },
       { who: 'charlie', text: 'Leopard GP. Now there\'s a name I haven\'t heard in a while.' },
       { who: 'lupis', text: 'We have a seat open in the Apex Series. A tryout, tomorrow, at the Grand Prix circuit. Bring Charlie if you like.' },
@@ -177,14 +184,17 @@ export const MISSIONS: Mission[] = [
     ],
     win: [
       { who: 'sophi', text: 'Temperatures held. Car\'s in one piece. I might actually like you.' },
+      { who: 'sophi', text: 'And you won it. Okay. I definitely like you.', if: { kind: 'win' } },
     ],
     lose: [
-      { who: 'sophi', text: 'That\'s not a shakedown, that\'s a meltdown. Again. Gently this time.' },
+      { who: 'sophi', text: 'That\'s not a shakedown, that\'s a meltdown. Again. Gently this time.', if: { kind: 'not', cond: { kind: 'cool' } } },
+      { who: 'sophi', text: 'Temperatures were perfect. The result wasn\'t. Top three, please.', if: { kind: 'cool' } },
     ],
   },
   {
     id: 'enter-judah', chapter: 1, title: 'ENTER JUDAH', track: 'NEON STREETS', laps: 3, grid: 'random', aiBuff: 0.015,
-    rivals: [JUDAH(0.95, 0.05), ROOK(0.88), ...fillers(3, 0.8, 0.88, [0, 4, 5])],
+    // Judah's debut: he matches whatever you've bought in the garage, so only driving beats him.
+    rivals: [JUDAH(0.99, 0.06, true), ROOK(0.88), ...fillers(3, 0.8, 0.88, [0, 4, 5])],
     goal: { kind: 'top', n: 3 }, bonus: { kind: 'beat', who: 'judah' }, points: 300, bonusPoints: 150,
     intro: [
       { who: 'judah', text: 'Leopard GP? I thought they folded. What are they running now, a rental?' },
@@ -193,12 +203,18 @@ export const MISSIONS: Mission[] = [
       { who: 'sophi', text: 'You won\'t outrun him on the straights. Not yet. Get on the podium and let him have his parade.' },
     ],
     win: [
-      { who: 'judah', text: 'Third place in a rental. Cute.' },
-      { who: 'sophi', text: 'His car pulled away like we were standing still. Nobody gets that kind of pace legally.' },
-      { who: 'lupis', text: 'Rumors are not evidence, Sophi. Points are. Keep scoring them.' },
+      { who: 'judah', text: '...What.', if: { kind: 'beat', who: 'judah' } },
+      { who: 'judah', text: 'Enjoy it, rookie. That doesn\'t happen twice.', if: { kind: 'beat', who: 'judah' } },
+      { who: 'sophi', text: 'You beat Judah. In OUR car. I need to sit down.', if: { kind: 'beat', who: 'judah' } },
+      { who: 'lupis', text: 'Vanta will not take that quietly. Be ready for them.', if: { kind: 'beat', who: 'judah' } },
+      { who: 'judah', text: '{place} in a rental. Cute.', if: { kind: 'not', cond: { kind: 'beat', who: 'judah' } } },
+      { who: 'sophi', text: 'His car pulled away like we were standing still. Nobody gets that kind of pace legally.', if: { kind: 'not', cond: { kind: 'beat', who: 'judah' } } },
+      { who: 'lupis', text: 'Rumors are not evidence, Sophi. Points are. Keep scoring them.', if: { kind: 'not', cond: { kind: 'beat', who: 'judah' } } },
     ],
     lose: [
-      { who: 'judah', text: 'Told you. Long way down.' },
+      { who: 'judah', text: 'You beat me and still missed the podium? Somebody explain this team to me.', if: { kind: 'beat', who: 'judah' } },
+      { who: 'sophi', text: '...That\'s a first. Let\'s fix the missing-the-podium part.', if: { kind: 'beat', who: 'judah' } },
+      { who: 'judah', text: 'Told you. Long way down.', if: { kind: 'not', cond: { kind: 'beat', who: 'judah' } } },
     ],
   },
   {
@@ -211,8 +227,10 @@ export const MISSIONS: Mission[] = [
       { who: 'sophi', text: 'Crystal Canyon is all switchbacks. Drift the long corners: it charges the boost. Then spend it on the way out.' },
     ],
     win: [
-      { who: 'sophi', text: 'Last to the podium. On the canyon. Rook\'s going to hear about that from Judah.' },
-      { who: 'rook', text: '...Fine driving, Leopard. Don\'t tell him I said that.' },
+      { who: 'sophi', text: 'Last to the podium. On the canyon.' },
+      { who: 'sophi', text: 'And you took Rook. He\'s going to hear about that from Judah.', if: { kind: 'beat', who: 'rook' } },
+      { who: 'rook', text: '...Fine driving, Leopard. Don\'t tell him I said that.', if: { kind: 'beat', who: 'rook' } },
+      { who: 'rook', text: 'Nice recovery, Leopard. Still behind me, though.', if: { kind: 'not', cond: { kind: 'beat', who: 'rook' } } },
     ],
     lose: [
       { who: 'lupis', text: 'The stewards will be pleased. I am not. Again, please.' },
@@ -221,7 +239,7 @@ export const MISSIONS: Mission[] = [
 
   // ---- Chapter 3: The Climb -------------------------------------------------------------------
   {
-    id: 'last-ride', chapter: 2, title: 'CHARLIE\'S LAST RIDE', track: 'SUMMIT PASS', laps: 3, grid: 'random', aiBuff: 0.025,
+    id: 'last-ride', chapter: 2, title: 'CHARLIE\'S LAST RIDE', track: 'SUMMIT PASS', laps: 3, grid: 'random', aiBuff: 0.015,
     rivals: [CHARLIE(0.93), ...fillers(4, 0.84, 0.92, [0, 3])],
     goal: { kind: 'beat', who: 'charlie' }, bonus: { kind: 'win' }, points: 350, bonusPoints: 150,
     intro: [
@@ -237,7 +255,7 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
-    id: 'mirage', chapter: 2, title: 'MIRAGE', track: 'DESERT MIRAGE', laps: 3, grid: 'random', aiBuff: 0.025,
+    id: 'mirage', chapter: 2, title: 'MIRAGE', track: 'DESERT MIRAGE', laps: 3, grid: 'random', aiBuff: 0.015,
     rivals: [ROOK(0.95), JUDAH(0.96, 0.05), ...fillers(3, 0.86, 0.93, [0, 4, 5])],
     goal: { kind: 'beat', who: 'rook' }, bonus: { kind: 'beat', who: 'judah' }, points: 350, bonusPoints: 200,
     intro: [
@@ -246,16 +264,17 @@ export const MISSIONS: Mission[] = [
     ],
     win: [
       { who: 'rook', text: 'He\'s going to bench me for that.' },
-      { who: 'judah', text: 'Enjoy it, rookie. Wins against Rook don\'t count.' },
+      { who: 'judah', text: '...The heat haze. That\'s all that was. Don\'t get used to it.', if: { kind: 'beat', who: 'judah' } },
+      { who: 'judah', text: 'Enjoy it, rookie. Wins against Rook don\'t count.', if: { kind: 'not', cond: { kind: 'beat', who: 'judah' } } },
     ],
     lose: [
       { who: 'judah', text: 'See? Rook earns his money.' },
     ],
   },
   {
-    id: 'sabotage', chapter: 2, title: 'SABOTAGE', track: 'SKYLINE CAROUSEL', laps: 3, grid: 'random', aiBuff: 0.03,
+    id: 'sabotage', chapter: 2, title: 'SABOTAGE', track: 'SKYLINE CAROUSEL', laps: 3, grid: 'random', aiBuff: 0.015,
     rivals: [JUDAH(0.97, 0.05), ROOK(0.95), ...fillers(3, 0.88, 0.95, [0, 4, 5])],
-    startHeat: 0.65,
+    startHeat: 0.55,
     goal: { kind: 'top', n: 3 }, bonus: { kind: 'beat', who: 'judah' }, points: 400, bonusPoints: 200,
     intro: [
       { who: 'sophi', text: 'Someone was in our garage last night. The coolant line\'s been cut. Clean cut.' },
@@ -264,36 +283,42 @@ export const MISSIONS: Mission[] = [
     ],
     win: [
       { who: 'sophi', text: 'You podiumed with a cut coolant line. I\'m framing that car.' },
-      { who: 'judah', text: 'Shame about your cooling. These old cars are so fragile.' },
-      { who: 'lupis', text: 'Careful, Judah. That sounded almost like a confession.' },
+      { who: 'judah', text: '...With a cut coolant line? That\'s not possible.', if: { kind: 'beat', who: 'judah' } },
+      { who: 'lupis', text: 'Interesting, Judah. How would you know it was cut?', if: { kind: 'beat', who: 'judah' } },
+      { who: 'judah', text: 'Shame about your cooling. These old cars are so fragile.', if: { kind: 'not', cond: { kind: 'beat', who: 'judah' } } },
+      { who: 'lupis', text: 'Careful, Judah. That sounded almost like a confession.', if: { kind: 'not', cond: { kind: 'beat', who: 'judah' } } },
     ],
     lose: [
-      { who: 'sophi', text: 'It cooked. Not your fault. Well, partly your fault. Again.' },
+      { who: 'sophi', text: 'It cooked. Not your fault. Well, partly your fault. Again.', if: { kind: 'not', cond: { kind: 'cool' } } },
+      { who: 'sophi', text: 'You kept it cool, I\'ll give you that. Now keep it on the podium. Again.', if: { kind: 'cool' } },
     ],
   },
 
   // ---- Chapter 4: The Apex --------------------------------------------------------------------
   {
-    id: 'rivals', chapter: 3, title: 'RIVALS', track: 'HARBOR LIGHTS', laps: 4, grid: 'random', aiBuff: 0.03,
-    rivals: [JUDAH(0.95, 0.03), ROOK(0.95), ...fillers(3, 0.9, 0.95, [0, 4, 5])],
+    id: 'rivals', chapter: 3, title: 'RIVALS', track: 'HARBOR LIGHTS', laps: 4, grid: 'random', aiBuff: 0.015,
+    rivals: [JUDAH(0.95, 0.02), ROOK(0.95), ...fillers(3, 0.9, 0.95, [0, 4, 5])],
     goal: { kind: 'beat', who: 'judah' }, bonus: { kind: 'win' }, points: 450, bonusPoints: 200,
     intro: [
       { who: 'lupis', text: 'I should tell you something, {name}. Leopard GP\'s owners pull the funding at the end of this season unless we win the title.' },
       { who: 'lupis', text: 'This season is all we have. You, Sophi, that car. That is the whole team.' },
       { who: 'judah', text: 'Heard your team\'s closing down. I\'ll send flowers.' },
-      { who: 'sophi', text: 'Beat him. Just once. Show him he can be beaten.' },
+      { who: 'sophi', text: 'Beat him. Just once. Show him he can be beaten.', if: { kind: 'not', cond: { kind: 'flag', flag: 'beat-judah' } } },
+      { who: 'sophi', text: "You've beaten him before. Do it again, now, when it actually matters.", if: { kind: 'flag', flag: 'beat-judah' } },
     ],
     win: [
       { who: 'announcer', text: 'JUDAH BEATEN! The Leopard GP rookie has put the champion behind them!' },
+      { who: 'sophi', text: 'And the win! Not just ahead of him. Ahead of everyone.', if: { kind: 'win' } },
       { who: 'judah', text: 'One race. Lucky. The final is a different story.' },
     ],
     lose: [
-      { who: 'judah', text: 'Same story every time. Long way down, rookie.' },
+      { who: 'judah', text: 'Same story every time. Long way down, rookie.', if: { kind: 'not', cond: { kind: 'flag', flag: 'beat-judah' } } },
+      { who: 'judah', text: "Not so lucky this time, rookie. Whatever you did before, it's gone.", if: { kind: 'flag', flag: 'beat-judah' } },
     ],
   },
   {
-    id: 'final', chapter: 3, title: 'THE APEX', track: 'APEX GRAND PRIX', laps: 5, grid: 'back', aiBuff: 0.035,
-    rivals: [JUDAH(0.97, 0.05), ROOK(0.95), CHARLIE(0.93), ...fillers(2, 0.9, 0.95, [0, 3, 4, 5])],
+    id: 'final', chapter: 3, title: 'THE APEX', track: 'APEX GRAND PRIX', laps: 5, grid: 'back', aiBuff: 0.01,
+    rivals: [JUDAH(0.96, 0.025), ROOK(0.93), CHARLIE(0.92), ...fillers(2, 0.88, 0.93, [0, 3, 4, 5])],
     goal: { kind: 'win' }, bonus: { kind: 'cool' }, points: 600, bonusPoints: 250,
     unlocks: 'ROOKIE SEASON COMPLETE. Every mission can be replayed from the story menu.',
     intro: [
@@ -311,7 +336,10 @@ export const MISSIONS: Mission[] = [
       { who: 'lupis', text: 'The owners called. The funding is renewed. Welcome to your second season, champion.' },
     ],
     lose: [
-      { who: 'judah', text: 'Three titles. Thanks for making it interesting.' },
+      { who: 'judah', text: 'Three titles. Thanks for making it interesting.', if: { kind: 'winner', who: 'judah' } },
+      { who: 'rook', text: 'Vanta takes it anyway. Sorry, Leopard. Not that sorry.', if: { kind: 'winner', who: 'rook' } },
+      { who: 'charlie', text: 'Twenty-two years and I finally win the big one. Sorry, kid. Couldn\'t help myself.', if: { kind: 'winner', who: 'charlie' } },
+      { who: 'judah', text: 'Not even on the podium of my own coronation? You were ahead of me today, rookie. It won\'t last.', if: { kind: 'beat', who: 'judah' } },
       { who: 'sophi', text: 'We\'re not done. One more go. Please.' },
     ],
   },
@@ -344,9 +372,19 @@ export function playerMods(save: Save): Mods {
 }
 
 /** An AI car's mods: the mission's field-wide buff plus the driver's own edge. */
-export function rivalMods(mission: Mission, e: Entrant): Mods {
+/**
+ * Story rivals keep pace with the garage: every one of them gets UPGRADE_MATCH of the player's
+ * upgrades, so upgrades give a small edge but never buy a win. A rival with matchPlayer (Judah's
+ * debut) gets all of them, so only driving beats him.
+ */
+export const UPGRADE_MATCH = 0.8;
+
+export function rivalMods(mission: Mission, e: Entrant, player: Mods): Mods {
   const pace = mission.aiBuff + (e.edge ?? 0);
-  return { ...NO_MODS, top: pace, accel: pace };
+  const m: Mods = { ...NO_MODS, top: pace, accel: pace };
+  const share = e.matchPlayer ? 1 : UPGRADE_MATCH;
+  for (const k of Object.keys(m) as (keyof Mods)[]) m[k] += player[k] * share;
+  return m;
 }
 
 // --- saved progress -----------------------------------------------------------------------------
@@ -357,6 +395,8 @@ export interface Save {
   upgrades: Partial<Record<UpgradeId, number>>;
   /** Missions completed, and which earned their bonus. */
   done: string[];
+  /** Moments the story remembers across missions, e.g. 'beat-judah'. */
+  flags?: string[];
   bonus: string[];
 }
 
@@ -367,7 +407,7 @@ export function loadSave(): Save | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as Save;
-    return { name: s.name ?? 'ROOKIE', points: s.points ?? 0, upgrades: s.upgrades ?? {}, done: s.done ?? [], bonus: s.bonus ?? [] };
+    return { name: s.name ?? 'ROOKIE', points: s.points ?? 0, upgrades: s.upgrades ?? {}, done: s.done ?? [], bonus: s.bonus ?? [], flags: s.flags ?? [] };
   } catch {
     return null;
   }
@@ -394,6 +434,7 @@ export const REPLAY_SHARE = 0.25;
 /** What happened in the race, as far as the goals care. */
 export interface Outcome {
   place: number;                       // 1 = won
+  winner: Speaker | null;              // the character who won ('player' for you; null for a filler driver)
   ahead: (who: Speaker) => boolean;    // did the player finish ahead of that character?
   bestLap: number;                     // 0 = no lap completed
   overheated: boolean;
@@ -421,7 +462,24 @@ export function describe(goal: Goal): string {
   }
 }
 
-/** Fill {name} into a line. */
-export function say(text: string, save: Save): string {
-  return text.replace(/\{name\}/g, save.name);
+/** A condition on a dialogue line: any goal, its opposite, or who won the race. */
+export type Cond = Goal | { kind: 'not'; cond: Cond } | { kind: 'winner'; who: Speaker } | { kind: 'flag'; flag: string };
+
+/** Check a condition against the race (null before it's run) and the story's remembered flags. */
+export function check(c: Cond, o: Outcome | null, flags: string[]): boolean {
+  if (c.kind === 'not') return !check(c.cond, o, flags);
+  if (c.kind === 'flag') return flags.includes(c.flag);
+  if (!o) return false;
+  if (c.kind === 'winner') return o.winner === c.who;
+  return met(c, o);
+}
+
+/** The lines that apply to how the race went and what's happened in the story so far. */
+export function linesFor(lines: Line[], o: Outcome | null, flags: string[] = []): Line[] {
+  return lines.filter((l) => !l.if || check(l.if, o, flags));
+}
+
+/** Fill {name} and {place} into a line. */
+export function say(text: string, save: Save, place = 0): string {
+  return text.replace(/\{name\}/g, save.name).replace(/\{place\}/g, `P${place}`);
 }

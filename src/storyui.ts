@@ -2,8 +2,8 @@
 // and the mission result. Plain DOM overlays, styled to match menu.ts.
 
 import {
-  CHAPTERS, CHAPTER_TAGLINES, CHARACTERS, Goal, Line, MAX_LEVEL, MISSIONS, REPLAY_SHARE, Save, Speaker,
-  UPGRADES, UpgradeId, describe, say, upgradeCost,
+  CHAPTERS, CHAPTER_TAGLINES, CHARACTERS, Goal, Line, MAX_LEVEL, MISSIONS, Outcome, REPLAY_SHARE, Save, Speaker,
+  UPGRADES, UpgradeId, describe, linesFor, say, upgradeCost,
 } from './story';
 
 export interface StoryHandlers {
@@ -26,6 +26,8 @@ export interface StoryResult {
   earned: number;
   /** First completion of this mission (shows its unlock note). */
   first: boolean;
+  /** How the race went, so the post-race dialogue matches it. */
+  outcome: Outcome;
 }
 
 const CSS = `
@@ -125,6 +127,8 @@ export class StoryUI {
   private typed = 0;
   private typing: number | null = null;
   private afterTalk: (() => void) | null = null;
+  /** Finishing place in the race the current dialogue is about (for {place}). */
+  private place = 0;
   private chapterCard: HTMLDivElement;
   private afterCard: (() => void) | null = null;
   private cardTimer: number | null = null;
@@ -266,7 +270,7 @@ export class StoryUI {
     this.screen.classList.add('hidden');
     this.on.preview(i);
     const newChapter = !this.save.done.includes(m.id) && (i === 0 || MISSIONS[i - 1].chapter !== m.chapter);
-    const intro = () => this.dialogue(m.intro, () => this.on.race(i));
+    const intro = () => this.dialogue(linesFor(m.intro, null, this.save.flags ?? []), () => this.on.race(i));
     if (newChapter) this.chapterTitle(m.chapter, intro);
     else intro();
   }
@@ -319,7 +323,8 @@ export class StoryUI {
   finish(r: StoryResult, save: Save): void {
     this.save = save;
     const m = MISSIONS[r.index];
-    this.dialogue(r.success ? m.win : m.lose, () => this.showResult(r));
+    this.place = r.outcome.place;
+    this.dialogue(linesFor(r.success ? m.win : m.lose, r.outcome, this.save.flags ?? []), () => this.showResult(r));
   }
 
   private showResult(r: StoryResult): void {
@@ -406,7 +411,7 @@ export class StoryUI {
     this.talk.querySelector('.st-speaker')!.textContent = name;
     this.talk.querySelector('.st-role')!.textContent = c.role.toUpperCase();
     this.talk.querySelector('.st-face')!.innerHTML = portrait(line.who, name);
-    const full = say(line.text, this.save);
+    const full = say(line.text, this.save, this.place);
     const text = this.talk.querySelector('.st-text')!;
     this.typed = 0;
     if (this.typing !== null) clearInterval(this.typing);
@@ -423,7 +428,7 @@ export class StoryUI {
       // First press finishes the line; the next one moves on.
       clearInterval(this.typing);
       this.typing = null;
-      this.talk.querySelector('.st-text')!.textContent = say(line.text, this.save);
+      this.talk.querySelector('.st-text')!.textContent = say(line.text, this.save, this.place);
       return;
     }
     this.lineAt++;
