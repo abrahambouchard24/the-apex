@@ -2,8 +2,8 @@
 // and the mission result. Plain DOM overlays, styled to match menu.ts.
 
 import {
-  CHAPTERS, CHARACTERS, Goal, Line, MAX_LEVEL, MISSIONS, Mission, REPLAY_SHARE, Save, Speaker,
-  UPGRADES, UpgradeId, describe, say, unlocked, upgradeCost,
+  CHAPTERS, CHAPTER_TAGLINES, CHARACTERS, Goal, Line, MAX_LEVEL, MISSIONS, REPLAY_SHARE, Save, Speaker,
+  UPGRADES, UpgradeId, describe, say, upgradeCost,
 } from './story';
 
 export interface StoryHandlers {
@@ -24,6 +24,8 @@ export interface StoryResult {
   goal: boolean;
   bonus: boolean;
   earned: number;
+  /** First completion of this mission (shows its unlock note). */
+  first: boolean;
 }
 
 const CSS = `
@@ -84,6 +86,34 @@ const CSS = `
 .st-text { font-size: 19px; line-height: 1.45; min-height: 56px; }
 .st-next { position: absolute; right: 18px; bottom: 10px; color: #8a93c0; font-size: 11px; letter-spacing: 0.18em; font-weight: 700; }
 .st-skip { position: fixed; top: 18px; right: 22px; z-index: 21; }
+
+/* The way forward: one big card for the next mission. Nothing past it is shown. */
+.st-continue { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: 100%; padding: 22px 26px; margin-bottom: 22px;
+  border-radius: 18px; border: 2px solid #ff3d6e; cursor: pointer; color: inherit; font: inherit; text-align: left;
+  background: linear-gradient(110deg, rgba(255,61,110,0.22), rgba(255,210,63,0.08) 60%, rgba(14,17,36,0.9));
+  box-shadow: 0 0 40px -14px #ff3d6e; transition: transform 160ms, box-shadow 160ms; }
+.st-continue:hover { transform: translateY(-3px); box-shadow: 0 10px 50px -12px #ff3d6e; }
+.st-continue small { display: block; color: #ffb3c4; font-weight: 800; letter-spacing: 0.2em; font-size: 12px; }
+.st-continue b { display: block; font: 900 italic clamp(26px, 4vw, 38px) system-ui, sans-serif; letter-spacing: 0.04em; margin-top: 4px; }
+.st-continue .st-go { flex: none; font: 900 18px system-ui, sans-serif; letter-spacing: 0.14em; color: #07080f; background: linear-gradient(90deg, #ff3d6e, #ffd23f);
+  padding: 14px 22px; border-radius: 12px; }
+.st-continue.champ { border-color: #ffd23f; background: linear-gradient(110deg, rgba(255,210,63,0.25), rgba(14,17,36,0.9)); box-shadow: 0 0 40px -12px #ffd23f; cursor: default; }
+.st-journal-head { color: #8a93c0; font-weight: 800; letter-spacing: 0.2em; font-size: 12px; margin: 0 0 10px; }
+.st-journal { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.st-journal .st-chapter h3 { margin-bottom: 6px; }
+
+/* Chapter title card: full screen, fades in, click or wait to carry on. */
+.st-chaptercard { position: fixed; inset: 0; z-index: 22; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(40,10,30,0.92), rgba(5,6,14,0.98)); cursor: pointer; text-align: center; padding: 20px;
+  font-family: system-ui, sans-serif; color: #e8ecff; animation: st-fade 700ms ease both; }
+.st-chaptercard.hidden { display: none; }
+.st-chaptercard small { font-weight: 800; letter-spacing: 0.5em; color: #ff8aa6; font-size: 14px; animation: st-rise 900ms 150ms ease both; }
+.st-chaptercard b { display: block; margin: 10px 0 14px; font: 900 italic clamp(44px, 9vw, 96px) system-ui, sans-serif; letter-spacing: 0.04em;
+  background: linear-gradient(90deg, #ff3d6e, #ffd23f); -webkit-background-clip: text; background-clip: text; color: transparent; animation: st-rise 900ms 300ms ease both; }
+.st-chaptercard p { margin: 0; color: #c8d2ff; font-size: 18px; letter-spacing: 0.04em; animation: st-rise 900ms 500ms ease both; }
+@keyframes st-fade { from { opacity: 0; } }
+@keyframes st-rise { from { opacity: 0; transform: translateY(14px); } }
+.st-note { margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; background: rgba(77,255,154,0.1); color: #4dff9a; font-weight: 800; font-size: 13px; letter-spacing: 0.06em; }
 `;
 
 export class StoryUI {
@@ -95,6 +125,9 @@ export class StoryUI {
   private typed = 0;
   private typing: number | null = null;
   private afterTalk: (() => void) | null = null;
+  private chapterCard: HTMLDivElement;
+  private afterCard: (() => void) | null = null;
+  private cardTimer: number | null = null;
 
   constructor(private on: StoryHandlers) {
     const style = document.createElement('style');
@@ -112,22 +145,39 @@ export class StoryUI {
       <div class="st-speaker"></div><div class="st-role"></div><div class="st-text"></div></div>
       <div class="st-next">CLICK / SPACE ▸</div></div>`;
     document.body.append(this.talk);
+    this.chapterCard = document.createElement('div');
+    this.chapterCard.className = 'st-chaptercard hidden';
+    document.body.append(this.chapterCard);
+    this.chapterCard.addEventListener('click', () => this.endCard());
+
     this.talk.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('[data-skip]')) this.endTalk();
       else this.advance();
     });
     addEventListener('keydown', (e) => {
-      if (this.talk.classList.contains('hidden')) return;
+      if (!this.chapterCard.classList.contains('hidden')) {
+        if (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape') { e.preventDefault(); this.endCard(); }
+        return;
+      }
+      if (this.talk.classList.contains('hidden')) {
+        if (e.code === 'Enter' && !this.screen.classList.contains('hidden')) {
+          this.screen.querySelector<HTMLElement>('[data-default]:not(:disabled)')?.click();
+        }
+        return;
+      }
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); this.advance(); }
       if (e.code === 'Escape') this.endTalk();
     });
   }
 
-  get visible(): boolean { return !this.screen.classList.contains('hidden') || !this.talk.classList.contains('hidden'); }
+  get visible(): boolean {
+    return !this.screen.classList.contains('hidden') || !this.talk.classList.contains('hidden') || !this.chapterCard.classList.contains('hidden');
+  }
 
   hide(): void {
     this.screen.classList.add('hidden');
     this.talk.classList.add('hidden');
+    this.chapterCard.classList.add('hidden');
   }
 
   /** Entry point: ask for a name if there's no save yet, otherwise show the chapter map. */
@@ -140,7 +190,7 @@ export class StoryUI {
         <div class="st-row" style="border:0"><span>WHAT'S YOUR NAME?</span></div>
         <input class="st-input" maxlength="14" placeholder="YOUR NAME" autofocus>
         <div class="st-actions" style="justify-content:flex-start">
-          <button class="hr-btn" data-go>START</button>
+          <button class="hr-btn" data-go data-default>START</button>
           <button class="hr-btn secondary" data-exit>BACK</button>
         </div>
       </div>`);
@@ -157,21 +207,31 @@ export class StoryUI {
     setTimeout(() => input.focus(), 0);
   }
 
-  /** The chapter map: every mission, its status, and the way into the garage. */
+  /**
+   * The story so far: a big card for the next mission, and below it every mission already
+   * finished (to replay), grouped by chapter. Nothing beyond the next mission is shown.
+   */
   showHub(): void {
     const s = this.save;
-    const cols = CHAPTERS.map((ch, c) => {
-      const missions = MISSIONS.map((m, i) => ({ m, i })).filter(({ m }) => m.chapter === c).map(({ m, i }) => {
-        const open = unlocked(s, i), done = s.done.includes(m.id), star = s.bonus.includes(m.id);
-        const badges = done ? `<span class="st-done">✓</span>${m.bonus ? (star ? ' <span class="st-star">★</span>' : ' <span class="st-lock">☆</span>') : ''}`
-          : open ? '' : '<span class="st-lock">LOCKED</span>';
-        return `<button class="st-mission" data-mission="${i}" ${open ? '' : 'disabled'}>
-          <span class="st-badges">${badges}</span><b>${i + 1}. ${m.title}</b>
-          <small>${m.track} · ${m.laps} ${m.laps === 1 ? 'LAP' : 'LAPS'}<br>${describe(m.goal)}</small></button>`;
+    const next = MISSIONS.findIndex((m) => !s.done.includes(m.id));
+    const complete = next < 0;
+    const reached = complete ? CHAPTERS.length - 1 : MISSIONS[next].chapter;
+    const nm = complete ? null : MISSIONS[next];
+    const forward = nm
+      ? `<button class="st-continue" data-continue data-default>
+          <div><small>CHAPTER ${nm.chapter + 1} · ${CHAPTERS[nm.chapter]}</small><b>${nm.title}</b></div>
+          <span class="st-go">${s.done.length ? 'CONTINUE' : 'BEGIN'} ▸</span></button>`
+      : `<div class="st-continue champ"><div><small>ROOKIE SEASON COMPLETE</small><b>${s.name} · CHAMPION</b></div></div>`;
+    const journal = CHAPTERS.slice(0, reached + 1).map((ch, c) => {
+      const finished = MISSIONS.map((m, i) => ({ m, i })).filter(({ m }) => m.chapter === c && s.done.includes(m.id));
+      if (!finished.length) return '';
+      const cards = finished.map(({ m, i }) => {
+        const star = m.bonus ? (s.bonus.includes(m.id) ? ' <span class="st-star">★</span>' : ' <span class="st-lock">☆</span>') : '';
+        return `<button class="st-mission" data-mission="${i}"><span class="st-badges"><span class="st-done">✓</span>${star}</span>
+          <b>${m.title}</b><small>${m.track} · REPLAY</small></button>`;
       }).join('');
-      return `<div class="st-chapter"><h3>CHAPTER ${c + 1}<b>${ch}</b></h3>${missions}</div>`;
+      return `<div class="st-chapter"><h3>CHAPTER ${c + 1}<b>${ch}</b></h3>${cards}</div>`;
     }).join('');
-    const complete = s.done.length === MISSIONS.length;
     this.render(`
       <div class="st-wrap">
         <div class="st-head">
@@ -179,16 +239,18 @@ export class StoryUI {
             <div class="st-who">${s.name} · LEOPARD GP${complete ? ' · CHAMPION' : ''}</div></div>
           <div class="st-points">${s.points}<small>TEAM POINTS</small></div>
         </div>
-        <div class="st-chapters">${cols}</div>
+        ${forward}
+        ${journal ? `<p class="st-journal-head">THE STORY SO FAR</p><div class="st-journal">${journal}</div>` : ''}
         <div class="st-actions">
-          <button class="hr-btn" data-garage ${s.done.includes('tryout') ? '' : 'disabled title="Unlocks after the tryout"'}>GARAGE</button>
+          ${s.done.includes('tryout') ? '<button class="hr-btn" data-garage>GARAGE</button>' : ''}
           <button class="hr-btn secondary" data-exit>MAIN MENU</button>
         </div>
         <div style="text-align:center"><button class="st-link" data-reset>RESET STORY PROGRESS</button></div>
       </div>`);
+    this.screen.querySelector('[data-continue]')?.addEventListener('click', () => this.showBriefing(next));
     this.screen.querySelectorAll<HTMLElement>('[data-mission]').forEach((b) =>
       b.addEventListener('click', () => this.showBriefing(Number(b.dataset.mission))));
-    this.screen.querySelector('[data-garage]')!.addEventListener('click', () => this.showGarage());
+    this.screen.querySelector('[data-garage]')?.addEventListener('click', () => this.showGarage());
     this.screen.querySelector('[data-exit]')!.addEventListener('click', () => this.on.exit());
     this.screen.querySelector('[data-reset]')!.addEventListener('click', () => {
       if (!confirm('Reset all story progress, points and upgrades? This can\'t be undone.')) return;
@@ -196,6 +258,36 @@ export class StoryUI {
       this.on.saved(this.save);
       this.showHub();
     });
+  }
+
+  /** Into a mission: its chapter's title card the first time a chapter starts, then the intro. */
+  private begin(i: number): void {
+    const m = MISSIONS[i];
+    this.screen.classList.add('hidden');
+    this.on.preview(i);
+    const newChapter = !this.save.done.includes(m.id) && (i === 0 || MISSIONS[i - 1].chapter !== m.chapter);
+    const intro = () => this.dialogue(m.intro, () => this.on.race(i));
+    if (newChapter) this.chapterTitle(m.chapter, intro);
+    else intro();
+  }
+
+  private chapterTitle(c: number, done: () => void): void {
+    this.chapterCard.innerHTML = `<small>CHAPTER ${c + 1}</small><b>${CHAPTERS[c]}</b><p>${CHAPTER_TAGLINES[c]}</p>`;
+    // Restart the fade-in animations.
+    this.chapterCard.classList.add('hidden');
+    void this.chapterCard.offsetWidth;
+    this.chapterCard.classList.remove('hidden');
+    this.afterCard = done;
+    this.cardTimer = window.setTimeout(() => this.endCard(), 3800);
+  }
+
+  private endCard(): void {
+    if (this.cardTimer !== null) { clearTimeout(this.cardTimer); this.cardTimer = null; }
+    if (this.chapterCard.classList.contains('hidden')) return;
+    this.chapterCard.classList.add('hidden');
+    const done = this.afterCard;
+    this.afterCard = null;
+    done?.();
   }
 
   private showBriefing(i: number): void {
@@ -215,15 +307,11 @@ export class StoryUI {
         <div class="st-row"><span>FIELD</span><span style="text-align:right">${field}</span></div>
         <div class="st-row"><span>REWARD</span><span class="st-star">${pts(m.points)} PTS${m.bonus ? ` + ${pts(m.bonusPoints)} BONUS` : ''}${replay ? ' (REPLAY)' : ''}</span></div>
         <div class="st-actions" style="justify-content:flex-start">
-          <button class="hr-btn" data-go>RACE</button>
+          <button class="hr-btn" data-go data-default>RACE</button>
           <button class="hr-btn secondary" data-back>BACK</button>
         </div>
       </div>`);
-    this.screen.querySelector('[data-go]')!.addEventListener('click', () => {
-      this.screen.classList.add('hidden');
-      this.on.preview(i);
-      this.dialogue(m.intro, () => this.on.race(i));
-    });
+    this.screen.querySelector('[data-go]')!.addEventListener('click', () => this.begin(i));
     this.screen.querySelector('[data-back]')!.addEventListener('click', () => this.showHub());
   }
 
@@ -248,14 +336,21 @@ export class StoryUI {
         ${m.bonus ? goalRow('BONUS', m.bonus, r.bonus) : ''}
         <div class="st-row"><span>EARNED</span><span class="st-star">+${r.earned} PTS</span></div>
         <div class="st-row"><span>TEAM POINTS</span><span>${this.save.points}</span></div>
+        ${r.success && r.first && m.unlocks ? `<p class="st-note">${m.unlocks}</p>` : ''}
         <div class="st-actions" style="justify-content:flex-start">
-          ${r.success && next ? `<button class="hr-btn" data-next>NEXT: ${next.title}</button>` : ''}
-          ${!r.success || !next ? `<button class="hr-btn" data-retry>${r.success ? 'RACE AGAIN' : 'RETRY'}</button>` : ''}
-          <button class="hr-btn secondary" data-hub>STORY MENU</button>
+          ${r.success && next && r.first ? '<button class="hr-btn" data-next data-default>CONTINUE ▸</button>' : ''}
+          ${!r.success ? '<button class="hr-btn" data-retry data-default>RETRY</button>' : ''}
+          ${r.success && (!next || !r.first) ? '<button class="hr-btn" data-retry>RACE AGAIN</button>' : ''}
+          <button class="hr-btn secondary" data-hub ${r.success && !(next && r.first) ? 'data-default' : ''}>STORY MENU</button>
         </div>
       </div>`);
     this.screen.querySelector('[data-next]')?.addEventListener('click', () => this.showBriefing(r.index + 1));
-    this.screen.querySelector('[data-retry]')?.addEventListener('click', () => this.showBriefing(r.index));
+    // Retry skips the briefing and the intro: straight back onto the grid.
+    this.screen.querySelector('[data-retry]')?.addEventListener('click', () => {
+      this.screen.classList.add('hidden');
+      this.on.preview(r.index);
+      this.on.race(r.index);
+    });
     this.screen.querySelector('[data-hub]')!.addEventListener('click', () => this.showHub());
   }
 
@@ -353,7 +448,11 @@ export class StoryUI {
  * A character's portrait: /portraits/<who>.png once the art exists, and until then a badge with
  * their initials in their colour.
  */
+const missingPortraits = new Set<Speaker>();
+(window as unknown as { __apexNoPortrait: (who: Speaker) => void }).__apexNoPortrait = (who) => missingPortraits.add(who);
+
 function portrait(who: Speaker, name: string): string {
-  const initials = name.split(/\s+/).filter((w) => w !== 'MR.').map((w) => w[0]).join('').slice(0, 2);
-  return `<img src="/portraits/${who}.png" alt="" onerror="this.replaceWith(document.createTextNode('${initials.replace(/'/g, '')}'))">`;
+  const initials = name.split(/\s+/).filter((w) => w !== 'MR.').map((w) => w[0]).join('').slice(0, 2).replace(/'/g, '');
+  if (missingPortraits.has(who)) return initials;
+  return `<img src="/portraits/${who}.png" alt="" onerror="__apexNoPortrait('${who}');this.replaceWith(document.createTextNode('${initials}'))">`;
 }

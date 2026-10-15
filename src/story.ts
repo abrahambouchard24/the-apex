@@ -90,12 +90,21 @@ export interface Mission {
   bonus?: Goal;
   points: number;
   bonusPoints: number;
+  /** A note on the result card the first time this mission is completed. */
+  unlocks?: string;
   intro: Line[];
   win: Line[];
   lose: Line[];
 }
 
 export const CHAPTERS = ['COUNTY CUP', 'LEOPARD GP', 'THE CLIMB', 'THE APEX'];
+/** One line under each chapter's title card. */
+export const CHAPTER_TAGLINES = [
+  'A Tuesday night. A county speedway. One borrowed seat.',
+  'A team on its last legs, and a champion who wants you gone.',
+  'Every race a little faster. Every rival a little meaner.',
+  'One title. One rival. Everything on the line.',
+];
 
 export const MISSIONS: Mission[] = [
   // ---- Chapter 1: County Cup ------------------------------------------------------------------
@@ -140,6 +149,7 @@ export const MISSIONS: Mission[] = [
     id: 'tryout', chapter: 0, title: 'THE TRYOUT', track: 'APEX GRAND PRIX', laps: 3, grid: 'pole', aiBuff: 0,
     rivals: [],
     goal: { kind: 'lap', seconds: 27.5 }, bonus: { kind: 'lap', seconds: 25.5 }, points: 250, bonusPoints: 100,
+    unlocks: 'GARAGE UNLOCKED: spend team points on upgrades from the story menu.',
     intro: [
       { who: 'lupis', text: 'An empty track, three laps. Leopard GP needs one lap under twenty-seven and a half seconds.' },
       { who: 'lupis', text: 'Our previous driver managed twenty-five and a half. He has since... moved on.' },
@@ -285,6 +295,7 @@ export const MISSIONS: Mission[] = [
     id: 'final', chapter: 3, title: 'THE APEX', track: 'APEX GRAND PRIX', laps: 5, grid: 'back', aiBuff: 0.035,
     rivals: [JUDAH(0.97, 0.05), ROOK(0.95), CHARLIE(0.93), ...fillers(2, 0.9, 0.95, [0, 3, 4, 5])],
     goal: { kind: 'win' }, bonus: { kind: 'cool' }, points: 600, bonusPoints: 250,
+    unlocks: 'ROOKIE SEASON COMPLETE. Every mission can be replayed from the story menu.',
     intro: [
       { who: 'announcer', text: 'The season final at the Apex Grand Prix. Win it and the title goes to Leopard GP. Lose it and it\'s Judah\'s third.' },
       { who: 'lupis', text: 'Vanta protested again. You start from the back. Of course you do.' },

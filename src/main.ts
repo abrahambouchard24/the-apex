@@ -292,7 +292,8 @@ function finishMission(): void {
   const goal = met(m.goal, outcome);
   // The bonus is shown as met or not either way, but only pays out with the main goal.
   const bonus = !!m.bonus && met(m.bonus, outcome);
-  const share = save.done.includes(m.id) ? REPLAY_SHARE : 1;
+  const first = !save.done.includes(m.id);
+  const share = first ? 1 : REPLAY_SHARE;
   const earned = goal ? Math.round((m.points + (bonus ? m.bonusPoints : 0)) * share) : 0;
   if (goal) {
     save.points += earned;
@@ -303,7 +304,7 @@ function finishMission(): void {
   const index = mission;
   mission = null;
   menus.setStory(false);
-  storyUI.finish({ index, success: goal, goal, bonus, earned }, save);
+  storyUI.finish({ index, success: goal, goal, bonus, earned, first: goal && first }, save);
 }
 
 /** Load a track and start a race on it (in a season, announce which round it is). */
