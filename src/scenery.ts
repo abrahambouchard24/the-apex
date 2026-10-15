@@ -146,7 +146,6 @@ function build(track: Track): Scenery {
         return { kind: 'building', x, y, r: Math.hypot(w, d) / 2, h: between(90, 260), w, d,
           color: pick(['#171a2c', '#1c1830', '#141f2a']), accent: pick(neon) };
       }, 700, 900);
-      scatter(6, (x, y) => ({ kind: 'hologram', x, y, r: 60, h: 160, accent: pick(neon), text: pick(['NEO', 'APEX', 'VOLT', '24/7', 'RACE']) }), 200);
       break;
     }
     case 'SUMMIT PASS': {
