@@ -219,7 +219,7 @@ function build(track: Track): Scenery {
         return { kind: 'skyscraper', x, y, r: Math.hypot(w, d) / 2, h: between(220, 480), w, d,
           color: pick(['#3a3366', '#2c3a5e', '#4a3460']), accent: pick(['#ff5e8a', '#4fe3ff', '#ffd23f']) };
       }, 900, 700);
-      scatter(5, (x, y) => ({ kind: 'helipad', x, y, r: 120, h: 0 }), 300);
+      scatter(1, (x, y) => ({ kind: 'helipad', x, y, r: 120, h: 0 }), 600);
       break;
     }
   }
