@@ -28,6 +28,8 @@ export interface RaceSetup { car: number; track: number; laps: number; races: nu
 
 export interface MenuHandlers {
   start(setup: RaceSetup): void;
+  /** The Story window on the front menu. */
+  story(): void;
   resume(): void;
   restart(): void;
   changeCar(): void;
@@ -106,9 +108,75 @@ const CSS = `
 .hr-standings-head { margin: 4px 0 10px; font-size: 20px; font-weight: 900; letter-spacing: 0.14em; }
 .hr-note { margin: -10px 0 20px; font-size: 22px; font-weight: 900; letter-spacing: 0.1em; color: #ffd23f; }
 .hr-btns.row { flex-direction: row; justify-content: center; flex-wrap: wrap; }
+
+/* Front menu: three windows, each a little scene. Hovering one grows it. */
+.hr-front { display: flex; gap: 18px; width: min(1100px, calc(100% - 32px)); height: min(440px, 62vh); margin: 0 auto 18px; }
+@media (max-width: 760px) { .hr-front { flex-direction: column; height: auto; } .hr-window { min-height: 180px; } }
+.hr-window { position: relative; flex: 1; overflow: hidden; border-radius: 20px; border: 2px solid #252b52; cursor: pointer;
+  background: #0b0e1e; transition: flex 260ms ease, transform 260ms ease, border-color 200ms, box-shadow 260ms; color: inherit; font: inherit; padding: 0; text-align: left; }
+.hr-window:hover, .hr-window:focus-visible { flex: 1.35; transform: translateY(-6px) scale(1.02); border-color: var(--c); box-shadow: 0 18px 50px -14px var(--c); outline: none; }
+.hr-window .scene { position: absolute; inset: 0; }
+.hr-window .label { position: absolute; left: 22px; right: 22px; bottom: 20px; z-index: 2; }
+.hr-window .label b { display: block; font: 900 italic clamp(26px, 3.4vw, 40px) system-ui, sans-serif; letter-spacing: 0.04em; color: #fff;
+  text-shadow: 0 4px 18px rgba(0,0,0,0.7); }
+.hr-window .label small { display: block; margin-top: 4px; color: #d4daf5; font-weight: 600; font-size: 13px; letter-spacing: 0.06em; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+.hr-window::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgba(5,6,14,0.92)); z-index: 1; pointer-events: none; }
+
+/* Story: dusk at the county speedway, two cars nose to nose under the floodlights. */
+.sc-story { background: linear-gradient(180deg, #2a1240 0%, #a43a52 46%, #ff9a4a 62%, #1a1424 63%, #0d0b16 100%); }
+.sc-story .sun { position: absolute; left: 50%; top: 44%; width: 150px; height: 150px; margin: -75px; border-radius: 50%;
+  background: radial-gradient(circle, #ffd27a, #ff7a3d 60%, transparent 72%); filter: blur(1px); }
+.sc-story .stand { position: absolute; left: -5%; right: -5%; top: 52%; height: 11%; background:
+  repeating-linear-gradient(90deg, #1b1528 0 14px, #251c36 14px 16px); border-top: 3px solid #3a2a4a; }
+.sc-story .flood { position: absolute; top: 18%; width: 4px; height: 38%; background: #3a3350; }
+.sc-story .flood::before { content: ''; position: absolute; top: -8px; left: -14px; width: 32px; height: 12px; border-radius: 3px; background: #fff6d8;
+  box-shadow: 0 0 30px 12px rgba(255,236,170,0.55); animation: hr-flicker 3.2s infinite; }
+.sc-story .flood.a { left: 14%; } .sc-story .flood.b { right: 14%; } .sc-story .flood.b::before { animation-delay: 1.3s; }
+.sc-story img { position: absolute; top: 52%; height: 72px; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
+.sc-story .me { left: 22%; transform: rotate(90deg); }
+.sc-story .him { right: 22%; transform: rotate(-90deg); }
+.sc-story .vs { position: absolute; left: 50%; top: 56%; transform: translateX(-50%); font: 900 italic 30px system-ui; color: #ffd23f;
+  text-shadow: 0 0 18px #ff7a3d; animation: hr-pulse 1.6s ease-in-out infinite; }
+@keyframes hr-flicker { 0%, 100% { opacity: 1 } 47% { opacity: 1 } 48% { opacity: 0.45 } 50% { opacity: 1 } 73% { opacity: 0.8 } }
+@keyframes hr-pulse { 50% { transform: translateX(-50%) scale(1.12); } }
+
+/* Quick race: a red car flat out down a neon straight. */
+.sc-quick { background: #0a0d1c; }
+.sc-quick .road { position: absolute; left: -20%; right: -20%; top: 30%; height: 40%; background: #23283f;
+  border-top: 5px solid #4fe3ff; border-bottom: 5px solid #4fe3ff; box-shadow: 0 0 30px rgba(79,227,255,0.35); transform: rotate(-8deg); }
+.sc-quick .road::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 70px, rgba(120,160,255,0.12) 70px 76px);
+  animation: hr-scroll 0.45s linear infinite; }
+.sc-quick .road::after { content: ''; position: absolute; left: 0; right: 0; top: -14px; height: 9px;
+  background: repeating-linear-gradient(90deg, #ff2d75 0 26px, #f2f4ff 26px 52px); animation: hr-scroll 0.45s linear infinite; }
+.sc-quick img { position: absolute; left: 34%; top: 38%; height: 90px; transform: rotate(82deg); filter: drop-shadow(0 12px 10px rgba(0,0,0,0.6)); animation: hr-bob 1.1s ease-in-out infinite; }
+.sc-quick .trail { position: absolute; left: -10%; width: 50%; top: 47%; height: 10px; border-radius: 6px; transform: rotate(-8deg);
+  background: linear-gradient(90deg, transparent, rgba(79,227,255,0.85)); filter: blur(3px); }
+@keyframes hr-scroll { to { background-position: -152px 0; } }
+@keyframes hr-bob { 50% { transform: rotate(82deg) translateX(-5px); } }
+
+/* Season: a trophy under spotlights, with the circuits behind it. */
+.sc-season { background: radial-gradient(ellipse at 50% 35%, #2a2350, #0b0a18 70%); }
+.sc-season svg.tracks { position: absolute; inset: 6% 4% 30% 4%; width: 92%; height: 64%; opacity: 0.35; }
+.sc-season .cup { position: absolute; left: 50%; top: 18%; width: 120px; transform: translateX(-50%); filter: drop-shadow(0 0 26px rgba(255,210,63,0.6));
+  animation: hr-float 3s ease-in-out infinite; }
+.sc-season .beam { position: absolute; top: -10%; width: 120px; height: 90%; background: linear-gradient(rgba(255,240,190,0.25), transparent);
+  clip-path: polygon(40% 0, 60% 0, 100% 100%, 0 100%); }
+.sc-season .beam.a { left: 20%; transform: rotate(-14deg); } .sc-season .beam.b { right: 20%; transform: rotate(14deg); }
+.sc-season .spark { position: absolute; width: 6px; height: 6px; border-radius: 1px; animation: hr-fall linear infinite; }
+@keyframes hr-float { 50% { transform: translateX(-50%) translateY(-8px); } }
+@keyframes hr-fall { from { transform: translateY(-20px) rotate(0); opacity: 1; } to { transform: translateY(420px) rotate(540deg); opacity: 0; } }
+.hr-back { position: absolute; top: 18px; left: 22px; min-width: 0; padding: 10px 18px; font-size: 14px; }
 `;
 
+const TROPHY = `<svg class="cup" viewBox="0 0 120 130"><defs><linearGradient id="hrg" x1="0" x2="1"><stop offset="0" stop-color="#b8860b"/><stop offset=".45" stop-color="#ffe7a0"/><stop offset="1" stop-color="#c8961e"/></linearGradient></defs>
+<path d="M30 10h60v20c0 26-14 42-30 44-16-2-30-18-30-44z" fill="url(#hrg)"/>
+<path d="M30 18H12c0 18 8 28 20 30M90 18h18c0 18-8 28-20 30" fill="none" stroke="url(#hrg)" stroke-width="7"/>
+<rect x="54" y="74" width="12" height="22" fill="url(#hrg)"/><rect x="34" y="96" width="52" height="10" rx="2" fill="url(#hrg)"/>
+<rect x="26" y="106" width="68" height="16" rx="3" fill="#2a2350" stroke="url(#hrg)" stroke-width="3"/>
+<text x="60" y="44" text-anchor="middle" font-family="system-ui" font-weight="900" font-size="18" fill="#7a5410">1</text></svg>`;
+
 export class Menus {
+  private front: HTMLDivElement;
   private start: HTMLDivElement;
   private pause: HTMLDivElement;
   private results: HTMLDivElement;
@@ -127,15 +195,44 @@ export class Menus {
     style.textContent = CSS;
     document.head.append(style);
 
-    this.start = overlay(`
-      <div class="hr-panel">
+    // Front menu: Story, Quick Race and Season, each a window onto its own little scene.
+    const sparks = Array.from({ length: 18 }, (_, i) => `<i class="spark" style="left:${(i * 37) % 100}%;top:-10px;`
+      + `background:${['#ffd23f', '#ff3d6e', '#4fe3ff', '#7dffb0'][i % 4]};animation-duration:${3 + (i % 5) * 0.7}s;animation-delay:${(i * 0.43) % 4}s"></i>`).join('');
+    const outlines = tracks.map((t, i) => `<polygon points="${t.outline}" transform="translate(${(i % 4) * 130} ${Math.floor(i / 4) * 95})"
+      fill="none" stroke="${t.color}" stroke-width="3" stroke-linejoin="round"/>`).join('');
+    this.front = overlay(`
+      <div class="hr-panel" style="max-width:1140px">
         <h1 class="hr-title">THE APEX</h1>
+        <p class="hr-sub">HOVER RACING · ROOKIE SEASON</p>
+        <div class="hr-front">
+          <button class="hr-window" data-act="story" style="--c:#ff7a3d">
+            <div class="scene sc-story"><div class="sun"></div><div class="stand"></div><div class="flood a"></div><div class="flood b"></div>
+              <img class="me" src="${cars[0]?.url ?? ''}" alt=""><span class="vs">VS</span><img class="him" src="${cars[3]?.url ?? ''}" alt=""></div>
+            <div class="label"><b>STORY</b><small>From the county speedway to the top of the Apex Series. Your first season starts with one race against a legend.</small></div>
+          </button>
+          <button class="hr-window" data-act="quick" style="--c:#4fe3ff">
+            <div class="scene sc-quick"><div class="road"></div><div class="trail"></div><img src="${cars[0]?.url ?? ''}" alt=""></div>
+            <div class="label"><b>QUICK RACE</b><small>One race. Pick your car, your track and your laps, and go.</small></div>
+          </button>
+          <button class="hr-window" data-act="season" style="--c:#ffd23f">
+            <div class="scene sc-season"><svg class="tracks" viewBox="0 0 520 190">${outlines}</svg>
+              <div class="beam a"></div><div class="beam b"></div>${sparks}${TROPHY}</div>
+            <div class="label"><b>SEASON</b><small>A championship across the circuits. Points for every finish, a title for the best.</small></div>
+          </button>
+        </div>
+        <p class="hr-keys">Mouse: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; Left click: brake &nbsp;·&nbsp; Right click: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
+      </div>`);
+
+    this.start = overlay(`
+      <button class="hr-btn secondary hr-back" data-act="front">◂ BACK</button>
+      <div class="hr-panel">
+        <h1 class="hr-title" data-setup-title>QUICK RACE</h1>
         <p class="hr-sub">CHOOSE YOUR CAR</p>
         <div class="hr-cars"></div>
         <p class="hr-sub" data-track-head>CHOOSE YOUR TRACK</p>
         <div class="hr-tracks"></div>
         <div class="hr-options">
-          <div class="hr-option"><label>MODE</label><div class="hr-seg" data-seg="mode">
+          <div class="hr-option" style="display:none"><label>MODE</label><div class="hr-seg" data-seg="mode">
             <button data-v="single">SINGLE RACE</button><button data-v="season">SEASON</button></div></div>
           <div class="hr-option"><label>LAPS</label><div class="hr-seg" data-seg="laps">
             ${LAP_CHOICES.map((n) => `<button data-v="${n}">${n}</button>`).join('')}</div></div>
@@ -184,6 +281,8 @@ export class Menus {
     });
     this.refreshOptions();
 
+    this.start.classList.add('hidden');
+
     this.pause = overlay(`
       <div class="hr-panel">
         <h2 class="hr-h2">PAUSED</h2>
@@ -198,11 +297,15 @@ export class Menus {
     this.results = overlay(`<div class="hr-panel"></div>`);
     this.results.classList.add('hidden');
 
-    for (const el of [this.start, this.pause, this.results]) {
+    for (const el of [this.front, this.start, this.pause, this.results]) {
       el.addEventListener('click', (e) => {
         const act = (e.target as HTMLElement).closest('[data-act]')?.getAttribute('data-act');
         if (!act) return;
-        if (act === 'start') this.on.start(this.setup());
+        if (act === 'story') this.on.story();
+        else if (act === 'quick') this.showSetup('single');
+        else if (act === 'season') this.showSetup('season');
+        else if (act === 'front') this.showFront();
+        else if (act === 'start') this.on.start(this.setup());
         else if (act === 'resume') this.on.resume();
         else if (act === 'restart') this.on.restart();
         else if (act === 'change') this.on.changeCar();
@@ -233,11 +336,17 @@ export class Menus {
     this.start.querySelector('[data-opt="races"]')!.classList.toggle('hidden', this.races === 1);
     this.start.querySelector('[data-track-head]')!.textContent = this.races > 1 ? 'CHOOSE THE OPENING TRACK' : 'CHOOSE YOUR TRACK';
     this.start.querySelector('[data-act="start"]')!.textContent = this.races > 1 ? 'START SEASON' : 'START RACE';
+    this.start.querySelector('[data-setup-title]')!.textContent = this.races > 1 ? 'SEASON' : 'QUICK RACE';
   }
 
   selectTrack(i: number): void {
     this.selectedTrack = i;
     this.trackCards.forEach((c, k) => c.classList.toggle('selected', k === i));
+  }
+
+  /** In a story race the pause menu's way out goes back to the chapter map. */
+  setStory(on: boolean): void {
+    if (on) this.pause.querySelector('[data-act="change"]')!.textContent = 'QUIT MISSION';
   }
 
   /** In a season the pause menu's way out quits the season rather than just changing car. */
@@ -296,9 +405,18 @@ export class Menus {
     this.cards.forEach((c, k) => c.classList.toggle('selected', k === i));
   }
 
+  /** The setup screen for a quick race or a season (the front menu chose which). */
+  showSetup(mode: 'single' | 'season'): void {
+    this.races = mode === 'season' ? this.seasonRaces : 1;
+    this.refreshOptions();
+    this.hide();
+    this.start.classList.remove('hidden');
+  }
+
   showStart(): void { this.hide(); this.start.classList.remove('hidden'); }
+  showFront(): void { this.hide(); this.front.classList.remove('hidden'); }
   showPause(): void { this.hide(); this.pause.classList.remove('hidden'); }
-  hide(): void { for (const el of [this.start, this.pause, this.results]) el.classList.add('hidden'); }
+  hide(): void { for (const el of [this.front, this.start, this.pause, this.results]) el.classList.add('hidden'); }
 }
 
 function overlay(html: string): HTMLDivElement {

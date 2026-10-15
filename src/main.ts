@@ -1,9 +1,13 @@
 import { Driver } from './ai';
 import { Sound } from './audio';
-import { Craft, LAUNCH_TIME, STALL_TIME, clamp, collideCrafts, lerp } from './craft';
+import { Craft, LAUNCH_TIME, Mods, NO_MODS, STALL_TIME, clamp, collideCrafts, lerp } from './craft';
 import { Input } from './input';
 import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
+import {
+  MISSIONS, REPLAY_SHARE, Save, Speaker, loadSave, met, playerMods, rivalMods, writeSave,
+} from './story';
+import { StoryUI } from './storyui';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
@@ -54,6 +58,43 @@ let raceLaps = 3;
 interface Season { races: number; round: number; openingTrack: number; points: Map<string, number> }
 let season: Season | null = null;
 
+/** Story mode: the saved progress, and the mission being raced (null outside a story race). */
+let save: Save | null = loadSave();
+let mission: number | null = null;
+/** Which story character drives which car, for goals like "finish ahead of Judah". */
+const whoDrives = new Map<Speaker, Car>();
+let overheatedThisRace = false;
+let raceBestLap = 0;          // the player's best lap in this race only (for lap-time goals)
+
+/** One AI car in a race: its livery, name, driving skill and performance mods. */
+interface Entry { livery: number; name: string; skill: number; mods: Mods; who?: Speaker }
+
+/** Everything that differs between a quick race, a season round and a story mission. */
+interface RaceConfig {
+  field: Entry[];
+  playerName: string;
+  playerMods: Mods;
+  grid: 'random' | 'back' | 'pole';
+  startHeat: number;
+}
+
+/** The race about to start: a story mission's set-up, or the usual full field. */
+function raceConfig(): RaceConfig {
+  if (mission !== null && save) {
+    const m = MISSIONS[mission];
+    return {
+      field: m.rivals.map((e) => ({ livery: e.livery, name: e.name, skill: e.skill, mods: rivalMods(m, e), who: e.who })),
+      playerName: save.name, playerMods: playerMods(save), grid: m.grid, startHeat: m.startHeat ?? 0,
+    };
+  }
+  return {
+    field: LIVERIES.map((_, i) => i).filter((i) => i !== playerLivery).map((li) => ({
+      livery: li, name: LIVERIES[li].name, skill: lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random()), mods: { ...NO_MODS },
+    })),
+    playerName: LIVERIES[playerLivery].name, playerMods: { ...NO_MODS }, grid: 'random', startHeat: 0,
+  };
+}
+
 let player: Car;
 let rivals: { car: Car; driver: Driver }[] = [];
 let cars: Car[] = [];
@@ -86,24 +127,37 @@ function livery(i: number) {
 
 /** Line everyone up on the grid and start the countdown. */
 function startRace(): void {
+  const cfg = raceConfig();
   names.clear();
-  rivals = LIVERIES.map((_, i) => i).filter((i) => i !== playerLivery).map((li, k) => {
-    const skill = lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random());
-    const driver = new Driver(skill, k + 1);
-    const car = { craft: driver.craft, race: driver.race, ...livery(li) };
-    names.set(car, LIVERIES[li].name);
+  whoDrives.clear();
+  rivals = cfg.field.map((e, k) => {
+    const driver = new Driver(e.skill, k + 1);
+    driver.craft.mods = { ...e.mods };
+    const car: Car = { craft: driver.craft, race: driver.race, ...livery(e.livery), name: e.name };
+    names.set(car, e.name);
+    if (e.who) whoDrives.set(e.who, car);
     return { car, driver };
   });
-  player = { craft: new Craft(), race: new RaceState(), ...livery(playerLivery) };
-  names.set(player, LIVERIES[playerLivery].name);
-  player.race.bestLap = bestLaps[trackIndex];
+  const pl = mission !== null ? 0 : playerLivery;   // in Story you drive Leopard GP's red 01
+  player = { craft: new Craft(), race: new RaceState(), ...livery(pl), name: cfg.playerName };
+  player.craft.mods = { ...cfg.playerMods };
+  player.craft.heat = cfg.startHeat;
+  names.set(player, cfg.playerName);
+  player.race.bestLap = mission !== null ? 0 : bestLaps[trackIndex];
   cars = [...rivals.map((r) => r.car), player];
+  overheatedThisRace = false;
+  raceBestLap = 0;
 
-  // Random grid: shuffle everyone (player included) into the slots.
+  // Grid: shuffle the AI into the slots; the player goes on pole, at the back, or anywhere.
   const slots = cars.map((_, i) => i);
   for (let i = slots.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [slots[i], slots[j]] = [slots[j], slots[i]];
+  }
+  const want = cfg.grid === 'back' ? cars.length - 1 : cfg.grid === 'pole' ? 0 : -1;
+  if (want >= 0) {
+    const pi = cars.indexOf(player), holder = slots.indexOf(want);
+    [slots[pi], slots[holder]] = [slots[holder], slots[pi]];
   }
   cars.forEach((car, i) => { car.race.index = placeOnGrid(track, car.craft, slots[i]); });
 
@@ -138,7 +192,12 @@ const trackChoices: TrackChoice[] = tracks.map((t, i) => {
 });
 
 const menus = new Menus(LIVERIES, trackChoices, {
+  story() {
+    menus.hide();
+    storyUI.open(save);
+  },
   start(setup: RaceSetup) {
+    mission = null;
     playerLivery = setup.car;
     raceLaps = setup.laps;
     season = setup.races > 1 ? { races: setup.races, round: 0, openingTrack: setup.track, points: new Map() } : null;
@@ -159,6 +218,16 @@ const menus = new Menus(LIVERIES, trackChoices, {
     }
   },
   changeCar() {
+    if (mission !== null) {
+      // Leaving a story race: back to the chapter map.
+      mission = null;
+      mode = 'menu';
+      sound.menu();
+      input.unlock();
+      menus.hide();
+      storyUI.open(save);
+      return;
+    }
     season = null;
     menus.setSeason(false);
     mode = 'menu';
@@ -169,6 +238,73 @@ const menus = new Menus(LIVERIES, trackChoices, {
     menus.showStart();
   },
 });
+
+/** Set a mission up: its track, laps and field. */
+function loadMission(i: number): void {
+  const m = MISSIONS[i];
+  mission = i;
+  season = null;
+  raceLaps = m.laps;
+  trackIndex = TRACKS.findIndex((t) => t.name === m.track);
+  track = tracks[trackIndex];
+  menus.setSeason(false);
+  menus.setStory(true);
+}
+
+function storyRace(i: number): void {
+  loadMission(i);
+  startRound(trackIndex);
+  showToast(MISSIONS[i].title, '#ff3d6e');
+}
+
+const storyUI = new StoryUI({
+  preview(i) {
+    loadMission(i);
+    mode = 'menu';
+    startRace();
+  },
+  race: storyRace,
+  exit() {
+    mode = 'menu';   // stop any finished race in the background from bringing up its results
+    storyUI.hide();
+    menus.showFront();
+  },
+  saved(s) {
+    save = s;
+    writeSave(s);
+  },
+});
+
+/** Judge a finished story race: goals, points and progress, then hand over to the story screens. */
+function finishMission(): void {
+  if (mission === null || !save) return;
+  const m = MISSIONS[mission];
+  const ranked = rankCars();
+  const outcome = {
+    place: ranked.indexOf(player) + 1,
+    ahead: (who: Speaker) => {
+      const car = whoDrives.get(who);
+      return !car || ranked.indexOf(player) < ranked.indexOf(car);
+    },
+    bestLap: raceBestLap,
+    overheated: overheatedThisRace,
+  };
+  const goal = met(m.goal, outcome);
+  // The bonus is shown as met or not either way, but only pays out with the main goal.
+  const bonus = !!m.bonus && met(m.bonus, outcome);
+  const share = save.done.includes(m.id) ? REPLAY_SHARE : 1;
+  const earned = goal ? Math.round((m.points + (bonus ? m.bonusPoints : 0)) * share) : 0;
+  if (goal) {
+    save.points += earned;
+    if (!save.done.includes(m.id)) save.done.push(m.id);
+    if (bonus && !save.bonus.includes(m.id)) save.bonus.push(m.id);
+    writeSave(save);
+  }
+  const index = mission;
+  mission = null;
+  menus.setStory(false);
+  storyUI.finish({ index, success: goal, goal, bonus, earned }, save);
+}
 
 /** Load a track and start a race on it (in a season, announce which round it is). */
 function startRound(index: number): void {
@@ -243,6 +379,9 @@ if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
       });
     },
     get time() { return time; }, get goTime() { return goTime; }, cam,
+    get save() { return save; },
+    /** Start a story mission directly (skipping its dialogue). */
+    mission(i: number) { if (!save) save = { name: 'TEST', points: 0, upgrades: {}, done: [], bonus: [] }; storyUI.hide(); menus.hide(); storyRace(i); },
   };
 }
 
@@ -313,7 +452,12 @@ function update(dt: number): void {
         autopilot.race = player.race;
         resultsAt = time + RESULTS_DELAY;
       }
-    } else if (lap && car === player && !autopilot) {
+    }
+    if (lap && car === player && car.race.lap <= raceLaps && (raceBestLap === 0 || player.race.lastLap < raceBestLap)) {
+      raceBestLap = player.race.lastLap;
+    }
+    if (car === player && !finishOrder.includes(player) && car.craft.overheated) overheatedThisRace = true;
+    if (lap && car === player && !autopilot && car.race.lap < raceLaps) {
       sound.chime(lap === 'best');
       if (lap === 'best') showToast(`BEST LAP  ${formatTime(player.race.lastLap)}`, '#c77dff');
       else showToast(`LAP  ${formatTime(player.race.lastLap)}`, '#ffffff');
@@ -373,8 +517,9 @@ function update(dt: number): void {
     sound.menu();
     input.release();
     input.unlock();
+    if (mission !== null) finishMission();
   }
-  if (mode === 'results' && time >= resultsRefresh) {
+  if (mode === 'results' && time >= resultsRefresh && !storyUI.visible) {
     resultsRefresh = time + 0.25;
     menus.showResults(resultsView());
   }

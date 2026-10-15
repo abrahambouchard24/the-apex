@@ -1,0 +1,359 @@
+// Story mode screens: the name prompt, the chapter map, mission briefings, dialogue, the garage
+// and the mission result. Plain DOM overlays, styled to match menu.ts.
+
+import {
+  CHAPTERS, CHARACTERS, Goal, Line, MAX_LEVEL, MISSIONS, Mission, REPLAY_SHARE, Save, Speaker,
+  UPGRADES, UpgradeId, describe, say, unlocked, upgradeCost,
+} from './story';
+
+export interface StoryHandlers {
+  /** Line up a mission's grid behind its intro dialogue (frozen until the race starts). */
+  preview(index: number): void;
+  /** Start the race for a mission (after its intro dialogue). */
+  race(index: number): void;
+  /** Back to the main menu. */
+  exit(): void;
+  /** The save changed (upgrade bought, name set, progress reset). */
+  saved(save: Save): void;
+}
+
+/** What the result screen reports after a story race. */
+export interface StoryResult {
+  index: number;
+  success: boolean;
+  goal: boolean;
+  bonus: boolean;
+  earned: number;
+}
+
+const CSS = `
+.st-wrap { width: 100%; max-width: 1040px; margin: auto; padding: 18px; text-align: left; }
+.st-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.st-title { margin: 0; font-size: clamp(32px, 6vw, 54px); font-weight: 900; font-style: italic; letter-spacing: 0.04em;
+  background: linear-gradient(90deg, #ff3d6e, #ffd23f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.st-who { color: #8a93c0; font-weight: 700; letter-spacing: 0.16em; font-size: 13px; }
+.st-points { font: 900 26px system-ui, sans-serif; color: #ffd23f; letter-spacing: 0.06em; }
+.st-points small { display: block; font-size: 11px; color: #8a93c0; letter-spacing: 0.2em; text-align: right; }
+.st-chapters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 860px) { .st-chapters { grid-template-columns: repeat(2, 1fr); } }
+.st-chapter h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.2em; color: #8a93c0; }
+.st-chapter h3 b { display: block; color: #e8ecff; font-size: 16px; letter-spacing: 0.1em; margin-top: 2px; }
+.st-mission { display: block; width: 100%; text-align: left; margin-bottom: 10px; padding: 12px 12px 11px; border-radius: 12px;
+  background: rgba(20,24,48,0.88); border: 2px solid #252b52; color: inherit; font: inherit; cursor: pointer;
+  transition: transform 120ms, border-color 120ms, box-shadow 120ms; }
+.st-mission:hover:not(:disabled) { transform: translateY(-3px); border-color: #ff3d6e; box-shadow: 0 0 22px -6px #ff3d6e; }
+.st-mission:disabled { opacity: 0.4; cursor: default; }
+.st-mission b { display: block; font-size: 14px; letter-spacing: 0.08em; }
+.st-mission small { display: block; color: #8a93c0; font-size: 11px; margin-top: 3px; line-height: 1.3; }
+.st-mission .st-badges { float: right; font-size: 13px; letter-spacing: 0.1em; }
+.st-done { color: #4dff9a; } .st-star { color: #ffd23f; } .st-lock { color: #8a93c0; }
+.hr-btn:disabled { filter: grayscale(1) brightness(0.55); cursor: default; }
+.st-actions { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+.st-link { background: none; border: 0; color: #8a93c0; font: 600 12px system-ui, sans-serif; letter-spacing: 0.12em; cursor: pointer; margin-top: 14px; }
+.st-link:hover { color: #e8ecff; }
+.st-card { max-width: 560px; margin: auto; padding: 26px 28px; border-radius: 18px; background: rgba(14,17,36,0.94);
+  border: 2px solid #252b52; text-align: left; }
+.st-card h2 { margin: 0 0 4px; font-size: 34px; font-weight: 900; letter-spacing: 0.06em; }
+.st-card .st-sub { color: #8a93c0; font-weight: 700; letter-spacing: 0.16em; font-size: 12px; margin-bottom: 16px; }
+.st-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid #1d2346; font-weight: 700; }
+.st-row span:first-child { color: #8a93c0; font-size: 12px; letter-spacing: 0.14em; padding-top: 2px; }
+.st-ok { color: #4dff9a; } .st-no { color: #ff5e7a; }
+.st-input { width: 100%; box-sizing: border-box; padding: 14px 16px; border-radius: 12px; border: 2px solid #252b52;
+  background: #0b0e1e; color: #e8ecff; font: 800 22px system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; margin: 6px 0 18px; }
+.st-input:focus { outline: none; border-color: #ff3d6e; }
+.st-up { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; align-items: center; padding: 12px 0; border-top: 1px solid #1d2346; }
+.st-up b { font-size: 14px; letter-spacing: 0.1em; }
+.st-up small { grid-column: 1; color: #8a93c0; font-size: 12px; }
+.st-pips { grid-column: 1; display: flex; gap: 4px; }
+.st-pips i { width: 18px; height: 6px; border-radius: 3px; background: #252b52; }
+.st-pips i.on { background: #4fe3ff; box-shadow: 0 0 8px #4fe3ff; }
+.st-up .hr-btn { grid-row: 1 / span 3; grid-column: 2; min-width: 120px; padding: 10px 14px; font-size: 14px; }
+.st-up .hr-btn:disabled { filter: grayscale(1) brightness(0.6); cursor: default; }
+
+/* Dialogue: a bar across the bottom of the screen with the speaker's portrait. */
+.st-talk { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center;
+  background: linear-gradient(transparent 40%, rgba(7,8,15,0.85)); font-family: system-ui, sans-serif; color: #e8ecff; cursor: pointer; }
+.st-talk.hidden { display: none; }
+.st-box { position: relative; display: flex; gap: 20px; align-items: flex-start; width: min(940px, calc(100% - 32px)); margin-bottom: 28px;
+  padding: 20px 24px 22px; border-radius: 18px; background: rgba(12,15,32,0.95); border: 2px solid var(--c); box-shadow: 0 0 40px -12px var(--c); }
+.st-face { flex: none; width: 112px; height: 112px; border-radius: 16px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 35% 30%, var(--c), #10132a 75%); font: 900 44px system-ui, sans-serif; color: #fff; }
+.st-face img { width: 100%; height: 100%; object-fit: cover; }
+.st-speaker { font-weight: 900; letter-spacing: 0.12em; font-size: 18px; color: var(--c); }
+.st-role { color: #8a93c0; font-size: 12px; letter-spacing: 0.14em; font-weight: 700; margin: 2px 0 10px; }
+.st-text { font-size: 19px; line-height: 1.45; min-height: 56px; }
+.st-next { position: absolute; right: 18px; bottom: 10px; color: #8a93c0; font-size: 11px; letter-spacing: 0.18em; font-weight: 700; }
+.st-skip { position: fixed; top: 18px; right: 22px; z-index: 21; }
+`;
+
+export class StoryUI {
+  private screen: HTMLDivElement;
+  private talk: HTMLDivElement;
+  private save!: Save;
+  private lines: Line[] = [];
+  private lineAt = 0;
+  private typed = 0;
+  private typing: number | null = null;
+  private afterTalk: (() => void) | null = null;
+
+  constructor(private on: StoryHandlers) {
+    const style = document.createElement('style');
+    style.textContent = CSS;
+    document.head.append(style);
+
+    this.screen = document.createElement('div');
+    this.screen.className = 'hr-overlay hidden';
+    document.body.append(this.screen);
+
+    this.talk = document.createElement('div');
+    this.talk.className = 'st-talk hidden';
+    this.talk.innerHTML = `<button class="hr-btn secondary st-skip" data-skip>SKIP</button>
+      <div class="st-box"><div class="st-face"></div><div style="flex:1">
+      <div class="st-speaker"></div><div class="st-role"></div><div class="st-text"></div></div>
+      <div class="st-next">CLICK / SPACE ▸</div></div>`;
+    document.body.append(this.talk);
+    this.talk.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('[data-skip]')) this.endTalk();
+      else this.advance();
+    });
+    addEventListener('keydown', (e) => {
+      if (this.talk.classList.contains('hidden')) return;
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); this.advance(); }
+      if (e.code === 'Escape') this.endTalk();
+    });
+  }
+
+  get visible(): boolean { return !this.screen.classList.contains('hidden') || !this.talk.classList.contains('hidden'); }
+
+  hide(): void {
+    this.screen.classList.add('hidden');
+    this.talk.classList.add('hidden');
+  }
+
+  /** Entry point: ask for a name if there's no save yet, otherwise show the chapter map. */
+  open(save: Save | null): void {
+    if (save) { this.save = save; this.showHub(); return; }
+    this.render(`
+      <div class="st-card">
+        <h2>ROOKIE SEASON</h2>
+        <div class="st-sub">A COUNTY SPEEDWAY. A LEGEND. ONE SHOT.</div>
+        <div class="st-row" style="border:0"><span>WHAT'S YOUR NAME?</span></div>
+        <input class="st-input" maxlength="14" placeholder="YOUR NAME" autofocus>
+        <div class="st-actions" style="justify-content:flex-start">
+          <button class="hr-btn" data-go>START</button>
+          <button class="hr-btn secondary" data-exit>BACK</button>
+        </div>
+      </div>`);
+    const input = this.screen.querySelector<HTMLInputElement>('.st-input')!;
+    const go = () => {
+      const name = input.value.trim().toUpperCase().replace(/[^A-Z0-9 .'-]/g, '') || 'ROOKIE';
+      this.save = { name, points: 0, upgrades: {}, done: [], bonus: [] };
+      this.on.saved(this.save);
+      this.showHub();
+    };
+    this.screen.querySelector('[data-go]')!.addEventListener('click', go);
+    this.screen.querySelector('[data-exit]')!.addEventListener('click', () => this.on.exit());
+    input.addEventListener('keydown', (e) => { if (e.code === 'Enter') go(); e.stopPropagation(); });
+    setTimeout(() => input.focus(), 0);
+  }
+
+  /** The chapter map: every mission, its status, and the way into the garage. */
+  showHub(): void {
+    const s = this.save;
+    const cols = CHAPTERS.map((ch, c) => {
+      const missions = MISSIONS.map((m, i) => ({ m, i })).filter(({ m }) => m.chapter === c).map(({ m, i }) => {
+        const open = unlocked(s, i), done = s.done.includes(m.id), star = s.bonus.includes(m.id);
+        const badges = done ? `<span class="st-done">✓</span>${m.bonus ? (star ? ' <span class="st-star">★</span>' : ' <span class="st-lock">☆</span>') : ''}`
+          : open ? '' : '<span class="st-lock">LOCKED</span>';
+        return `<button class="st-mission" data-mission="${i}" ${open ? '' : 'disabled'}>
+          <span class="st-badges">${badges}</span><b>${i + 1}. ${m.title}</b>
+          <small>${m.track} · ${m.laps} ${m.laps === 1 ? 'LAP' : 'LAPS'}<br>${describe(m.goal)}</small></button>`;
+      }).join('');
+      return `<div class="st-chapter"><h3>CHAPTER ${c + 1}<b>${ch}</b></h3>${missions}</div>`;
+    }).join('');
+    const complete = s.done.length === MISSIONS.length;
+    this.render(`
+      <div class="st-wrap">
+        <div class="st-head">
+          <div><h1 class="st-title">ROOKIE SEASON</h1>
+            <div class="st-who">${s.name} · LEOPARD GP${complete ? ' · CHAMPION' : ''}</div></div>
+          <div class="st-points">${s.points}<small>TEAM POINTS</small></div>
+        </div>
+        <div class="st-chapters">${cols}</div>
+        <div class="st-actions">
+          <button class="hr-btn" data-garage ${s.done.includes('tryout') ? '' : 'disabled title="Unlocks after the tryout"'}>GARAGE</button>
+          <button class="hr-btn secondary" data-exit>MAIN MENU</button>
+        </div>
+        <div style="text-align:center"><button class="st-link" data-reset>RESET STORY PROGRESS</button></div>
+      </div>`);
+    this.screen.querySelectorAll<HTMLElement>('[data-mission]').forEach((b) =>
+      b.addEventListener('click', () => this.showBriefing(Number(b.dataset.mission))));
+    this.screen.querySelector('[data-garage]')!.addEventListener('click', () => this.showGarage());
+    this.screen.querySelector('[data-exit]')!.addEventListener('click', () => this.on.exit());
+    this.screen.querySelector('[data-reset]')!.addEventListener('click', () => {
+      if (!confirm('Reset all story progress, points and upgrades? This can\'t be undone.')) return;
+      this.save = { name: this.save.name, points: 0, upgrades: {}, done: [], bonus: [] };
+      this.on.saved(this.save);
+      this.showHub();
+    });
+  }
+
+  private showBriefing(i: number): void {
+    const m = MISSIONS[i], s = this.save;
+    const replay = s.done.includes(m.id);
+    const pts = (n: number) => replay ? Math.round(n * REPLAY_SHARE) : n;
+    const grid = { back: 'Back of the grid', pole: 'Pole position', random: 'Random' }[m.grid];
+    const field = m.rivals.length ? m.rivals.map((r) => r.name).join(', ') : 'Nobody: just you and the clock';
+    this.render(`
+      <div class="st-card">
+        <div class="st-sub">CHAPTER ${m.chapter + 1} · MISSION ${i + 1}</div>
+        <h2>${m.title}</h2>
+        <div class="st-sub">${m.track} · ${m.laps} ${m.laps === 1 ? 'LAP' : 'LAPS'}</div>
+        <div class="st-row"><span>GOAL</span><span>${describe(m.goal)}</span></div>
+        ${m.bonus ? `<div class="st-row"><span>BONUS</span><span>${describe(m.bonus)}</span></div>` : ''}
+        <div class="st-row"><span>START</span><span>${grid}${m.startHeat ? ' · engine running hot' : ''}</span></div>
+        <div class="st-row"><span>FIELD</span><span style="text-align:right">${field}</span></div>
+        <div class="st-row"><span>REWARD</span><span class="st-star">${pts(m.points)} PTS${m.bonus ? ` + ${pts(m.bonusPoints)} BONUS` : ''}${replay ? ' (REPLAY)' : ''}</span></div>
+        <div class="st-actions" style="justify-content:flex-start">
+          <button class="hr-btn" data-go>RACE</button>
+          <button class="hr-btn secondary" data-back>BACK</button>
+        </div>
+      </div>`);
+    this.screen.querySelector('[data-go]')!.addEventListener('click', () => {
+      this.screen.classList.add('hidden');
+      this.on.preview(i);
+      this.dialogue(m.intro, () => this.on.race(i));
+    });
+    this.screen.querySelector('[data-back]')!.addEventListener('click', () => this.showHub());
+  }
+
+  /** After a story race: the matching dialogue, then the result card. */
+  finish(r: StoryResult, save: Save): void {
+    this.save = save;
+    const m = MISSIONS[r.index];
+    this.dialogue(r.success ? m.win : m.lose, () => this.showResult(r));
+  }
+
+  private showResult(r: StoryResult): void {
+    const m = MISSIONS[r.index];
+    const mark = (ok: boolean) => ok ? '<span class="st-ok">✓</span>' : '<span class="st-no">✗</span>';
+    const goalRow = (label: string, g: Goal, ok: boolean) => `<div class="st-row"><span>${label}</span><span>${describe(g)} ${mark(ok)}</span></div>`;
+    const next = MISSIONS[r.index + 1];
+    this.render(`
+      <div class="st-card">
+        <div class="st-sub">${m.title}</div>
+        <h2 class="${r.success ? 'st-ok' : 'st-no'}">${r.success ? 'MISSION COMPLETE' : 'MISSION FAILED'}</h2>
+        <div class="st-sub">${m.track}</div>
+        ${goalRow('GOAL', m.goal, r.goal)}
+        ${m.bonus ? goalRow('BONUS', m.bonus, r.bonus) : ''}
+        <div class="st-row"><span>EARNED</span><span class="st-star">+${r.earned} PTS</span></div>
+        <div class="st-row"><span>TEAM POINTS</span><span>${this.save.points}</span></div>
+        <div class="st-actions" style="justify-content:flex-start">
+          ${r.success && next ? `<button class="hr-btn" data-next>NEXT: ${next.title}</button>` : ''}
+          ${!r.success || !next ? `<button class="hr-btn" data-retry>${r.success ? 'RACE AGAIN' : 'RETRY'}</button>` : ''}
+          <button class="hr-btn secondary" data-hub>STORY MENU</button>
+        </div>
+      </div>`);
+    this.screen.querySelector('[data-next]')?.addEventListener('click', () => this.showBriefing(r.index + 1));
+    this.screen.querySelector('[data-retry]')?.addEventListener('click', () => this.showBriefing(r.index));
+    this.screen.querySelector('[data-hub]')!.addEventListener('click', () => this.showHub());
+  }
+
+  private showGarage(): void {
+    const s = this.save;
+    const rows = UPGRADES.map((u) => {
+      const lvl = s.upgrades[u.id] ?? 0, cost = upgradeCost(lvl), maxed = lvl >= MAX_LEVEL;
+      return `<div class="st-up"><b>${u.name} <span class="st-who">LV ${lvl}</span></b>
+        <button class="hr-btn" data-buy="${u.id}" ${maxed || s.points < cost ? 'disabled' : ''}>${maxed ? 'MAX' : `${cost} PTS`}</button>
+        <small>${u.blurb}</small>
+        <div class="st-pips">${Array.from({ length: MAX_LEVEL }, (_, k) => `<i class="${k < lvl ? 'on' : ''}"></i>`).join('')}</div></div>`;
+    }).join('');
+    this.render(`
+      <div class="st-card" style="max-width:620px">
+        <div class="st-head" style="margin-bottom:6px"><div><h2>GARAGE</h2><div class="st-sub" style="margin:0">LEOPARD GP · RED 01</div></div>
+          <div class="st-points">${s.points}<small>TEAM POINTS</small></div></div>
+        <div class="st-row" style="border:0"><span style="color:${CHARACTERS.sophi.color}">SOPHI</span>
+          <span style="font-weight:600;color:#c8d2ff">"Small gains, ${s.name}. That's all a car ever gives you. Pick what you need."</span></div>
+        ${rows}
+        <div class="st-actions" style="justify-content:flex-start"><button class="hr-btn secondary" data-back>BACK</button></div>
+      </div>`);
+    this.screen.querySelectorAll<HTMLElement>('[data-buy]').forEach((b) => b.addEventListener('click', () => {
+      const id = b.dataset.buy as UpgradeId;
+      const lvl = s.upgrades[id] ?? 0, cost = upgradeCost(lvl);
+      if (lvl >= MAX_LEVEL || s.points < cost) return;
+      s.points -= cost;
+      s.upgrades[id] = lvl + 1;
+      this.on.saved(s);
+      this.showGarage();
+    }));
+    this.screen.querySelector('[data-back]')!.addEventListener('click', () => this.showHub());
+  }
+
+  // --- dialogue ---------------------------------------------------------------------------------
+
+  /** Play lines one at a time with a typewriter effect, then call done. */
+  dialogue(lines: Line[], done: () => void): void {
+    this.lines = lines;
+    this.lineAt = 0;
+    this.afterTalk = done;
+    this.screen.classList.add('hidden');
+    this.talk.classList.remove('hidden');
+    this.showLine();
+  }
+
+  private showLine(): void {
+    const line = this.lines[this.lineAt];
+    if (!line) { this.endTalk(); return; }
+    const c = CHARACTERS[line.who];
+    const name = line.who === 'player' ? this.save.name : c.name;
+    const box = this.talk.querySelector<HTMLElement>('.st-box')!;
+    box.style.setProperty('--c', c.color);
+    this.talk.querySelector('.st-speaker')!.textContent = name;
+    this.talk.querySelector('.st-role')!.textContent = c.role.toUpperCase();
+    this.talk.querySelector('.st-face')!.innerHTML = portrait(line.who, name);
+    const full = say(line.text, this.save);
+    const text = this.talk.querySelector('.st-text')!;
+    this.typed = 0;
+    if (this.typing !== null) clearInterval(this.typing);
+    this.typing = window.setInterval(() => {
+      this.typed += 2;
+      text.textContent = full.slice(0, this.typed);
+      if (this.typed >= full.length && this.typing !== null) { clearInterval(this.typing); this.typing = null; }
+    }, 22);
+  }
+
+  private advance(): void {
+    const line = this.lines[this.lineAt];
+    if (this.typing !== null && line) {
+      // First press finishes the line; the next one moves on.
+      clearInterval(this.typing);
+      this.typing = null;
+      this.talk.querySelector('.st-text')!.textContent = say(line.text, this.save);
+      return;
+    }
+    this.lineAt++;
+    this.showLine();
+  }
+
+  private endTalk(): void {
+    if (this.typing !== null) { clearInterval(this.typing); this.typing = null; }
+    this.talk.classList.add('hidden');
+    const done = this.afterTalk;
+    this.afterTalk = null;
+    done?.();
+  }
+
+  private render(html: string): void {
+    this.screen.innerHTML = html;
+    this.screen.classList.remove('hidden');
+  }
+}
+
+/**
+ * A character's portrait: /portraits/<who>.png once the art exists, and until then a badge with
+ * their initials in their colour.
+ */
+function portrait(who: Speaker, name: string): string {
+  const initials = name.split(/\s+/).filter((w) => w !== 'MR.').map((w) => w[0]).join('').slice(0, 2);
+  return `<img src="/portraits/${who}.png" alt="" onerror="this.replaceWith(document.createTextNode('${initials.replace(/'/g, '')}'))">`;
+}

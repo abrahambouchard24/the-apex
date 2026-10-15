@@ -71,6 +71,19 @@ const DRS_TOP = 0.07;
 const SLIPSTREAM_RISE = 2.0;     // how fast the tow builds (1/s)
 const SLIPSTREAM_FALL = 4.0;     // and how fast it fades after pulling out (1/s)
 
+/**
+ * Per-car performance tweaks, as fractions (0.03 = +3%): garage upgrades for the player in Story
+ * mode, a fixed edge for a rival like Judah, or a pace bump for a whole AI field.
+ */
+export interface Mods {
+  top: number;     // top speed
+  accel: number;   // pull
+  grip: number;    // cornering grip
+  heat: number;    // heat resistance: this share less heat from hits and grinding
+  ers: number;     // boost effectiveness
+}
+export const NO_MODS: Mods = { top: 0, accel: 0, grip: 0, heat: 0, ers: 0 };
+
 export class Craft {
   pos: Vec = { x: 0, y: 0 };
   vel: Vec = { x: 0, y: 0 };
@@ -104,6 +117,8 @@ export class Craft {
   deploying = false;
   /** Energy harvested so far this lap (capped at HARVEST_PER_LAP; the race resets it each lap). */
   harvested = 0;
+  /** Performance tweaks for this car (see Mods). */
+  mods: Mods = { ...NO_MODS };
   /** DRS wing open (set by the race: in a zone, within a second of the car ahead, not braking). */
   drsOpen = false;
   /** True while over the cooling lane (set by the race each step). */
@@ -136,8 +151,8 @@ export class Craft {
     const speed = this.speed;
     this.deploying = this.deploy && this.energy > 0 && throttle && !brake;
     if (this.deploying) this.energy = Math.max(0, this.energy - ERS_DRAIN * dt);
-    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp - this.heatLoss
-      + (this.deploying ? ERS_TOP : 0) + (this.drsOpen ? DRS_TOP : 0);
+    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp - this.heatLoss + this.mods.top
+      + (this.deploying ? ERS_TOP * (1 + this.mods.ers) : 0) + (this.drsOpen ? DRS_TOP : 0);
     const gear = { top: GEARS[this.gear].top * tow, accel: GEARS[this.gear].accel * tow };
 
     // Steering: turn toward the aim at a capped rate that tightens a little with speed.
@@ -161,7 +176,7 @@ export class Craft {
       const top = this.gear === GEARS.length - 1;
       const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
       const engaging = (this.shiftPause > 0 ? SHIFT_PULL : 1) * (this.stall > 0 ? 0 : this.launch > 0 ? LAUNCH_PULL : 1)
-        * (this.deploying ? ERS_PULL : 1);
+        * (this.deploying ? 1 + (ERS_PULL - 1) * (1 + this.mods.ers) : 1) * (1 + this.mods.accel);
       this.thrust = pull * engaging;
       fwd += engaging * gear.accel * pull * dt;
     }
@@ -180,7 +195,7 @@ export class Craft {
     // into a corner and you slide wide. Only a small share is scrubbed off.
     const sideBefore = side;
     const gripFade = Math.pow(speedFrac, 1.3);
-    const grip = brake ? lerp(BRAKE_GRIP_SLOW, BRAKE_GRIP_FAST, gripFade) : lerp(GRIP_SLOW, GRIP_FAST, gripFade);
+    const grip = (brake ? lerp(BRAKE_GRIP_SLOW, BRAKE_GRIP_FAST, gripFade) : lerp(GRIP_SLOW, GRIP_FAST, gripFade)) * (1 + this.mods.grip);
     side *= Math.exp(-grip * dt);
     if (fwd > 0) fwd = Math.sqrt(fwd * fwd + (sideBefore * sideBefore - side * side) * GRIP_KEEP);
 
@@ -212,7 +227,8 @@ export class Craft {
 
   /** Add heat from a hit (closing speed in px/s) and/or seconds of grinding. */
   addHeat(impact: number, grindSeconds = 0): void {
-    this.heat = Math.min(1, this.heat + impact * HEAT_PER_IMPACT + grindSeconds * HEAT_PER_SCRAPE);
+    const resist = 1 - this.mods.heat;
+    this.heat = Math.min(1, this.heat + (impact * HEAT_PER_IMPACT + grindSeconds * HEAT_PER_SCRAPE) * resist);
     if (this.heat >= 1) this.overheated = true;
   }
 
