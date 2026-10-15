@@ -124,7 +124,7 @@ const CSS = `
 .hr-window .label small { display: block; margin-top: 4px; color: #d4daf5; font-weight: 600; font-size: 13px; letter-spacing: 0.06em; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
 .hr-window::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgba(5,6,14,0.92)); z-index: 1; pointer-events: none; }
 
-/* Story: dusk at the county speedway, two cars nose to nose under the floodlights. */
+/* Story: dusk at the county speedway, two cars nose to nose. */
 .sc-story { background: linear-gradient(180deg, #2a1240 0%, #a43a52 46%, #ff9a4a 62%, #1a1424 63%, #0d0b16 100%); }
 .sc-story .sun { position: absolute; left: 50%; top: 44%; width: 150px; height: 150px; margin: -75px; border-radius: 50%;
   background: radial-gradient(circle, #ffd27a, #ff7a3d 60%, transparent 72%); filter: blur(1px); }
@@ -146,16 +146,11 @@ const CSS = `
   box-shadow: 0 0 14px 4px rgba(255,220,170,0.9); animation: hr-pulse-run 1.8s linear infinite; }
 @keyframes hr-wash { to { background-position: 100% 0; } }
 @keyframes hr-pulse-run { from { left: -20%; } to { left: 110%; } }
-.sc-story .flood { position: absolute; top: 18%; width: 4px; height: 38%; background: #3a3350; }
-.sc-story .flood::before { content: ''; position: absolute; top: -8px; left: -14px; width: 32px; height: 12px; border-radius: 3px; background: #fff6d8;
-  box-shadow: 0 0 30px 12px rgba(255,236,170,0.55); animation: hr-flicker 3.2s infinite; }
-.sc-story .flood.a { left: 14%; } .sc-story .flood.b { right: 14%; } .sc-story .flood.b::before { animation-delay: 1.3s; }
 .sc-story img { position: absolute; top: 52%; height: 72px; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
 .sc-story .me { left: 22%; transform: rotate(90deg); }
 .sc-story .him { right: 22%; transform: rotate(-90deg); }
 .sc-story .vs { position: absolute; left: 50%; top: 56%; transform: translateX(-50%); font: 900 italic 30px system-ui; color: #ffd23f;
   text-shadow: 0 0 18px #ff7a3d; animation: hr-pulse 1.6s ease-in-out infinite; }
-@keyframes hr-flicker { 0%, 100% { opacity: 1 } 47% { opacity: 1 } 48% { opacity: 0.45 } 50% { opacity: 1 } 73% { opacity: 0.8 } }
 @keyframes hr-pulse { 50% { transform: translateX(-50%) scale(1.12); } }
 
 /* Quick race: a red car flat out down a neon straight. */
@@ -245,7 +240,7 @@ export class Menus {
         <p class="hr-sub">HOVER RACING · ROOKIE SEASON</p>
         <div class="hr-front">
           <button class="hr-window" data-act="story" style="--c:#ff7a3d">
-            <div class="scene sc-story"><div class="sun"></div><div class="stand"></div><div class="deck"></div><div class="flood a"></div><div class="flood b"></div>
+            <div class="scene sc-story"><div class="sun"></div><div class="stand"></div><div class="deck"></div>
               <img class="me" src="${cars[0]?.url ?? ''}" alt=""><span class="vs">VS</span><img class="him" src="${cars[3]?.url ?? ''}" alt=""></div>
             <div class="label"><b>STORY</b><small>From the county speedway to the top of the Apex Series. Your first season starts with one race against a legend.</small></div>
           </button>
