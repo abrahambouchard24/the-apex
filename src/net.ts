@@ -1,0 +1,148 @@
+// Online play, peer to peer. The host's browser runs the race; guests send their controls and get
+// back a snapshot of every car about 30 times a second. PeerJS's free public server only
+// introduces the two browsers; after that they talk to each other directly over WebRTC.
+
+import Peer, { DataConnection } from 'peerjs';
+import type { ResultsView } from './menu';
+
+const ID_PREFIX = 'the-apex-race-';
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O or 1/I to mix up
+
+export function newCode(): string {
+  let c = '';
+  for (let i = 0; i < 5; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  return c;
+}
+
+// --- messages -----------------------------------------------------------------------------------
+
+export interface LobbyPlayer { id: string; name: string; car: number }
+
+/** The lobby as everyone sees it. */
+/** races: 1 = a single race; more = a season of that many. */
+export interface LobbyState { players: LobbyPlayer[]; track: number; laps: number; ai: number; races: number }
+
+/** One entrant in an online race, in grid order of the cars array. */
+export interface NetEntrant { name: string; livery: number; peer: string | null }
+
+/** Per-car state in a snapshot (positions rounded to keep messages small). */
+export interface CarSnap {
+  x: number; y: number; h: number; vx: number; vy: number;
+  gear: number; rev: number; thrust: number; heat: number; over: boolean; energy: number; dep: boolean;
+  slip: number; drs: boolean; cool: boolean; drift: boolean;
+  lap: number; idx: number; next: number; lapStart: number; last: number; best: number;
+}
+
+export interface Snapshot {
+  t: 'snap';
+  time: number; goTime: number;
+  cars: CarSnap[];
+  /** Indexes into the cars array, in finishing order. */
+  finish: number[];
+  /** Finish times (from the lights going out) per car index, -1 if still running. */
+  times: number[];
+}
+
+export type ToHost =
+  | { t: 'hello'; name: string; car: number }
+  | { t: 'car'; car: number }
+  | { t: 'input'; aim: number; brake: boolean; deploy: boolean };
+
+export type ToGuest =
+  | { t: 'lobby'; lobby: LobbyState; you: string }
+  | { t: 'start'; track: number; laps: number; entrants: NetEntrant[]; title?: string }
+  /** The host's results screen (with season standings), for guests to show as-is. */
+  | { t: 'results'; view: ResultsView }
+  | Snapshot
+  | { t: 'toLobby' };
+
+// --- host ---------------------------------------------------------------------------------------
+
+export class Host {
+  readonly code = newCode();
+  private peer: Peer;
+  private conns = new Map<string, DataConnection>();
+  /** Latest controls from each guest. */
+  inputs = new Map<string, { aim: number; brake: boolean; deploy: boolean }>();
+  onJoin: (id: string, name: string, car: number) => void = () => {};
+  onCar: (id: string, car: number) => void = () => {};
+  onLeave: (id: string) => void = () => {};
+  onReady: () => void = () => {};
+  onError: (msg: string) => void = () => {};
+
+  constructor() {
+    this.peer = new Peer(ID_PREFIX + this.code.toLowerCase());
+    this.peer.on('open', () => this.onReady());
+    this.peer.on('error', (e) => this.onError(friendly(e)));
+    this.peer.on('connection', (conn) => {
+      conn.on('data', (d) => this.receive(conn, d as ToHost));
+      conn.on('close', () => this.drop(conn.peer));
+      conn.on('error', () => this.drop(conn.peer));
+    });
+  }
+
+  private receive(conn: DataConnection, m: ToHost): void {
+    if (m.t === 'hello') {
+      if (this.conns.size >= 5) { conn.close(); return; }   // 6 cars: the host and up to 5 guests
+      this.conns.set(conn.peer, conn);
+      this.onJoin(conn.peer, m.name, m.car);
+    } else if (m.t === 'car') {
+      this.onCar(conn.peer, m.car);
+    } else if (m.t === 'input') {
+      this.inputs.set(conn.peer, { aim: m.aim, brake: m.brake, deploy: m.deploy });
+    }
+  }
+
+  private drop(id: string): void {
+    if (!this.conns.delete(id)) return;
+    this.inputs.delete(id);
+    this.onLeave(id);
+  }
+
+  /** Send to every guest (to one, with `only`). */
+  send(m: ToGuest, only?: string): void {
+    for (const [id, c] of this.conns) if (!only || id === only) if (c.open) c.send(m);
+  }
+
+  get guests(): number { return this.conns.size; }
+
+  close(): void { this.peer.destroy(); this.conns.clear(); }
+}
+
+// --- guest --------------------------------------------------------------------------------------
+
+export class Guest {
+  private peer: Peer;
+  private conn: DataConnection | null = null;
+  onMessage: (m: ToGuest) => void = () => {};
+  onClose: () => void = () => {};
+  onError: (msg: string) => void = () => {};
+
+  constructor(code: string, name: string, car: number) {
+    this.peer = new Peer();
+    this.peer.on('error', (e) => this.onError(friendly(e)));
+    this.peer.on('open', () => {
+      const conn = this.peer.connect(ID_PREFIX + code.trim().toLowerCase(), { reliable: true });
+      this.conn = conn;
+      conn.on('open', () => conn.send({ t: 'hello', name, car } satisfies ToHost));
+      conn.on('data', (d) => this.onMessage(d as ToGuest));
+      conn.on('close', () => this.onClose());
+      conn.on('error', () => this.onClose());
+    });
+  }
+
+  send(m: ToHost): void { if (this.conn?.open) this.conn.send(m); }
+
+  close(): void { this.peer.destroy(); }
+}
+
+/** PeerJS errors in plain words. */
+function friendly(e: unknown): string {
+  const type = (e as { type?: string }).type;
+  if (type === 'peer-unavailable') return 'No race found with that code. Check it and try again.';
+  if (type === 'unavailable-id') return 'That race code is taken. Try hosting again.';
+  if (type === 'network' || type === 'server-error' || type === 'socket-error' || type === 'socket-closed')
+    return 'Couldn\'t reach the matchmaking server. Check your internet connection.';
+  if (type === 'browser-incompatible') return 'This browser can\'t do online races. Try Chrome, Edge or Firefox.';
+  return 'Connection problem: ' + (type ?? String(e));
+}

@@ -30,6 +30,8 @@ export interface MenuHandlers {
   start(setup: RaceSetup): void;
   /** The Story window on the front menu. */
   story(): void;
+  /** The Online window on the front menu. */
+  online(): void;
   resume(): void;
   restart(): void;
   changeCar(): void;
@@ -110,7 +112,7 @@ const CSS = `
 .hr-btns.row { flex-direction: row; justify-content: center; flex-wrap: wrap; }
 
 /* Front menu: three windows, each a little scene. Hovering one grows it. */
-.hr-front { display: flex; gap: 18px; width: min(1100px, calc(100% - 32px)); height: min(440px, 62vh); margin: 0 auto 18px; }
+.hr-front { display: flex; gap: 16px; width: min(1200px, calc(100% - 32px)); height: min(440px, 62vh); margin: 0 auto 18px; }
 @media (max-width: 760px) { .hr-front { flex-direction: column; height: auto; } .hr-window { min-height: 180px; } }
 .hr-window { position: relative; flex: 1; overflow: hidden; border-radius: 20px; border: 2px solid #252b52; cursor: pointer;
   background: #0b0e1e; transition: flex 260ms ease, transform 260ms ease, border-color 200ms, box-shadow 260ms; color: inherit; font: inherit; padding: 0; text-align: left; }
@@ -165,6 +167,16 @@ const CSS = `
 .sc-season .spark { position: absolute; width: 6px; height: 6px; border-radius: 1px; animation: hr-fall linear infinite; }
 @keyframes hr-float { 50% { transform: translateX(-50%) translateY(-8px); } }
 @keyframes hr-fall { from { transform: translateY(-20px) rotate(0); opacity: 1; } to { transform: translateY(420px) rotate(540deg); opacity: 0; } }
+/* Online: two cars side by side, a signal pulsing between them. */
+.sc-online { background: radial-gradient(ellipse at 50% 40%, #0f2a3a, #070a16 70%); }
+.sc-online .grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(79,227,255,0.08) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(79,227,255,0.08) 1px, transparent 1px); background-size: 34px 34px; }
+.sc-online img { position: absolute; top: 34%; height: 78px; transform: rotate(0deg); filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
+.sc-online .a { left: 18%; } .sc-online .b { right: 18%; }
+.sc-online .wave { position: absolute; left: 50%; top: 44%; width: 30px; height: 30px; margin: -15px; border-radius: 50%;
+  border: 3px solid #4fe3ff; animation: hr-wave 1.8s ease-out infinite; }
+.sc-online .wave:nth-child(3) { animation-delay: 0.6s; } .sc-online .wave:nth-child(4) { animation-delay: 1.2s; }
+@keyframes hr-wave { from { transform: scale(0.3); opacity: 1; } to { transform: scale(4); opacity: 0; } }
 .hr-back { position: absolute; top: 18px; left: 22px; min-width: 0; padding: 10px 18px; font-size: 14px; }
 `;
 
@@ -201,7 +213,7 @@ export class Menus {
     const outlines = tracks.map((t, i) => `<polygon points="${t.outline}" transform="translate(${(i % 4) * 130} ${Math.floor(i / 4) * 95})"
       fill="none" stroke="${t.color}" stroke-width="3" stroke-linejoin="round"/>`).join('');
     this.front = overlay(`
-      <div class="hr-panel" style="max-width:1140px">
+      <div class="hr-panel" style="max-width:1240px">
         <h1 class="hr-title">THE APEX</h1>
         <p class="hr-sub">HOVER RACING · ROOKIE SEASON</p>
         <div class="hr-front">
@@ -213,6 +225,11 @@ export class Menus {
           <button class="hr-window" data-act="quick" style="--c:#4fe3ff">
             <div class="scene sc-quick"><div class="road"></div><div class="trail"></div><img src="${cars[0]?.url ?? ''}" alt=""></div>
             <div class="label"><b>QUICK RACE</b><small>One race. Pick your car, your track and your laps, and go.</small></div>
+          </button>
+          <button class="hr-window" data-act="online" style="--c:#7dffb0">
+            <div class="scene sc-online"><div class="grid"></div><img class="a" src="${cars[0]?.url ?? ''}" alt=""><div class="wave"></div><div class="wave"></div><div class="wave"></div>
+              <img class="b" src="${cars[1]?.url ?? ''}" alt=""></div>
+            <div class="label"><b>ONLINE</b><small>Host a race, send the code, and race your friends live.</small></div>
           </button>
           <button class="hr-window" data-act="season" style="--c:#ffd23f">
             <div class="scene sc-season"><svg class="tracks" viewBox="0 0 520 190">${outlines}</svg>
@@ -302,6 +319,7 @@ export class Menus {
         const act = (e.target as HTMLElement).closest('[data-act]')?.getAttribute('data-act');
         if (!act) return;
         if (act === 'story') this.on.story();
+        else if (act === 'online') this.on.online();
         else if (act === 'quick') this.showSetup('single');
         else if (act === 'season') this.showSetup('season');
         else if (act === 'front') this.showFront();
@@ -343,6 +361,16 @@ export class Menus {
     this.selectedTrack = i;
     this.trackCards.forEach((c, k) => c.classList.toggle('selected', k === i));
   }
+
+  /** Online, the pause menu doesn't stop the race: guests can only leave; the host can restart or go back to the lobby. */
+  setOnline(role: 'host' | 'guest' | null): void {
+    const restart = this.pause.querySelector<HTMLElement>('[data-act="restart"]')!;
+    restart.style.display = role === 'guest' ? 'none' : '';
+    this.pause.querySelector('[data-act="change"]')!.textContent =
+      role === 'host' ? 'BACK TO LOBBY' : role === 'guest' ? 'LEAVE RACE' : 'CHANGE CAR';
+  }
+
+  get pauseOpen(): boolean { return !this.pause.classList.contains('hidden'); }
 
   /** In a story race the pause menu's way out goes back to the chapter map. */
   setStory(on: boolean): void {

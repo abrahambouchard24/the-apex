@@ -8,6 +8,8 @@ import {
   MISSIONS, REPLAY_SHARE, Save, Speaker, loadSave, met, playerMods, rivalMods, writeSave,
 } from './story';
 import { StoryUI } from './storyui';
+import { LobbyUI } from './lobbyui';
+import { CarSnap, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
@@ -66,8 +68,32 @@ const whoDrives = new Map<Speaker, Car>();
 let overheatedThisRace = false;
 let raceBestLap = 0;          // the player's best lap in this race only (for lap-time goals)
 
-/** One AI car in a race: its livery, name, driving skill and performance mods. */
-interface Entry { livery: number; name: string; skill: number; mods: Mods; who?: Speaker }
+/** One other car in a race: its livery, name, driving skill and performance mods. `peer` = an online player's car. */
+interface Entry { livery: number; name: string; skill: number; mods: Mods; who?: Speaker; peer?: string }
+
+// --- online state -------------------------------------------------------------------------------
+
+const SNAP_RATE = 30;          // snapshots per second from the host
+const INTERP_DELAY = 0.1;      // s guests render behind the newest snapshot, to smooth out jitter
+
+type Online =
+  | { role: 'host'; host: Host; code: string; lobby: LobbyState }
+  | {
+      role: 'guest'; guest: Guest; code: string; me: string; lobby: LobbyState | null;
+      snaps: Snapshot[]; offset: number | null; finishedAt: number; inRace: boolean;
+    };
+let online: Online | null = null;
+/** Host side: each guest's car, and an autopilot for it once it has finished. */
+const remotes = new Map<string, Car>();
+const remoteAuto = new Map<Car, Driver>();
+/** Every car's livery, for telling guests what to draw. */
+const carLivery = new Map<Car, number>();
+/** Host side: each guest's turbo-start timing. */
+const remoteLaunch = new Map<string, { prev: boolean; armed: boolean; released: number; judged: boolean }>();
+let snapClock = 0;
+let resultsSent = 0;
+/** Guest: the latest results screen from the host. */
+let hostResults: import('./menu').ResultsView | null = null;
 
 /** Everything that differs between a quick race, a season round and a story mission. */
 interface RaceConfig {
@@ -80,6 +106,18 @@ interface RaceConfig {
 
 /** The race about to start: a story mission's set-up, or the usual full field. */
 function raceConfig(): RaceConfig {
+  if (online?.role === 'host') {
+    const lb = online.lobby;
+    const taken = lb.players.map((p) => p.car);
+    const aiLiveries = LIVERIES.map((_, i) => i).filter((i) => !taken.includes(i)).slice(0, Math.max(0, Math.min(lb.ai, 6 - lb.players.length)));
+    return {
+      field: [
+        ...lb.players.slice(1).map((p) => ({ livery: p.car, name: p.name, skill: 1, mods: { ...NO_MODS }, peer: p.id })),
+        ...aiLiveries.map((li) => ({ livery: li, name: LIVERIES[li].name, skill: lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random()), mods: { ...NO_MODS } })),
+      ],
+      playerName: lb.players[0].name, playerMods: { ...NO_MODS }, grid: 'random', startHeat: 0,
+    };
+  }
   if (mission !== null && save) {
     const m = MISSIONS[mission];
     return {
@@ -130,21 +168,34 @@ function startRace(): void {
   const cfg = raceConfig();
   names.clear();
   whoDrives.clear();
-  rivals = cfg.field.map((e, k) => {
+  remotes.clear();
+  remoteAuto.clear();
+  remoteLaunch.clear();
+  carLivery.clear();
+  rivals = cfg.field.filter((e) => !e.peer).map((e, k) => {
     const driver = new Driver(e.skill, k + 1);
     driver.craft.mods = { ...e.mods };
     const car: Car = { craft: driver.craft, race: driver.race, ...livery(e.livery), name: e.name };
     names.set(car, e.name);
+    carLivery.set(car, e.livery);
     if (e.who) whoDrives.set(e.who, car);
     return { car, driver };
+  });
+  const humans = cfg.field.filter((e) => e.peer).map((e) => {
+    const car: Car = { craft: new Craft(), race: new RaceState(), ...livery(e.livery), name: e.name };
+    names.set(car, e.name);
+    carLivery.set(car, e.livery);
+    remotes.set(e.peer!, car);
+    return car;
   });
   const pl = mission !== null ? 0 : playerLivery;   // in Story you drive Leopard GP's red 01
   player = { craft: new Craft(), race: new RaceState(), ...livery(pl), name: cfg.playerName };
   player.craft.mods = { ...cfg.playerMods };
   player.craft.heat = cfg.startHeat;
   names.set(player, cfg.playerName);
-  player.race.bestLap = mission !== null ? 0 : bestLaps[trackIndex];
-  cars = [...rivals.map((r) => r.car), player];
+  carLivery.set(player, pl);
+  player.race.bestLap = mission !== null || online ? 0 : bestLaps[trackIndex];
+  cars = [...rivals.map((r) => r.car), ...humans, player];
   overheatedThisRace = false;
   raceBestLap = 0;
 
@@ -192,6 +243,10 @@ const trackChoices: TrackChoice[] = tracks.map((t, i) => {
 });
 
 const menus = new Menus(LIVERIES, trackChoices, {
+  online() {
+    menus.hide();
+    lobbyUI.showMenu(playerName());
+  },
   story() {
     menus.hide();
     storyUI.open(save);
@@ -205,19 +260,31 @@ const menus = new Menus(LIVERIES, trackChoices, {
     startRound(setup.track);
   },
   resume: play,
-  restart() { startRace(); play(); },
+  restart() {
+    if (online?.role === 'host') onlineStart();
+    else if (!online) { startRace(); play(); }
+  },
   action(act) {
+    if (act === 'lobby') onlineToLobby();
+    if (act === 'leave') leaveOnline();
     if (act === 'next' && season) {
       scoreRound(season);
       season.round++;
-      startRound((season.openingTrack + season.round) % tracks.length);
+      if (online?.role === 'host') onlineRound((season.openingTrack + season.round) % tracks.length);
+      else startRound((season.openingTrack + season.round) % tracks.length);
     }
     if (act === 'newseason' && season) {
       season = { ...season, round: 0, points: new Map() };
-      startRound(season.openingTrack);
+      if (online?.role === 'host') onlineRound(season.openingTrack);
+      else startRound(season.openingTrack);
     }
   },
   changeCar() {
+    if (online) {
+      if (online.role === 'host') onlineToLobby();
+      else leaveOnline();
+      return;
+    }
     if (mission !== null) {
       // Leaving a story race: back to the chapter map.
       mission = null;
@@ -338,6 +405,15 @@ function play(): void {
 
 function pause(): void {
   if (mode !== 'racing') return;
+  if (online) {
+    // The race can't stop for one player: just let go of the mouse and show the menu over it.
+    if (menus.pauseOpen) return;
+    pausedAt = performance.now();
+    input.release();
+    input.unlock();
+    menus.showPause();
+    return;
+  }
   mode = 'paused';
   pausedAt = performance.now();
   sound.pause();
@@ -382,13 +458,15 @@ if (import.meta.env.DEV) {
     },
     /** Step the simulation by hand (e.g. while the tab is hidden and animation frames are paused). */
     advance(seconds: number) {
-      for (let i = 0; i < Math.round(seconds / STEP) && (mode === 'racing' || mode === 'results'); i++) update(STEP);
+      if (online?.role === 'guest') { for (let i = 0; i < Math.max(1, Math.round(seconds / STEP)); i++) guestFrame(STEP); }
+      else for (let i = 0; i < Math.round(seconds / STEP) && (mode === 'racing' || mode === 'results'); i++) update(STEP);
       drawFrame(ctx, innerWidth, innerHeight, {
         time, cam, player, cars, track, hud: raceHud(),
         particles, cursor: input.cursor, toast, locked: input.locked,
       });
     },
     get time() { return time; }, get goTime() { return goTime; }, cam,
+    get online() { return online; }, get cars() { return cars; }, get hostResults() { return hostResults; }, get season() { return season; },
     get save() { return save; },
     /** Start a story mission directly (skipping its dialogue). */
     mission(i: number) { if (!save) save = { name: 'TEST', points: 0, upgrades: {}, done: [], bonus: [] }; storyUI.hide(); menus.hide(); storyRace(i); },
@@ -400,9 +478,12 @@ function showToast(text: string, color: string): void { toast = { text, color, t
 function ordinal(n: number): string { return ['1ST', '2ND', '3RD'][n - 1] ?? `${n}TH`; }
 
 function update(dt: number): void {
-  if (input.takePause()) { pause(); return; }
+  if (input.takePause()) {
+    if (online) { if (menus.pauseOpen) { if (performance.now() - pausedAt > 300) play(); } else pause(); }
+    else { pause(); return; }
+  }
   time += dt;
-  if (input.takeReset() && mode === 'racing') startRace();
+  if (input.takeReset() && mode === 'racing' && !online) startRace();
   const racing = time >= goTime;
 
   // Countdown beeps: 3, 2, 1, then a long one for GO.
@@ -445,6 +526,7 @@ function update(dt: number): void {
     car.craft.deploy = c.deploy;
     car.craft.step(dt, c.aim, c.throttle, c.brake);
   }
+  if (online?.role === 'host') driveRemotes(dt, racing);
 
   let scraping = 0;
   for (const car of cars) {
@@ -522,6 +604,15 @@ function update(dt: number): void {
 
   if (toast) toast.t -= dt;
 
+  if (online?.role === 'host' && online.host.guests > 0) {
+    snapClock += dt;
+    if (snapClock >= 1 / SNAP_RATE) { snapClock = 0; online.host.send(snapshot()); }
+    if (finishOrder.length && time >= resultsSent) {
+      resultsSent = time + 0.5;
+      online.host.send({ t: 'results', view: resultsView() });
+    }
+  }
+
   if (mode === 'racing' && resultsAt && time >= resultsAt) {
     mode = 'results';
     sound.menu();
@@ -552,6 +643,12 @@ function scoreRound(s: Season): void {
 function resultsView(): ResultsView {
   const rows = resultRows();
   const subtitle = `${TRACKS[trackIndex].name}  ·  ${raceLaps} ${raceLaps === 1 ? 'LAP' : 'LAPS'}`;
+  if (online && !season) {
+    return {
+      title: 'RESULTS', subtitle, rows,
+      buttons: [{ act: 'restart', label: 'RACE AGAIN', primary: true }, { act: 'lobby', label: 'BACK TO LOBBY' }],
+    };
+  }
   if (!season) {
     return {
       title: 'RESULTS', subtitle, rows,
@@ -578,8 +675,8 @@ function resultsView(): ResultsView {
     subtitle, rows, standings,
     note: last && settled ? (champ.player ? 'YOU ARE THE CHAMPION!' : `${champ.name} WINS THE SEASON`) : undefined,
     buttons: last
-      ? [{ act: 'newseason', label: 'NEW SEASON', primary: true }, { act: 'change', label: 'MAIN MENU' }]
-      : [{ act: 'next', label: `NEXT: ${nextTrack}`, primary: true }, { act: 'change', label: 'QUIT SEASON' }],
+      ? [{ act: 'newseason', label: 'NEW SEASON', primary: true }, { act: online ? 'lobby' : 'change', label: online ? 'BACK TO LOBBY' : 'MAIN MENU' }]
+      : [{ act: 'next', label: `NEXT: ${nextTrack}`, primary: true }, { act: online ? 'lobby' : 'change', label: online ? 'BACK TO LOBBY' : 'QUIT SEASON' }],
   };
 }
 
@@ -794,13 +891,377 @@ function emitTrail(craft: Craft, baseHue: number): void {
   }
 }
 
+
+// --- online play --------------------------------------------------------------------------------
+
+/** The name to offer on the online screen: last one used, else the Story name. */
+function playerName(): string {
+  try { return localStorage.getItem('the-apex-name') ?? save?.name ?? 'RACER'; } catch { return save?.name ?? 'RACER'; }
+}
+
+const lobbyUI = new LobbyUI(LIVERIES, trackChoices, {
+  host: startHosting,
+  join: startJoining,
+  pickCar(car) {
+    if (!online) return;
+    if (online.role === 'host') {
+      if (online.lobby.players.some((p, i) => i > 0 && p.car === car)) return;
+      online.lobby.players[0].car = car;
+      broadcastLobby();
+    } else online.guest.send({ t: 'car', car });
+  },
+  setTrack(t) { if (online?.role === 'host') { online.lobby.track = t; broadcastLobby(); } },
+  setLaps(n) { if (online?.role === 'host') { online.lobby.laps = n; broadcastLobby(); } },
+  setAi(n) { if (online?.role === 'host') { online.lobby.ai = n; broadcastLobby(); } },
+  setRaces(n) { if (online?.role === 'host') { online.lobby.races = n; broadcastLobby(); } },
+  start: onlineStart,
+  leave: () => leaveOnline(),
+});
+
+function rememberName(name: string): void {
+  try { localStorage.setItem('the-apex-name', name); } catch { /* not kept */ }
+}
+
+/** The first car nobody in the lobby has. */
+function freeCar(lb: LobbyState, want: number): number {
+  const taken = new Set(lb.players.map((p) => p.car));
+  if (!taken.has(want)) return want;
+  return LIVERIES.findIndex((_, i) => !taken.has(i));
+}
+
+function startHosting(name: string): void {
+  rememberName(name);
+  const host = new Host();
+  const lobby: LobbyState = { players: [{ id: 'host', name, car: playerLivery }], track: trackIndex, laps: 3, ai: 5, races: 1 };   // AI fill the grid to 6 cars by default
+  online = { role: 'host', host, code: host.code, lobby };
+  lobbyUI.showStatus('Setting up your race…');
+  host.onReady = () => broadcastLobby();
+  host.onError = (msg) => leaveOnline(msg);
+  host.onJoin = (id, pname, car) => {
+    if (online?.role !== 'host') return;
+    online.lobby.players.push({ id, name: pname.slice(0, 12), car: freeCar(online.lobby, car) });
+    broadcastLobby();
+    showToast(`${pname} JOINED`, '#7dffb0');
+  };
+  host.onCar = (id, car) => {
+    if (online?.role !== 'host') return;
+    const p = online.lobby.players.find((q) => q.id === id);
+    if (p && !online.lobby.players.some((q) => q !== p && q.car === car)) { p.car = car; broadcastLobby(); }
+  };
+  host.onLeave = (id) => {
+    if (online?.role !== 'host') return;
+    const p = online.lobby.players.find((q) => q.id === id);
+    online.lobby.players = online.lobby.players.filter((q) => q.id !== id);
+    // Mid-race, an AI takes over their car.
+    const car = remotes.get(id);
+    if (car) {
+      remotes.delete(id);
+      const d = new Driver(0.85, 40);
+      d.craft = car.craft;
+      d.race = car.race;
+      rivals.push({ car, driver: d });
+    }
+    if (p) showToast(`${p.name} LEFT`, '#ffb02e');
+    broadcastLobby();
+  };
+}
+
+/** Everyone gets the lobby (each told which player they are); the host sees it too if it's up. */
+function broadcastLobby(): void {
+  if (online?.role !== 'host') return;
+  for (const p of online.lobby.players.slice(1)) online.host.send({ t: 'lobby', lobby: online.lobby, you: p.id }, p.id);
+  if (mode === 'menu') lobbyUI.showLobby(online.lobby, 'host', true, online.code);
+}
+
+function startJoining(code: string, name: string): void {
+  rememberName(name);
+  const guest = new Guest(code, name, playerLivery);
+  online = { role: 'guest', guest, code, me: '', lobby: null, snaps: [], offset: null, finishedAt: 0, inRace: false };
+  lobbyUI.showStatus(`Joining race ${code}…`);
+  guest.onError = (msg) => leaveOnline(msg);
+  guest.onClose = () => leaveOnline('The host closed the race.');
+  guest.onMessage = (m) => {
+    if (online?.role !== 'guest') return;
+    if (m.t === 'lobby') {
+      online.lobby = m.lobby;
+      online.me = m.you;
+      if (!online.inRace) lobbyUI.showLobby(m.lobby, m.you, false, online.code);
+    } else if (m.t === 'start') {
+      guestStart(m.track, m.laps, m.entrants);
+      hostResults = null;
+      if (m.title) showToast(m.title, '#ffd23f');
+    } else if (m.t === 'snap') {
+      const g = online;
+      g.snaps.push(m);
+      if (g.snaps.length > 30) g.snaps.shift();
+      // Host clock = local clock + offset; follow it smoothly.
+      const sample = m.time - performance.now() / 1000;
+      g.offset = g.offset === null ? sample : g.offset + (sample - g.offset) * 0.1;
+    } else if (m.t === 'results') {
+      hostResults = {
+        ...m.view,
+        // In a season the guest sees the same standings, but only the host moves things on.
+        rows: m.view.rows.map((r) => ({ ...r, player: r.name === player.name })),
+        standings: m.view.standings?.map((s) => ({ ...s, player: s.name === player.name })),
+        note: m.view.note ?? 'WAITING FOR THE HOST…',
+        buttons: [{ act: 'leave', label: 'LEAVE' }],
+      };
+    } else if (m.t === 'toLobby') {
+      online.inRace = false;
+      mode = 'menu';
+      sound.menu();
+      input.unlock();
+      menus.hide();
+      if (online.lobby) lobbyUI.showLobby(online.lobby, online.me, false, online.code);
+    }
+  };
+}
+
+/** Host: start from the lobby: a single race, or round 1 of a season. */
+function onlineStart(): void {
+  if (online?.role !== 'host') return;
+  const lb = online.lobby;
+  season = lb.races > 1 ? { races: lb.races, round: 0, openingTrack: lb.track, points: new Map() } : null;
+  onlineRound(lb.track);
+}
+
+/** Host: race on a track with everyone in the lobby (a season round, or a single race). */
+function onlineRound(trackNo: number): void {
+  if (online?.role !== 'host') return;
+  const lb = online.lobby;
+  mission = null;
+  playerLivery = lb.players[0].car;
+  trackIndex = trackNo;
+  track = tracks[trackIndex];
+  raceLaps = lb.laps;
+  menus.setSeason(false);
+  menus.setOnline('host');
+  startRace();
+  const title = season ? `RACE ${season.round + 1} OF ${season.races}  ·  ${TRACKS[trackIndex].name}` : undefined;
+  const peerOf = new Map([...remotes].map(([id, car]) => [car, id]));
+  const entrants: NetEntrant[] = cars.map((c) => ({
+    name: names.get(c) ?? '', livery: carLivery.get(c) ?? 0, peer: c === player ? 'host' : peerOf.get(c) ?? null,
+  }));
+  online.host.send({ t: 'start', track: trackIndex, laps: raceLaps, entrants, title });
+  lobbyUI.hide();
+  play();
+  if (title) showToast(title, '#ffd23f');
+}
+
+/** Host: everyone back to the lobby. */
+function onlineToLobby(): void {
+  if (online?.role !== 'host') return;
+  season = null;
+  online.host.send({ t: 'toLobby' });
+  mode = 'menu';
+  sound.menu();
+  input.unlock();
+  menus.hide();
+  broadcastLobby();
+}
+
+function leaveOnline(message?: string): void {
+  if (!online) return;
+  if (online.role === 'host') online.host.close(); else online.guest.close();
+  online = null;
+  remotes.clear();
+  remoteAuto.clear();
+  menus.setOnline(null);
+  mode = 'menu';
+  sound.menu();
+  input.unlock();
+  menus.hide();
+  if (message) lobbyUI.showMenu(playerName(), message);
+  else { lobbyUI.hide(); menus.showFront(); }
+}
+
+/** Host: steer each guest's car from the controls they sent (an AI brings it home after the flag). */
+
+function driveRemotes(dt: number, racing: boolean): void {
+  if (online?.role !== 'host') return;
+  for (const [peer, car] of remotes) {
+    const auto = remoteAuto.get(car) ?? (finishOrder.includes(car) ? newAuto(car) : null);
+    if (auto && racing) {
+      const c = auto.think(track, time, cars);
+      car.craft.deploy = c.deploy;
+      car.craft.step(dt, c.aim, c.throttle, c.brake);
+      continue;
+    }
+    const inp = online.host.inputs.get(peer) ?? { aim: car.craft.heading, brake: false, deploy: false };
+    judgeRemoteLaunch(peer, car, inp.brake, racing);
+    car.craft.deploy = racing && inp.deploy;
+    car.craft.step(dt, racing ? inp.aim : car.craft.heading, racing && !inp.brake, racing && inp.brake);
+  }
+}
+
+function newAuto(car: Car): Driver {
+  const d = new Driver(0.6, 77);
+  d.craft = car.craft;
+  d.race = car.race;
+  remoteAuto.set(car, d);
+  return d;
+}
+
+/** The same clutch-style turbo start as the host's own, judged from a guest's brake. */
+function judgeRemoteLaunch(peer: string, car: Car, brake: boolean, racing: boolean): void {
+  const st = remoteLaunch.get(peer) ?? { prev: brake, armed: false, released: -1, judged: false };
+  remoteLaunch.set(peer, st);
+  if (st.judged) return;
+  if (!brake && st.prev) st.released = time;
+  st.prev = brake;
+  if (!racing && brake) st.armed = true;
+  if (!racing) return;
+  let r: 'perfect' | 'stall' | 'normal' | null = null;
+  if (!st.armed) r = 'normal';
+  else if (st.released >= 0 && st.released < goTime - LAUNCH_EARLY) r = 'stall';
+  else if (st.released >= goTime - LAUNCH_EARLY && st.released <= goTime + LAUNCH_LATE) r = 'perfect';
+  else if (time - goTime > LAUNCH_LATE) r = 'normal';
+  if (!r) return;
+  st.judged = true;
+  if (r === 'perfect') car.craft.launch = LAUNCH_TIME;
+  if (r === 'stall') car.craft.stall = STALL_TIME;
+}
+
+/** Host: every car's state, rounded to keep the message small. */
+function snapshot(): Snapshot {
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  return {
+    t: 'snap', time: r3(time), goTime: r3(goTime),
+    cars: cars.map((c): CarSnap => ({
+      x: r1(c.craft.pos.x), y: r1(c.craft.pos.y), h: r3(c.craft.heading), vx: r1(c.craft.vel.x), vy: r1(c.craft.vel.y),
+      gear: c.craft.gear, rev: 0, thrust: r3(c.craft.thrust), heat: r3(c.craft.heat), over: c.craft.overheated,
+      energy: r3(c.craft.energy), dep: c.craft.deploying, slip: r3(c.craft.slipstream), drs: c.craft.drsOpen,
+      cool: c.craft.cooling, drift: c.craft.drifting,
+      lap: c.race.lap, idx: c.race.index, next: c.race.nextSector, lapStart: r3(c.race.lapStart), last: r3(c.race.lastLap), best: r3(c.race.bestLap),
+    })),
+    finish: finishOrder.map((c) => cars.indexOf(c)),
+    times: cars.map((c) => finishTimes.get(c) ?? -1),
+  };
+}
+
+/** Guest: the host started a race. Set up the cars to mirror (no physics runs here). */
+function guestStart(trackNo: number, laps: number, entrants: NetEntrant[]): void {
+  if (online?.role !== 'guest') return;
+  mission = null;
+  season = null;
+  trackIndex = trackNo;
+  track = tracks[trackIndex];
+  raceLaps = laps;
+  names.clear();
+  carLivery.clear();
+  rivals = [];
+  cars = entrants.map((e) => {
+    const car: Car = { craft: new Craft(), race: new RaceState(), ...livery(e.livery), name: e.name };
+    names.set(car, e.name);
+    carLivery.set(car, e.livery);
+    return car;
+  });
+  player = cars[Math.max(0, entrants.findIndex((e) => e.peer === (online as { me: string }).me))];
+  finishOrder = [];
+  finishTimes.clear();
+  particles.length = 0;
+  online.snaps = [];
+  online.offset = null;
+  online.finishedAt = 0;
+  online.inRace = true;
+  lastCount = COUNTDOWN + 1;
+  launchJudged = false;
+  prevBrake = input.brake;
+  launchArmed = false;
+  releasedAt = -1;
+  menus.setSeason(false);
+  menus.setOnline('guest');
+  lobbyUI.hide();
+  play();
+}
+
+/** Guest: show the race as the host sees it, smoothed between snapshots; send our controls. */
+function guestFrame(dt: number): void {
+  if (online?.role !== 'guest' || !online.snaps.length || online.offset === null) return;
+  const g = online;
+  const renderT = performance.now() / 1000 + g.offset! - INTERP_DELAY;
+  let s0 = g.snaps[0], s1 = g.snaps[g.snaps.length - 1];
+  for (let i = 0; i < g.snaps.length - 1; i++) {
+    if (g.snaps[i].time <= renderT && g.snaps[i + 1].time >= renderT) { s0 = g.snaps[i]; s1 = g.snaps[i + 1]; break; }
+  }
+  const span = s1.time - s0.time;
+  const a = span > 0 ? clamp((renderT - s0.time) / span, 0, 1) : 1;
+  time = lerp(s0.time, s1.time, a);
+  goTime = s1.goTime;
+  cars.forEach((car, i) => applySnap(car, s0.cars[i], s1.cars[i], a));
+  finishOrder = s1.finish.map((i) => cars[i]).filter(Boolean);
+  finishTimes.clear();
+  s1.times.forEach((t, i) => { if (t >= 0) finishTimes.set(cars[i], t); });
+
+  const racing = time >= goTime;
+  const count = Math.max(0, Math.ceil(goTime - time));
+  if (count !== lastCount) { if (count <= COUNTDOWN) sound.beep(count === 0); lastCount = count; }
+  judgeLaunches(racing);   // just for the PERFECT START / JUMP START message; the host decides the real thing
+
+  // Our controls, aimed from where our car is on this screen.
+  const pc = player.craft;
+  const csx = (pc.pos.x - cam.x) * cam.zoom + innerWidth / 2;
+  const csy = (pc.pos.y - cam.y) * cam.zoom + innerHeight / 2;
+  const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
+  const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
+  const steering = mode === 'racing' && !menus.pauseOpen;
+  g.guest.send({ t: 'input', aim: steering ? aim : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy });
+  if (input.takePause()) { if (menus.pauseOpen) { if (performance.now() - pausedAt > 300) play(); } else pause(); }
+
+  sound.engine(pc.gear, pc.rev, pc.thrust, clamp(pc.speed / 880, 0, 1));
+  for (const car of cars) { emitTrail(car.craft, car.hue); emitHeat(car.craft); }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.94; p.vy *= 0.94;
+  }
+  const lead = 0.35;
+  cam.x = lerp(cam.x, pc.pos.x + pc.vel.x * lead, 1 - Math.exp(-5 * dt));
+  cam.y = lerp(cam.y, pc.pos.y + pc.vel.y * lead, 1 - Math.exp(-5 * dt));
+  cam.zoom = lerp(cam.zoom, lerp(1.15, 0.75, clamp(pc.speed / 880, 0, 1)), 1 - Math.exp(-2 * dt));
+  if (toast) toast.t -= dt;
+
+  // Our finish: the results table a moment later (kept up to date while the others finish).
+  if (finishOrder.includes(player) && !g.finishedAt) {
+    g.finishedAt = time;
+    showToast(`FINISHED ${ordinal(finishOrder.indexOf(player) + 1)}`, '#ffd23f');
+    sound.chime(true);
+  }
+  if (g.finishedAt && time >= g.finishedAt + RESULTS_DELAY) {
+    if (mode === 'racing') { mode = 'results'; sound.menu(); input.release(); input.unlock(); }
+    if (time >= resultsRefresh) { resultsRefresh = time + 0.25; if (hostResults) menus.showResults(hostResults); }
+  }
+}
+
+function applySnap(car: Car, a: CarSnap, b: CarSnap, t: number): void {
+  const c = car.craft, r = car.race;
+  c.pos.x = lerp(a.x, b.x, t);
+  c.pos.y = lerp(a.y, b.y, t);
+  let dh = b.h - a.h;
+  while (dh > Math.PI) dh -= Math.PI * 2;
+  while (dh < -Math.PI) dh += Math.PI * 2;
+  c.heading = a.h + dh * t;
+  c.vel.x = lerp(a.vx, b.vx, t);
+  c.vel.y = lerp(a.vy, b.vy, t);
+  c.gear = b.gear; c.thrust = b.thrust; c.heat = b.heat; c.overheated = b.over; c.energy = b.energy;
+  c.deploying = b.dep; c.slipstream = b.slip; c.drsOpen = b.drs; c.cooling = b.cool; c.drifting = b.drift;
+  r.lap = b.lap; r.index = b.idx; r.nextSector = b.next; r.lapStart = b.lapStart; r.lastLap = b.last; r.bestLap = b.best;
+}
+
 let last = performance.now();
+let lastGuest = performance.now();
 let acc = 0;
 function frame(now: number): void {
   acc += Math.min(0.25, (now - last) / 1000);
   last = now;
   if (input.takeMute()) showToast(sound.toggleMute() ? 'SOUND OFF' : 'SOUND ON', '#ffffff');
-  if (mode === 'racing' || mode === 'results') {
+  if (online?.role === 'guest') {
+    acc = 0;
+    if (online.inRace) guestFrame(Math.min(0.1, (now - lastGuest) / 1000));
+    lastGuest = now;
+  } else if (mode === 'racing' || mode === 'results') {
     while (acc >= STEP && (mode === 'racing' || mode === 'results')) { update(STEP); acc -= STEP; }
   } else {
     acc = 0;
