@@ -86,7 +86,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   drawProps(ctx, s.track, view, s.time);
   drawParticles(ctx, s.particles);
   drawSlipstreams(ctx, s.cars, s.time);
-  for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite, car.hue);
+  // Cars sit still on the grid; the hover bob starts with their race.
+  for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite, car.hue, car.race.lapStart >= 0);
   drawOverlays(ctx, s.track, view, s.time);
 
   ctx.restore();
@@ -586,9 +587,9 @@ export const CRAFT_LENGTH = 80;
 export const NOZZLE_BACK = CRAFT_LENGTH / 2 - 4;
 export const NOZZLE_SIDE = 5.5;
 
-function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite, hue: number): void {
+function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite, hue: number, bobbing: boolean): void {
   // (hue is reassigned below while ERS is deploying)
-  const bob = Math.sin(time * 5 + c.pos.x * 0.001) * 2.5;
+  const bob = bobbing ? Math.sin(time * 5 + c.pos.x * 0.001) * 2.5 : 0;
   const hoverHeight = 10 + bob;
   const width = CRAFT_LENGTH * sprite.aspect;
 
@@ -598,8 +599,11 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
   ctx.rotate(c.heading);
   ctx.globalAlpha = 0.5;
   if (sprite.canvas) {
-    ctx.filter = `brightness(0) blur(${2 + bob * 0.5}px)`;
-    drawSprite(ctx, sprite);
+    // A pre-blurred silhouette: blurring live with ctx.filter every frame is slow.
+    const sh = shadowOf(sprite);
+    const k = CRAFT_LENGTH / sprite.canvas.height, pad = SHADOW_PAD * k;
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(sh, -width / 2 - pad, -CRAFT_LENGTH / 2 - pad, width + pad * 2, CRAFT_LENGTH + pad * 2);
   } else {
     ctx.fillStyle = '#000';
     ctx.fillRect(-CRAFT_LENGTH / 2, -width / 2, CRAFT_LENGTH, width);
@@ -654,6 +658,25 @@ const DRS_GLOW = '#4dff9a';
 const ERS_GLOW = '#b86bff';
 /** The battery counts as full from here (it charges in small steps). */
 const ENERGY_FULL = 0.995;
+
+/** Each sprite's shadow: its silhouette in black, blurred once and padded so the blur isn't clipped. */
+const SHADOW_PAD = 24;   // sprite px
+const shadows = new Map<HTMLCanvasElement, HTMLCanvasElement>();
+function shadowOf(sprite: Sprite): HTMLCanvasElement {
+  const src = sprite.canvas!;
+  let out = shadows.get(src);
+  if (!out) {
+    out = document.createElement('canvas');
+    out.width = src.width + SHADOW_PAD * 2;
+    out.height = src.height + SHADOW_PAD * 2;
+    const octx = out.getContext('2d')!;
+    // About the same softness as the old 2.5 px world-space blur, in sprite pixels.
+    octx.filter = `blur(${Math.round(2.5 * src.height / CRAFT_LENGTH)}px)`;
+    octx.drawImage(silhouette(sprite, '#000'), SHADOW_PAD, SHADOW_PAD);
+    shadows.set(src, out);
+  }
+  return out;
+}
 
 /** One solid-color copy of each sprite per color, for outlines. */
 const silhouettes = new Map<HTMLCanvasElement, Map<string, HTMLCanvasElement>>();

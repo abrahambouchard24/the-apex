@@ -1,6 +1,6 @@
 import { Driver } from './ai';
 import { Sound } from './audio';
-import { Craft, LAUNCH_TIME, Mods, NO_MODS, STALL_TIME, bumpOff, clamp, collideCrafts, lerp } from './craft';
+import { Craft, LAUNCH_TIME, Mods, NO_MODS, STALL_TIME, bumpOff, clamp, collideCrafts, lerp, wrapAngle } from './craft';
 import { Input } from './input';
 import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
@@ -1357,6 +1357,42 @@ function applySnap(car: Car, a: CarSnap, b: CarSnap, t: number, raceOnly = false
 let last = performance.now();
 let lastGuest = performance.now();
 let acc = 0;
+/**
+ * Smooth drawing: the simulation runs in fixed 1/60 s steps, but screens refresh at their own
+ * rate, so some frames get two steps and some none. Drawing each craft and the camera blended
+ * between the state before the latest step and after it (by how far we are into the next step)
+ * keeps motion even at any refresh rate.
+ */
+const before = new Map<Craft, { x: number; y: number; heading: number }>();
+const camBefore = { x: 0, y: 0, zoom: 1 };
+function rememberBefore(): void {
+  before.clear();
+  for (const car of cars) before.set(car.craft, { x: car.craft.pos.x, y: car.craft.pos.y, heading: car.craft.heading });
+  camBefore.x = cam.x; camBefore.y = cam.y; camBefore.zoom = cam.zoom;
+}
+
+/** Move crafts and the camera to the blended state for drawing; returns how to put them back. */
+function blendForDrawing(alpha: number): () => void {
+  const saved: [Craft, number, number, number][] = [];
+  for (const car of cars) {
+    const c = car.craft, b = before.get(c);
+    // Skip new crafts and teleports (a restart): just draw them where they are.
+    if (!b || Math.hypot(c.pos.x - b.x, c.pos.y - b.y) > 200) continue;
+    saved.push([c, c.pos.x, c.pos.y, c.heading]);
+    c.pos.x = b.x + (c.pos.x - b.x) * alpha;
+    c.pos.y = b.y + (c.pos.y - b.y) * alpha;
+    c.heading = b.heading + wrapAngle(c.heading - b.heading) * alpha;
+  }
+  const cx = cam.x, cy = cam.y, cz = cam.zoom;
+  if (Math.hypot(cx - camBefore.x, cy - camBefore.y) < 400) {
+    cam.x = lerp(camBefore.x, cx, alpha); cam.y = lerp(camBefore.y, cy, alpha); cam.zoom = lerp(camBefore.zoom, cz, alpha);
+  }
+  return () => {
+    for (const [c, x, y, h] of saved) { c.pos.x = x; c.pos.y = y; c.heading = h; }
+    cam.x = cx; cam.y = cy; cam.zoom = cz;
+  };
+}
+
 function frame(now: number): void {
   acc += Math.min(0.25, (now - last) / 1000);
   last = now;
@@ -1366,7 +1402,7 @@ function frame(now: number): void {
     if (online.inRace) guestFrame(Math.min(0.1, (now - lastGuest) / 1000));
     lastGuest = now;
   } else if (mode === 'racing' || mode === 'results') {
-    while (acc >= STEP && (mode === 'racing' || mode === 'results')) { update(STEP); acc -= STEP; }
+    while (acc >= STEP && (mode === 'racing' || mode === 'results')) { rememberBefore(); update(STEP); acc -= STEP; }
   } else {
     acc = 0;
     // Esc / P on the pause menu resumes.
@@ -1376,10 +1412,13 @@ function frame(now: number): void {
   fitCanvas();
   const shift = online?.role === 'guest' && pred.ready;
   if (shift) { player.craft.pos.x += pred.errX; player.craft.pos.y += pred.errY; }
+  const blended = online?.role !== 'guest' && (mode === 'racing' || mode === 'results');
+  const restore = blended ? blendForDrawing(Math.min(1, acc / STEP)) : null;
   drawFrame(ctx, innerWidth, innerHeight, {
     time, cam, player, cars, track, hud: raceHud(),
     particles, cursor: input.cursor, toast, locked: input.locked,
   });
+  restore?.();
   if (shift) { player.craft.pos.x -= pred.errX; player.craft.pos.y -= pred.errY; }
   requestAnimationFrame(frame);
 }
