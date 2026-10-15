@@ -26,9 +26,6 @@ export class Driver {
   insideBias = INSIDE_BIAS;
   /** How much of the slip angle the AI steers against (sign from testing; see CLAUDE.md). */
   slipCorrect = 0.5;
-  /** S-bends: bends both ways tighter than this curvature (1/radius) ahead, and the corner speed taken into them. */
-  sBendCurve = 1 / 1400;
-  sBendSpeed = 0.8;
   /** Which side we're passing on (+1 = track-left, -1 = track-right), and for how long. */
   private passSide = 0;
   private passTimer = 0;
@@ -50,17 +47,12 @@ export class Driver {
     const myProgress = this.race.progress(track);
 
     // The tightest bend in the braking zone, and which side its inside is on.
-    let maxCurve = 0, cornerCurve = 0, maxLeft = 0, maxRight = 0;
+    let maxCurve = 0, cornerCurve = 0;
     const zone = 12 + Math.round(speed / 22);
     for (let k = 4; k < zone; k++) {
       const cv = track.pts[(i + k) % m].curve;
       if (Math.abs(cv) > maxCurve) { maxCurve = Math.abs(cv); cornerCurve = cv; }
-      if (cv > maxLeft) maxLeft = cv;
-      if (-cv > maxRight) maxRight = -cv;
     }
-    // An S-bend ahead: real bends both ways in the braking zone. The slide out of the first one
-    // carries the car across the track into the second, so take a little less speed in.
-    const sBend = Math.min(maxLeft, maxRight) > this.sBendCurve;
     const insideSign = cornerCurve * this.insideBias > 0 ? 1 : -1;
     const cornerComing = maxCurve > 1 / 700;
 
@@ -130,7 +122,7 @@ export class Driver {
 
     // Corner speed from the tightest curvature ahead; a late-brake mistake carries too much in.
     const late = this.mistake?.kind === 'late-brake' ? 1.18 : 1;
-    const safe = Math.min(1000, (this.cornerK * this.skill * late * (sBend ? this.sBendSpeed : 1)) / Math.sqrt(maxCurve + 1e-6));
+    const safe = Math.min(1000, (this.cornerK * this.skill * late) / Math.sqrt(maxCurve + 1e-6));
     const brake = speed > safe * 1.04;
     const throttle = !brake && speed < safe;
     // ERS: spend energy on straights to attack or defend, or when the battery is nearly full.
