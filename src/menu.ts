@@ -32,6 +32,8 @@ export interface MenuHandlers {
   story(): void;
   /** The Online window on the front menu. */
   online(): void;
+  /** Open the TUNE CAR screen for the selected car. */
+  tune(car: number): void;
   resume(): void;
   restart(): void;
   changeCar(): void;
@@ -278,7 +280,7 @@ export class Menus {
           <div class="hr-option" data-opt="races"><label>RACES</label><div class="hr-seg" data-seg="races">
             ${SEASON_CHOICES.map((n) => `<button data-v="${n}">${n}</button>`).join('')}</div></div>
         </div>
-        <div class="hr-btns"><button class="hr-btn" data-act="start">START RACE</button></div>
+        <div class="hr-btns row"><button class="hr-btn" data-act="start">START RACE</button><button class="hr-btn secondary" data-act="tune">TUNE CAR</button></div>
         <p class="hr-keys">Mouse: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; Left click: brake &nbsp;·&nbsp; Right click: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
       </div>`);
     const grid = this.start.querySelector('.hr-cars')!;
@@ -345,6 +347,7 @@ export class Menus {
         else if (act === 'quick') this.showSetup('single');
         else if (act === 'season') this.showSetup('season');
         else if (act === 'front') this.showFront();
+        else if (act === 'tune') this.on.tune(this.selected);
         else if (act === 'start') this.on.start(this.setup());
         else if (act === 'resume') this.on.resume();
         else if (act === 'restart') this.on.restart();

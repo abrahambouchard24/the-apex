@@ -81,8 +81,9 @@ export interface Mods {
   grip: number;    // cornering grip
   heat: number;    // heat resistance: this share less heat from hits and grinding
   ers: number;     // boost effectiveness
+  harvest: number; // how fast drifting charges the boost battery
 }
-export const NO_MODS: Mods = { top: 0, accel: 0, grip: 0, heat: 0, ers: 0 };
+export const NO_MODS: Mods = { top: 0, accel: 0, grip: 0, heat: 0, ers: 0, harvest: 0 };
 
 /** A car's complete physics state (see Craft.getState). */
 export interface CraftState {
@@ -231,7 +232,7 @@ export class Craft {
     // ERS charges from drifting: the deeper and faster the slide, the quicker it fills.
     if (this.drifting && Math.abs(this.slip) > DRIFT_CHARGE_FROM) {
       const depth = clamp((Math.abs(this.slip) - DRIFT_CHARGE_FROM) / (DRIFT_DEEP - DRIFT_CHARGE_FROM), 0.25, 1);
-      const gain = Math.min(ERS_DRIFT * depth * clamp(speed / 600, 0, 1) * dt, HARVEST_PER_LAP - this.harvested, 1 - this.energy);
+      const gain = Math.min(ERS_DRIFT * (1 + this.mods.harvest) * depth * clamp(speed / 600, 0, 1) * dt, HARVEST_PER_LAP - this.harvested, 1 - this.energy);
       if (gain > 0) { this.energy += gain; this.harvested += gain; }
     }
 

@@ -15,6 +15,8 @@ export interface StoryHandlers {
   exit(): void;
   /** The save changed (upgrade bought, name set, progress reset). */
   saved(save: Save): void;
+  /** Open the TUNE CAR screen (it returns to the story screen when done). */
+  tune(back: () => void): void;
 }
 
 /** What the result screen reports after a story race. */
@@ -247,6 +249,7 @@ export class StoryUI {
         ${journal ? `<p class="st-journal-head">THE STORY SO FAR</p><div class="st-journal">${journal}</div>` : ''}
         <div class="st-actions">
           ${s.done.includes('tryout') ? '<button class="hr-btn" data-garage>GARAGE</button>' : ''}
+          <button class="hr-btn secondary" data-tune>TUNE CAR</button>
           <button class="hr-btn secondary" data-exit>MAIN MENU</button>
         </div>
         <div style="text-align:center"><button class="st-link" data-reset>RESET STORY PROGRESS</button></div>
@@ -255,6 +258,7 @@ export class StoryUI {
     this.screen.querySelectorAll<HTMLElement>('[data-mission]').forEach((b) =>
       b.addEventListener('click', () => this.showBriefing(Number(b.dataset.mission))));
     this.screen.querySelector('[data-garage]')?.addEventListener('click', () => this.showGarage());
+    this.screen.querySelector('[data-tune]')?.addEventListener('click', () => this.on.tune(() => this.showHub()));
     this.screen.querySelector('[data-exit]')!.addEventListener('click', () => this.on.exit());
     this.screen.querySelector('[data-reset]')!.addEventListener('click', () => {
       if (!confirm('Reset all story progress, points and upgrades? This can\'t be undone.')) return;
