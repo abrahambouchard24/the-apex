@@ -125,10 +125,10 @@ const CSS = `
 .hr-window::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgba(5,6,14,0.92)); z-index: 1; pointer-events: none; }
 
 /* Story: dusk at the county speedway, two cars nose to nose. */
-.sc-story { background: linear-gradient(180deg, #2a1240 0%, #a43a52 46%, #ff9a4a 62%, #1a1424 63%, #0d0b16 100%); }
-.sc-story .sun { position: absolute; left: 50%; top: 44%; width: 150px; height: 150px; margin: -75px; border-radius: 50%;
+.sc-story { background: linear-gradient(180deg, #2a1240 0%, #a43a52 26%, #ff9a4a 39%, #1a1424 40%, #0d0b16 100%); }
+.sc-story .sun { position: absolute; left: 50%; top: 30%; width: 150px; height: 150px; margin: -75px; border-radius: 50%;
   background: radial-gradient(circle, #ffd27a, #ff7a3d 60%, transparent 72%); filter: blur(1px); }
-.sc-story .stand { position: absolute; left: -5%; right: -5%; top: 52%; height: 11%; background:
+.sc-story .stand { position: absolute; left: -5%; right: -5%; top: 30%; height: 10%; background:
   radial-gradient(circle, rgba(255,214,140,0.9) 0 1.5px, transparent 2px) 0 4px / 11px 9px,
   radial-gradient(circle, rgba(79,227,255,0.8) 0 1.5px, transparent 2px) 5px 8px / 13px 9px,
   repeating-linear-gradient(90deg, #1b1528 0 14px, #251c36 14px 16px); }
@@ -136,8 +136,8 @@ const CSS = `
 .sc-story .stand::before { content: ''; position: absolute; left: 0; right: 0; top: -4px; height: 4px;
   background: linear-gradient(90deg, #ff3d6e, #ffd23f, #4fe3ff, #b86bff, #ff3d6e) 0 0 / 50% 100%;
   box-shadow: 0 0 12px rgba(255,160,120,0.7); animation: hr-wash 3s linear infinite; }
-/* The deck the cars sit on: plates, a lit groove and a glowing energy rail with a pulse running along it. */
-.sc-story .deck { position: absolute; left: 0; right: 0; top: 63%; bottom: 0;
+/* The deck in front of the stand, where the cars sit: plates, a lit groove and a glowing energy rail with a pulse running along it. */
+.sc-story .deck { position: absolute; left: 0; right: 0; top: 40%; bottom: 0;
   background: repeating-linear-gradient(90deg, rgba(0,0,0,0.35) 0 2px, transparent 2px 46px),
   linear-gradient(180deg, #2a2236, #17121f 70%); }
 .sc-story .deck::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: #ff9a4a;
@@ -146,10 +146,10 @@ const CSS = `
   box-shadow: 0 0 14px 4px rgba(255,220,170,0.9); animation: hr-pulse-run 1.8s linear infinite; }
 @keyframes hr-wash { to { background-position: 100% 0; } }
 @keyframes hr-pulse-run { from { left: -20%; } to { left: 110%; } }
-.sc-story img { position: absolute; top: 52%; height: 72px; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
+.sc-story img { position: absolute; top: 44%; height: 72px; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
 .sc-story .me { left: 22%; transform: rotate(90deg); }
 .sc-story .him { right: 22%; transform: rotate(-90deg); }
-.sc-story .vs { position: absolute; left: 50%; top: 56%; transform: translateX(-50%); font: 900 italic 30px system-ui; color: #ffd23f;
+.sc-story .vs { position: absolute; left: 50%; top: 49%; transform: translateX(-50%); font: 900 italic 30px system-ui; color: #ffd23f;
   text-shadow: 0 0 18px #ff7a3d; animation: hr-pulse 1.6s ease-in-out infinite; }
 @keyframes hr-pulse { 50% { transform: translateX(-50%) scale(1.12); } }
 
