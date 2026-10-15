@@ -4,6 +4,7 @@
 
 import Peer, { DataConnection } from 'peerjs';
 import type { ResultsView } from './menu';
+import type { CraftState } from './craft';
 
 const ID_PREFIX = 'the-apex-race-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O or 1/I to mix up
@@ -41,12 +42,20 @@ export interface Snapshot {
   finish: number[];
   /** Finish times (from the lights going out) per car index, -1 if still running. */
   times: number[];
+  /**
+   * Per guest: the full state of their car and the last of their controls the host applied, so
+   * the guest's own prediction can reset to it and replay anything newer.
+   */
+  own: Record<string, { seq: number; s: CraftState }>;
 }
+
+/** One frame of a guest's controls. seq counts up from 1 so the host can say which it applied. */
+export interface Controls { seq: number; aim: number; brake: boolean; deploy: boolean }
 
 export type ToHost =
   | { t: 'hello'; name: string; car: number }
   | { t: 'car'; car: number }
-  | { t: 'input'; aim: number; brake: boolean; deploy: boolean };
+  | ({ t: 'input' } & Controls);
 
 export type ToGuest =
   | { t: 'lobby'; lobby: LobbyState; you: string }
@@ -62,8 +71,8 @@ export class Host {
   readonly code = newCode();
   private peer: Peer;
   private conns = new Map<string, DataConnection>();
-  /** Latest controls from each guest. */
-  inputs = new Map<string, { aim: number; brake: boolean; deploy: boolean }>();
+  /** Each guest's controls not yet applied, oldest first (one is used per physics step). */
+  private queues = new Map<string, Controls[]>();
   onJoin: (id: string, name: string, car: number) => void = () => {};
   onCar: (id: string, car: number) => void = () => {};
   onLeave: (id: string) => void = () => {};
@@ -89,13 +98,17 @@ export class Host {
     } else if (m.t === 'car') {
       this.onCar(conn.peer, m.car);
     } else if (m.t === 'input') {
-      this.inputs.set(conn.peer, { aim: m.aim, brake: m.brake, deploy: m.deploy });
+      const q = this.queues.get(conn.peer) ?? [];
+      q.push({ seq: m.seq, aim: m.aim, brake: m.brake, deploy: m.deploy });
+      // If the guest's frames run a little ahead of ours, drop the oldest rather than fall behind.
+      while (q.length > 6) q.shift();
+      this.queues.set(conn.peer, q);
     }
   }
 
   private drop(id: string): void {
     if (!this.conns.delete(id)) return;
-    this.inputs.delete(id);
+    this.queues.delete(id);
     this.onLeave(id);
   }
 
@@ -103,6 +116,12 @@ export class Host {
   send(m: ToGuest, only?: string): void {
     for (const [id, c] of this.conns) if (!only || id === only) if (c.open) c.send(m);
   }
+
+  /** The next of a guest's controls to apply, or null if none has arrived since the last step. */
+  nextInput(id: string): Controls | null { return this.queues.get(id)?.shift() ?? null; }
+
+  /** Drop any queued controls (a new race starts from a clean slate). */
+  clearInputs(): void { this.queues.clear(); }
 
   get guests(): number { return this.conns.size; }
 

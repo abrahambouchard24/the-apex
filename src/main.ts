@@ -1,6 +1,6 @@
 import { Driver } from './ai';
 import { Sound } from './audio';
-import { Craft, LAUNCH_TIME, Mods, NO_MODS, STALL_TIME, clamp, collideCrafts, lerp } from './craft';
+import { Craft, LAUNCH_TIME, Mods, NO_MODS, STALL_TIME, bumpOff, clamp, collideCrafts, lerp } from './craft';
 import { Input } from './input';
 import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
@@ -9,7 +9,7 @@ import {
 } from './story';
 import { StoryUI } from './storyui';
 import { LobbyUI } from './lobbyui';
-import { CarSnap, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
+import { CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
@@ -92,6 +92,33 @@ const carLivery = new Map<Car, number>();
 const remoteLaunch = new Map<string, { prev: boolean; armed: boolean; released: number; judged: boolean }>();
 let snapClock = 0;
 let resultsSent = 0;
+/** Host side: each guest's controls in use, and the seq of the last one applied. */
+const lastControls = new Map<string, Controls>();
+
+/**
+ * Guest side: our own car runs here too, from our controls, so it responds instantly. Each host
+ * snapshot carries the true state of our car and the last control applied to it; we reset to
+ * that, replay the controls the host hasn't applied yet, and blend away any small difference.
+ */
+const pred = {
+  ready: false,
+  seq: 0,
+  history: [] as { c: Controls; racing: boolean }[],
+  race: new RaceState(),
+  /** What's still to be blended out after a correction (drawn as an offset on our car). */
+  errX: 0, errY: 0,
+  acc: 0,
+  /** Size of each correction (px), for testing. */
+  corrections: [] as number[],
+};
+const SNAP_CORRECTION = 150;   // px: a correction bigger than this is applied at once, not blended
+/**
+ * Guest side: where the other cars are estimated to be right now. They're drawn INTERP_DELAY
+ * behind, and the host is about another GHOST_LATENCY ahead of what reached us, so project each
+ * forward along its velocity. Our predicted car bumps off these and feels their slipstream.
+ */
+const GHOST_LATENCY = 0.05;
+let ghosts: Craft[] = [];
 /** Guest: the latest results screen from the host. */
 let hostResults: import('./menu').ResultsView | null = null;
 
@@ -171,6 +198,8 @@ function startRace(): void {
   remotes.clear();
   remoteAuto.clear();
   remoteLaunch.clear();
+  lastControls.clear();
+  if (online?.role === 'host') online.host.clearInputs();
   carLivery.clear();
   rivals = cfg.field.filter((e) => !e.peer).map((e, k) => {
     const driver = new Driver(e.skill, k + 1);
@@ -466,7 +495,7 @@ if (import.meta.env.DEV) {
       });
     },
     get time() { return time; }, get goTime() { return goTime; }, cam,
-    get online() { return online; }, get cars() { return cars; }, get hostResults() { return hostResults; }, get season() { return season; },
+    get online() { return online; }, pred, get cars() { return cars; }, get hostResults() { return hostResults; }, get season() { return season; },
     get save() { return save; },
     /** Start a story mission directly (skipping its dialogue). */
     mission(i: number) { if (!save) save = { name: 'TEST', points: 0, upgrades: {}, done: [], bonus: [] }; storyUI.hide(); menus.hide(); storyRace(i); },
@@ -993,6 +1022,9 @@ function startJoining(code: string, name: string): void {
     } else if (m.t === 'snap') {
       const g = online;
       g.snaps.push(m);
+      const mine = cars.indexOf(player);
+      const own = m.own?.[g.me];
+      if (own && mine >= 0 && !m.finish.includes(mine)) reconcile(own, m.cars[mine].idx);
       if (g.snaps.length > 30) g.snaps.shift();
       // Host clock = local clock + offset; follow it smoothly.
       const sample = m.time - performance.now() / 1000;
@@ -1087,7 +1119,9 @@ function driveRemotes(dt: number, racing: boolean): void {
       car.craft.step(dt, c.aim, c.throttle, c.brake);
       continue;
     }
-    const inp = online.host.inputs.get(peer) ?? { aim: car.craft.heading, brake: false, deploy: false };
+    const next = online.host.nextInput(peer);
+    if (next) lastControls.set(peer, next);
+    const inp = lastControls.get(peer) ?? { seq: 0, aim: car.craft.heading, brake: false, deploy: false };
     judgeRemoteLaunch(peer, car, inp.brake, racing);
     car.craft.deploy = racing && inp.deploy;
     car.craft.step(dt, racing ? inp.aim : car.craft.heading, racing && !inp.brake, racing && inp.brake);
@@ -1137,6 +1171,7 @@ function snapshot(): Snapshot {
     })),
     finish: finishOrder.map((c) => cars.indexOf(c)),
     times: cars.map((c) => finishTimes.get(c) ?? -1),
+    own: Object.fromEntries([...remotes].map(([peer, car]) => [peer, { seq: lastControls.get(peer)?.seq ?? 0, s: car.craft.getState() }])),
   };
 }
 
@@ -1165,6 +1200,12 @@ function guestStart(trackNo: number, laps: number, entrants: NetEntrant[]): void
   online.offset = null;
   online.finishedAt = 0;
   online.inRace = true;
+  pred.ready = false;
+  pred.seq = 0;
+  pred.history = [];
+  pred.race = new RaceState();
+  pred.errX = pred.errY = 0;
+  pred.acc = 0;
   lastCount = COUNTDOWN + 1;
   launchJudged = false;
   prevBrake = input.brake;
@@ -1189,24 +1230,52 @@ function guestFrame(dt: number): void {
   const a = span > 0 ? clamp((renderT - s0.time) / span, 0, 1) : 1;
   time = lerp(s0.time, s1.time, a);
   goTime = s1.goTime;
-  cars.forEach((car, i) => applySnap(car, s0.cars[i], s1.cars[i], a));
+  const mine = cars.indexOf(player);
+  const done = s1.finish.includes(mine);
+  if (done) pred.ready = false;   // the host's autopilot brings us home; just show it
+  cars.forEach((car, i) => applySnap(car, s0.cars[i], s1.cars[i], a, car === player && pred.ready));
   finishOrder = s1.finish.map((i) => cars[i]).filter(Boolean);
   finishTimes.clear();
   s1.times.forEach((t, i) => { if (t >= 0) finishTimes.set(cars[i], t); });
+  const ahead = INTERP_DELAY + GHOST_LATENCY;
+  ghosts = cars.filter((c) => c !== player).map((c) => {
+    const g = new Craft();
+    g.pos = { x: c.craft.pos.x + c.craft.vel.x * ahead, y: c.craft.pos.y + c.craft.vel.y * ahead };
+    g.vel = { x: c.craft.vel.x, y: c.craft.vel.y };
+    g.heading = c.craft.heading;
+    return g;
+  });
 
   const racing = time >= goTime;
   const count = Math.max(0, Math.ceil(goTime - time));
   if (count !== lastCount) { if (count <= COUNTDOWN) sound.beep(count === 0); lastCount = count; }
   judgeLaunches(racing);   // just for the PERFECT START / JUMP START message; the host decides the real thing
 
-  // Our controls, aimed from where our car is on this screen.
+  // Our controls, aimed from where our car is on this screen, at the physics rate; each one
+  // also moves our predicted car straight away.
   const pc = player.craft;
-  const csx = (pc.pos.x - cam.x) * cam.zoom + innerWidth / 2;
-  const csy = (pc.pos.y - cam.y) * cam.zoom + innerHeight / 2;
+  const csx = (pc.pos.x + pred.errX - cam.x) * cam.zoom + innerWidth / 2;
+  const csy = (pc.pos.y + pred.errY - cam.y) * cam.zoom + innerHeight / 2;
   const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
   const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
   const steering = mode === 'racing' && !menus.pauseOpen;
-  g.guest.send({ t: 'input', aim: steering ? aim : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy });
+  // Racing by the host's clock as of now (not the smoothed, slightly older one the others are drawn at).
+  const hostNow = performance.now() / 1000 + g.offset!;
+  pred.acc += dt;
+  while (pred.acc >= STEP) {
+    pred.acc -= STEP;
+    const c: Controls = { seq: ++pred.seq, aim: steering ? aim : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy };
+    g.guest.send({ t: 'input', ...c });
+    if (pred.ready) {
+      const racingNow = hostNow >= goTime;
+      pred.history.push({ c, racing: racingNow });
+      if (pred.history.length > 120) pred.history.shift();
+      predictStep(c, racingNow);
+    }
+  }
+  const fade = Math.exp(-12 * dt);
+  pred.errX *= fade;
+  pred.errY *= fade;
   if (input.takePause()) { if (menus.pauseOpen) { if (performance.now() - pausedAt > 300) play(); } else pause(); }
 
   sound.engine(pc.gear, pc.rev, pc.thrust, clamp(pc.speed / 880, 0, 1));
@@ -1235,8 +1304,43 @@ function guestFrame(dt: number): void {
   }
 }
 
-function applySnap(car: Car, a: CarSnap, b: CarSnap, t: number): void {
+/** One physics step of our own car, as the host will run it (walls included; other cars aren't). */
+function predictStep(c: Controls, racing: boolean): void {
+  const pc = player.craft;
+  pc.feelWake([...ghosts, pc], STEP);
+  pc.deploy = racing && c.deploy;
+  pc.step(STEP, racing ? c.aim : pc.heading, racing && !c.brake, racing && c.brake);
+  if (pred.race.update(track, pc, 0, racing)) pc.harvested = 0;
+  collideWalls(track, pc, pred.race, STEP);
+  for (const g of ghosts) bumpOff(pc, g);
+  pc.cooling = inCoolingLane(track, pc, pred.race.index);
+}
+
+/** Guest: a snapshot arrived with the host's version of our car. Reset to it and replay what's newer. */
+function reconcile(own: { seq: number; s: import('./craft').CraftState }, idx: number): void {
+  const pc = player.craft;
+  const shownX = pc.pos.x + pred.errX, shownY = pc.pos.y + pred.errY;
+  pc.setState(own.s);
+  pred.race.index = idx;
+  if (!pred.ready) {
+    pred.ready = true;
+    pred.history = [];
+    pred.errX = pred.errY = 0;
+    return;
+  }
+  pred.history = pred.history.filter((h) => h.c.seq > own.seq);
+  for (const h of pred.history) predictStep(h.c, h.racing);
+  // Blend the difference in rather than jump, unless it's big (a crash we didn't see coming).
+  const ex = shownX - pc.pos.x, ey = shownY - pc.pos.y;
+  if (import.meta.env.DEV) { pred.corrections.push(Math.hypot(ex, ey)); if (pred.corrections.length > 2000) pred.corrections.shift(); }
+  if (Math.hypot(ex, ey) > SNAP_CORRECTION) { pred.errX = pred.errY = 0; }
+  else { pred.errX = ex; pred.errY = ey; }
+}
+
+function applySnap(car: Car, a: CarSnap, b: CarSnap, t: number, raceOnly = false): void {
   const c = car.craft, r = car.race;
+  r.lap = b.lap; r.index = b.idx; r.nextSector = b.next; r.lapStart = b.lapStart; r.lastLap = b.last; r.bestLap = b.best;
+  if (raceOnly) return;
   c.pos.x = lerp(a.x, b.x, t);
   c.pos.y = lerp(a.y, b.y, t);
   let dh = b.h - a.h;
@@ -1270,10 +1374,13 @@ function frame(now: number): void {
     if (input.takePause() && mode === 'paused' && now - pausedAt > 300) play();
   }
   fitCanvas();
+  const shift = online?.role === 'guest' && pred.ready;
+  if (shift) { player.craft.pos.x += pred.errX; player.craft.pos.y += pred.errY; }
   drawFrame(ctx, innerWidth, innerHeight, {
     time, cam, player, cars, track, hud: raceHud(),
     particles, cursor: input.cursor, toast, locked: input.locked,
   });
+  if (shift) { player.craft.pos.x -= pred.errX; player.craft.pos.y -= pred.errY; }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

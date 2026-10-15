@@ -84,6 +84,14 @@ export interface Mods {
 }
 export const NO_MODS: Mods = { top: 0, accel: 0, grip: 0, heat: 0, ers: 0 };
 
+/** A car's complete physics state (see Craft.getState). */
+export interface CraftState {
+  x: number; y: number; vx: number; vy: number; h: number; gear: number;
+  drifting: boolean; braking: boolean; thrust: number; shiftTimer: number; shiftPause: number;
+  slipstream: number; catchUp: number; heat: number; overheated: boolean; launch: number;
+  stall: number; energy: number; deploying: boolean; harvested: number; drsOpen: boolean; cooling: boolean;
+}
+
 export class Craft {
   pos: Vec = { x: 0, y: 0 };
   vel: Vec = { x: 0, y: 0 };
@@ -123,6 +131,23 @@ export class Craft {
   drsOpen = false;
   /** True while over the cooling lane (set by the race each step). */
   cooling = false;
+
+  /** Every field the physics reads or writes, so a car can be copied exactly (online prediction). */
+  getState(): CraftState {
+    return {
+      x: this.pos.x, y: this.pos.y, vx: this.vel.x, vy: this.vel.y, h: this.heading, gear: this.gear,
+      drifting: this.drifting, braking: this.braking, thrust: this.thrust, shiftTimer: this.shiftTimer, shiftPause: this.shiftPause,
+      slipstream: this.slipstream, catchUp: this.catchUp, heat: this.heat, overheated: this.overheated, launch: this.launch,
+      stall: this.stall, energy: this.energy, deploying: this.deploying, harvested: this.harvested, drsOpen: this.drsOpen, cooling: this.cooling,
+    };
+  }
+
+  setState(s: CraftState): void {
+    this.pos.x = s.x; this.pos.y = s.y; this.vel.x = s.vx; this.vel.y = s.vy; this.heading = s.h; this.gear = s.gear;
+    this.drifting = s.drifting; this.braking = s.braking; this.thrust = s.thrust; this.shiftTimer = s.shiftTimer; this.shiftPause = s.shiftPause;
+    this.slipstream = s.slipstream; this.catchUp = s.catchUp; this.heat = s.heat; this.overheated = s.overheated; this.launch = s.launch;
+    this.stall = s.stall; this.energy = s.energy; this.deploying = s.deploying; this.harvested = s.harvested; this.drsOpen = s.drsOpen; this.cooling = s.cooling;
+  }
 
   get speed(): number { return Math.hypot(this.vel.x, this.vel.y); }
 
@@ -318,6 +343,23 @@ export function collideCrafts(a: Craft, b: Craft, radius = 22): number {
   const j = (-(1 + 0.5) * closing) / 2;
   a.vel.x -= j * nx; a.vel.y -= j * ny;
   b.vel.x += j * nx; b.vel.y += j * ny;
+  return -closing;
+}
+
+/**
+ * collideCrafts as seen by car a alone: a gets exactly the push and impulse it would get, and b
+ * (an estimate of where another car is) is left untouched. Used to predict bumps online.
+ */
+export function bumpOff(a: Craft, b: { pos: Vec; vel: Vec }, radius = 22): number {
+  const dx = b.pos.x - a.pos.x, dy = b.pos.y - a.pos.y;
+  const d = Math.hypot(dx, dy), min = radius * 2;
+  if (d >= min || d === 0) return 0;
+  const nx = dx / d, ny = dy / d, push = (min - d) / 2;
+  a.pos.x -= nx * push; a.pos.y -= ny * push;
+  const closing = (b.vel.x - a.vel.x) * nx + (b.vel.y - a.vel.y) * ny;
+  if (closing >= 0) return 0;
+  const j = (-(1 + 0.5) * closing) / 2;
+  a.vel.x -= j * nx; a.vel.y -= j * ny;
   return -closing;
 }
 
