@@ -122,7 +122,9 @@ export class Driver {
 
     // Corner speed from the tightest curvature ahead; a late-brake mistake carries too much in.
     const late = this.mistake?.kind === 'late-brake' ? 1.18 : 1;
-    const safe = Math.min(1000, (this.cornerK * this.skill * late) / Math.sqrt(maxCurve + 1e-6));
+    // More grip (wing, upgrades) lets the car carry more speed through a bend: about its square root.
+    const gripGain = Math.sqrt(Math.max(0.5, 1 + c.mods.grip));
+    const safe = Math.min(1000, (this.cornerK * this.skill * late * gripGain) / Math.sqrt(maxCurve + 1e-6));
     const brake = speed > safe * 1.04;
     const throttle = !brake && speed < safe;
     // ERS: spend energy on straights to attack or defend, or when the battery is nearly full.

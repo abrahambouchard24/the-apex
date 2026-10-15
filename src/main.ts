@@ -9,6 +9,8 @@ import {
 } from './story';
 import { StoryUI } from './storyui';
 import { LobbyUI } from './lobbyui';
+import { addMods, loadSetup, sanitize, saveSetup, setupMods } from './setup';
+import { TuneUI } from './tuneui';
 import { CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
@@ -139,26 +141,30 @@ function raceConfig(): RaceConfig {
     const aiLiveries = LIVERIES.map((_, i) => i).filter((i) => !taken.includes(i)).slice(0, Math.max(0, Math.min(lb.ai, 6 - lb.players.length)));
     return {
       field: [
-        ...lb.players.slice(1).map((p) => ({ livery: p.car, name: p.name, skill: 1, mods: { ...NO_MODS }, peer: p.id })),
+        ...lb.players.slice(1).map((p) => ({ livery: p.car, name: p.name, skill: 1, mods: setupMods(sanitize(p.setup)), peer: p.id })),
         ...aiLiveries.map((li) => ({ livery: li, name: LIVERIES[li].name, skill: lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random()), mods: { ...NO_MODS } })),
       ],
-      playerName: lb.players[0].name, playerMods: { ...NO_MODS }, grid: 'random', startHeat: 0,
+      playerName: lb.players[0].name, playerMods: setupMods(carSetup), grid: 'random', startHeat: 0,
     };
   }
   if (mission !== null && save) {
     const m = MISSIONS[mission];
     return {
       field: m.rivals.map((e) => ({ livery: e.livery, name: e.name, skill: e.skill, mods: rivalMods(m, e, playerMods(save!)), who: e.who })),
-      playerName: save.name, playerMods: playerMods(save), grid: m.grid, startHeat: m.startHeat ?? 0,
+      playerName: save.name, playerMods: addMods(playerMods(save), setupMods(carSetup)), grid: m.grid, startHeat: m.startHeat ?? 0,
     };
   }
   return {
     field: LIVERIES.map((_, i) => i).filter((i) => i !== playerLivery).map((li) => ({
       livery: li, name: LIVERIES[li].name, skill: lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random()), mods: { ...NO_MODS },
     })),
-    playerName: LIVERIES[playerLivery].name, playerMods: { ...NO_MODS }, grid: 'random', startHeat: 0,
+    playerName: LIVERIES[playerLivery].name, playerMods: setupMods(carSetup), grid: 'random', startHeat: 0,
   };
 }
+
+/** The player's car setup (TUNE CAR), kept in the browser. */
+let carSetup = loadSetup();
+const tuneUI = new TuneUI();
 
 let player: Car;
 let rivals: { car: Car; driver: Driver }[] = [];
@@ -212,6 +218,7 @@ function startRace(): void {
   });
   const humans = cfg.field.filter((e) => e.peer).map((e) => {
     const car: Car = { craft: new Craft(), race: new RaceState(), ...livery(e.livery), name: e.name };
+    car.craft.mods = { ...e.mods };   // that player's TUNE CAR setup
     names.set(car, e.name);
     carLivery.set(car, e.livery);
     remotes.set(e.peer!, car);
@@ -272,6 +279,9 @@ const trackChoices: TrackChoice[] = tracks.map((t, i) => {
 });
 
 const menus = new Menus(LIVERIES, trackChoices, {
+  tune(car) {
+    tuneUI.open(carSetup, LIVERIES[car].url, (s) => { carSetup = s; saveSetup(s); }, () => {});
+  },
   online() {
     menus.hide();
     lobbyUI.showMenu(playerName());
@@ -368,6 +378,10 @@ const storyUI = new StoryUI({
   saved(s) {
     save = s;
     writeSave(s);
+  },
+  tune(back) {
+    storyUI.hide();
+    tuneUI.open(carSetup, LIVERIES[0].url, (s) => { carSetup = s; saveSetup(s); }, back);
   },
 });
 
@@ -945,6 +959,16 @@ const lobbyUI = new LobbyUI(LIVERIES, trackChoices, {
   setRaces(n) { if (online?.role === 'host') { online.lobby.races = n; broadcastLobby(); } },
   start: onlineStart,
   leave: () => leaveOnline(),
+  tune() {
+    const o = online;
+    const car = o?.role === 'host' ? o.lobby.players[0].car
+      : o?.role === 'guest' ? o.lobby?.players.find((p) => p.id === o.me)?.car ?? playerLivery : playerLivery;
+    tuneUI.open(carSetup, LIVERIES[car].url, (s) => {
+      carSetup = s;
+      saveSetup(s);
+      if (online?.role === 'guest') online.guest.send({ t: 'setup', setup: s });
+    }, () => {});
+  },
 });
 
 function rememberName(name: string): void {
@@ -966,9 +990,14 @@ function startHosting(name: string): void {
   lobbyUI.showStatus('Setting up your race…');
   host.onReady = () => broadcastLobby();
   host.onError = (msg) => leaveOnline(msg);
-  host.onJoin = (id, pname, car) => {
+  host.onSetup = (id, setup) => {
     if (online?.role !== 'host') return;
-    online.lobby.players.push({ id, name: pname.slice(0, 12), car: freeCar(online.lobby, car) });
+    const p = online.lobby.players.find((q) => q.id === id);
+    if (p) p.setup = sanitize(setup);
+  };
+  host.onJoin = (id, pname, car, setup) => {
+    if (online?.role !== 'host') return;
+    online.lobby.players.push({ id, name: pname.slice(0, 12), car: freeCar(online.lobby, car), setup: sanitize(setup) });
     broadcastLobby();
     showToast(`${pname} JOINED`, '#7dffb0');
   };
@@ -1004,7 +1033,7 @@ function broadcastLobby(): void {
 
 function startJoining(code: string, name: string): void {
   rememberName(name);
-  const guest = new Guest(code, name, playerLivery);
+  const guest = new Guest(code, name, playerLivery, carSetup);
   online = { role: 'guest', guest, code, me: '', lobby: null, snaps: [], offset: null, finishedAt: 0, inRace: false };
   lobbyUI.showStatus(`Joining race ${code}…`);
   guest.onError = (msg) => leaveOnline(msg);
@@ -1193,6 +1222,7 @@ function guestStart(trackNo: number, laps: number, entrants: NetEntrant[]): void
     return car;
   });
   player = cars[Math.max(0, entrants.findIndex((e) => e.peer === (online as { me: string }).me))];
+  player.craft.mods = setupMods(carSetup);
   finishOrder = [];
   finishTimes.clear();
   particles.length = 0;

@@ -15,6 +15,8 @@ export interface LobbyHandlers {
   setRaces(races: number): void;
   start(): void;
   leave(): void;
+  /** Open the TUNE CAR screen for my car. */
+  tune(): void;
 }
 
 const CSS = `
@@ -145,9 +147,11 @@ export class LobbyUI {
         ${isHost ? '<div class="ol-wait" style="margin:10px 0 0">Keep this tab open and in front while racing: your browser runs the race for everyone.</div>' : ''}
         <div class="ol-row" style="margin:18px 0 0">
           ${isHost ? `<button class="hr-btn" data-start>${lobby.races > 1 ? 'START SEASON' : 'START RACE'}</button>` : '<div class="ol-wait">WAITING FOR THE HOST TO START…</div>'}
+          <button class="hr-btn secondary" data-tune>TUNE CAR</button>
           <button class="hr-btn secondary" data-leave>LEAVE</button>
         </div>
       </div>`);
+    this.el.querySelector('[data-tune]')!.addEventListener('click', () => this.on.tune());
     this.el.querySelectorAll<HTMLElement>('[data-car]').forEach((b) => b.addEventListener('click', () => this.on.pickCar(Number(b.dataset.car))));
     this.el.querySelectorAll<HTMLElement>('[data-track]').forEach((b) => b.addEventListener('click', () => this.on.setTrack(Number(b.dataset.track))));
     this.el.querySelectorAll<HTMLElement>('[data-seg]').forEach((seg) => seg.addEventListener('click', (e) => {

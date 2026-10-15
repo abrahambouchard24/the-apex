@@ -5,6 +5,7 @@
 import Peer, { DataConnection } from 'peerjs';
 import type { ResultsView } from './menu';
 import type { CraftState } from './craft';
+import type { Setup } from './setup';
 
 const ID_PREFIX = 'the-apex-race-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O or 1/I to mix up
@@ -17,7 +18,7 @@ export function newCode(): string {
 
 // --- messages -----------------------------------------------------------------------------------
 
-export interface LobbyPlayer { id: string; name: string; car: number }
+export interface LobbyPlayer { id: string; name: string; car: number; setup?: Setup }
 
 /** The lobby as everyone sees it. */
 /** races: 1 = a single race; more = a season of that many. */
@@ -53,8 +54,9 @@ export interface Snapshot {
 export interface Controls { seq: number; aim: number; brake: boolean; deploy: boolean }
 
 export type ToHost =
-  | { t: 'hello'; name: string; car: number }
+  | { t: 'hello'; name: string; car: number; setup?: Setup }
   | { t: 'car'; car: number }
+  | { t: 'setup'; setup: Setup }
   | ({ t: 'input' } & Controls);
 
 export type ToGuest =
@@ -73,8 +75,9 @@ export class Host {
   private conns = new Map<string, DataConnection>();
   /** Each guest's controls not yet applied, oldest first (one is used per physics step). */
   private queues = new Map<string, Controls[]>();
-  onJoin: (id: string, name: string, car: number) => void = () => {};
+  onJoin: (id: string, name: string, car: number, setup?: Setup) => void = () => {};
   onCar: (id: string, car: number) => void = () => {};
+  onSetup: (id: string, setup: Setup) => void = () => {};
   onLeave: (id: string) => void = () => {};
   onReady: () => void = () => {};
   onError: (msg: string) => void = () => {};
@@ -94,9 +97,11 @@ export class Host {
     if (m.t === 'hello') {
       if (this.conns.size >= 5) { conn.close(); return; }   // 6 cars: the host and up to 5 guests
       this.conns.set(conn.peer, conn);
-      this.onJoin(conn.peer, m.name, m.car);
+      this.onJoin(conn.peer, m.name, m.car, m.setup);
     } else if (m.t === 'car') {
       this.onCar(conn.peer, m.car);
+    } else if (m.t === 'setup') {
+      this.onSetup(conn.peer, m.setup);
     } else if (m.t === 'input') {
       const q = this.queues.get(conn.peer) ?? [];
       q.push({ seq: m.seq, aim: m.aim, brake: m.brake, deploy: m.deploy });
@@ -137,13 +142,13 @@ export class Guest {
   onClose: () => void = () => {};
   onError: (msg: string) => void = () => {};
 
-  constructor(code: string, name: string, car: number) {
+  constructor(code: string, name: string, car: number, setup?: Setup) {
     this.peer = new Peer();
     this.peer.on('error', (e) => this.onError(friendly(e)));
     this.peer.on('open', () => {
       const conn = this.peer.connect(ID_PREFIX + code.trim().toLowerCase(), { reliable: true });
       this.conn = conn;
-      conn.on('open', () => conn.send({ t: 'hello', name, car } satisfies ToHost));
+      conn.on('open', () => conn.send({ t: 'hello', name, car, setup } satisfies ToHost));
       conn.on('data', (d) => this.onMessage(d as ToGuest));
       conn.on('close', () => this.onClose());
       conn.on('error', () => this.onClose());
