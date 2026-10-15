@@ -388,6 +388,10 @@ function box(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, d: 
   top.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
   ctx.closePath();
   ctx.fill();
+  // A crisp lit rim round the roof edge.
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
   return { rx: x + lx, ry: y + ly };
 }
 
@@ -423,7 +427,7 @@ function poly(ctx: CanvasRenderingContext2D, pts: [number, number][]): void {
 type Drawer = (ctx: CanvasRenderingContext2D, p: Prop, v: View, time: number) => void;
 
 const DRAW: Record<string, Drawer> = {
-  pier(ctx, p) {
+  pier(ctx, p, v, time) {
     // A concrete pier slab with bollards and a painted safety edge.
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -440,6 +444,20 @@ const DRAW: Record<string, Drawer> = {
     ctx.fillStyle = '#1d222c';
     for (let u = -p.w! / 2 + 30; u < p.w! / 2; u += 70) {
       ctx.beginPath(); ctx.arc(u, -p.d! / 2 + 4, 6, 0, Math.PI * 2); ctx.arc(u, p.d! / 2 - 4, 6, 0, Math.PI * 2); ctx.fill();
+    }
+    // Light strips along the water edges, with running lights chasing along them.
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(79, 227, 255, 0.25)';
+    ctx.fillRect(-p.w! / 2, -p.d! / 2 - 6, p.w!, 11);
+    ctx.fillRect(-p.w! / 2, p.d! / 2 - 5, p.w!, 11);
+    ctx.fillStyle = 'rgba(79, 227, 255, 0.85)';
+    ctx.fillRect(-p.w! / 2, -p.d! / 2 - 2, p.w!, 4);
+    ctx.fillRect(-p.w! / 2, p.d! / 2 - 1, p.w!, 4);
+    const run = (time * 220 + p.seed * 900) % 60;
+    for (let u = -p.w! / 2 + run; u < p.w! / 2; u += 60) {
+      ctx.fillStyle = 'rgba(200, 245, 255, 0.9)';
+      ctx.fillRect(u - 5, -p.d! / 2 - 2, 10, 3);
+      ctx.fillRect(-u - 5, p.d! / 2 - 1, 10, 3);
     }
     ctx.restore();
   },
@@ -492,8 +510,22 @@ const DRAW: Record<string, Drawer> = {
     }
     ctx.restore();
   },
-  container(ctx, p, v) {
-    box(ctx, p.x, p.y, p.w!, p.d!, p.h, v, p.color!, shade(p.color!, -0.35), p.rot);
+  container(ctx, p, v, time) {
+    const { rx, ry } = box(ctx, p.x, p.y, p.w!, p.d!, p.h, v, p.color!, shade(p.color!, -0.35), p.rot);
+    ctx.save();
+    ctx.translate(rx, ry);
+    ctx.rotate(p.rot ?? 0);
+    // Corrugated roof: ribs across the long side.
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.22)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let u = -p.w! / 2 + 8; u < p.w! / 2 - 4; u += 9) { ctx.moveTo(u, -p.d! / 2 + 3); ctx.lineTo(u, p.d! / 2 - 3); }
+    ctx.stroke();
+    // A status light on one corner: mostly green, now and then blinking amber.
+    const blink = Math.sin(time * 2 + p.seed * 50) > 0.85;
+    ctx.fillStyle = blink ? '#ffb02e' : '#4dff9a';
+    ctx.fillRect(p.w! / 2 - 9, -p.d! / 2 + 4, 4, 4);
+    ctx.restore();
   },
   crane(ctx, p, v) {
     // Gantry crane: four legs leaning up to a boom.
@@ -510,6 +542,13 @@ const DRAW: Record<string, Drawer> = {
     ctx.moveTo(p.x - 140 * c + lx, p.y - 140 * s + ly);
     ctx.lineTo(p.x + 160 * c + lx, p.y + 160 * s + ly);
     ctx.stroke();
+    // A light strip along the top of the boom.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(255, 240, 200, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
     glow(ctx, p.x + 160 * c + lx, p.y + 160 * s + ly, 30, 'rgba(255,60,60,0.9)', 0.8);
   },
   boat(ctx, p, v, time) {
@@ -531,6 +570,19 @@ const DRAW: Record<string, Drawer> = {
     ctx.fillStyle = p.accent!;
     ctx.fillRect(-80, -22, 160, 4);
     ctx.fillRect(-80, 18, 160, 4);
+    // Glowing hull trim, a lit bridge window and running lights (white bow, red and green sides).
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(-80, -23, 160, 6);
+    ctx.fillRect(-80, 17, 160, 6);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(120, 220, 255, 0.7)';
+    ctx.fillRect(14, -10, 5, 20);
+    const flash = Math.sin(time * 4 + p.seed * 20) > 0 ? 1 : 0.35;
+    for (const [x, y, col] of [[84, 0, '255,255,255'], [-78, -22, '255,60,60'], [-78, 22, '77,255,154']] as const) {
+      ctx.fillStyle = `rgba(${col}, ${flash})`;
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.restore();
   },
   grandstand(ctx, p, v, time) {
@@ -544,15 +596,31 @@ const DRAW: Record<string, Drawer> = {
       ctx.fillRect(-p.w! / 2 + 6, -p.d! / 2 + 6 + row * 18, p.w! - 12, 14);
     }
     const cols = ['#ff3d6e', '#4fe3ff', '#ffd23f', '#ffffff', '#7dffb0'];
+    ctx.globalCompositeOperation = 'lighter';
     for (let k = 0; k < 70; k++) {
       const u = (Math.sin(p.seed * 999 + k * 12.9) * 0.5 + 0.5) * (p.w! - 20) - p.w! / 2 + 10;
       const row = k % 4;
       const jump = Math.max(0, Math.sin(time * 6 + k)) * 2;
       ctx.fillStyle = cols[k % cols.length];
       ctx.fillRect(u, -p.d! / 2 + 9 + row * 18 - jump, 3, 3);
+      // Each fan is a little point of light.
+      ctx.globalAlpha = 0.25;
+      ctx.fillRect(u - 2, -p.d! / 2 + 7 + row * 18 - jump, 7, 7);
+      ctx.globalAlpha = 1;
     }
+    ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = 'rgba(200,220,255,0.12)';
     ctx.fillRect(-p.w! / 2, -p.d! / 2 - 6, p.w!, 26);
+    // An LED ribbon board along the front, with colour washing along it, and a glowing roof edge.
+    const front = p.d! / 2 - 5;
+    const shift = (time * 140 + p.seed * 500) % (p.w! * 2);
+    const led = ctx.createLinearGradient(-p.w! / 2 - shift, 0, p.w! * 1.5 - shift, 0);
+    for (let k = 0; k <= 6; k++) led.addColorStop(k / 6, ['#ff3d6e', '#ffd23f', '#4fe3ff', '#b86bff', '#ff3d6e', '#ffd23f', '#4fe3ff'][k]);
+    ctx.fillStyle = led;
+    ctx.fillRect(-p.w! / 2 + 4, front - 3, p.w! - 8, 5);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(79, 227, 255, 0.5)';
+    ctx.fillRect(-p.w! / 2, -p.d! / 2 - 7, p.w!, 3);
     ctx.restore();
   },
   floodlight(ctx, p, v) {
@@ -586,6 +654,16 @@ const DRAW: Record<string, Drawer> = {
       ctx.lineWidth = 4;
       ctx.globalAlpha = 0.7 + 0.3 * Math.sin(time * 4 + p.seed * 20);
       ctx.strokeRect(-p.w! / 2 + 3, -p.d! / 2 + 3, p.w! - 6, p.d! - 6);
+      // The neon strip's glow, and a white-hot line through its middle.
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha *= 0.25;
+      ctx.lineWidth = 12;
+      ctx.strokeRect(-p.w! / 2 + 3, -p.d! / 2 + 3, p.w! - 6, p.d! - 6);
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-p.w! / 2 + 3, -p.d! / 2 + 3, p.w! - 6, p.d! - 6);
+      ctx.globalCompositeOperation = 'source-over';
     }
     if (p.text) {
       ctx.globalAlpha = 1;
@@ -599,6 +677,17 @@ const DRAW: Record<string, Drawer> = {
   },
   skyscraper(ctx, p, v, time) {
     DRAW.building(ctx, p, v, time);
+    // A slowly turning ring of light round the roof.
+    const [rx, ry] = lean(p, p.h, v);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = p.accent ?? '#4fe3ff';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([16, 22]);
+    ctx.lineDashOffset = -time * 40 - p.seed * 100;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.arc(p.x + rx, p.y + ry, Math.min(p.w!, p.d!) * 0.3, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
     // A blinking red aircraft light on a roof antenna.
     const [lx, ly] = lean(p, p.h + 60, v);
     const [bx, by] = lean(p, p.h, v);
@@ -616,6 +705,16 @@ const DRAW: Record<string, Drawer> = {
     poly(ctx, pts); ctx.fill();
     ctx.fillStyle = shade(p.color!, 0.25);
     poly(ctx, blob(p.seed + 3, p.x - p.r * 0.2, p.y - p.r * 0.2, p.r * 0.55, 6)); ctx.fill();
+    // Rim light along the top-left edges, where the light comes from.
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b2 = pts[(i + 1) % pts.length];
+      const mid = Math.atan2((a[1] + b2[1]) / 2 - p.y, (a[0] + b2[0]) / 2 - p.x);
+      if (Math.cos(mid + 2.3) > 0.3) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); }
+    }
+    ctx.stroke();
   },
   peak(ctx, p, v) {
     // A mountain: an outline whose summit leans with height, faces shaded light-to-dark.
@@ -632,6 +731,14 @@ const DRAW: Record<string, Drawer> = {
         ? `rgb(${40 + light * 50}, ${30 + light * 30}, ${60 + light * 70})`
         : `rgb(${52 + light * 88}, ${54 + light * 88}, ${60 + light * 88})`;
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); ctx.lineTo(ax, ay); ctx.closePath(); ctx.fill();
+    }
+    // Ridge lines from the summit down each fold, lit on the sunny side.
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < pts.length; i++) {
+      const mid = Math.atan2(pts[i][1] - p.y, pts[i][0] - p.x);
+      const lit = 0.5 + 0.5 * Math.cos(mid + 2.3);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.05 + lit * 0.2})`;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke();
     }
     // Snow (or crystal frost) on the top third.
     ctx.fillStyle = violet ? 'rgba(220,190,255,0.75)' : 'rgba(240,248,255,0.9)';
@@ -679,11 +786,20 @@ const DRAW: Record<string, Drawer> = {
     ctx.strokeStyle = 'rgba(255,200,120,0.35)';
     ctx.lineWidth = 2;
     for (const [bx, by] of base) { ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ax, ay); ctx.stroke(); }
+    // Pulses of energy climbing each edge to the capstone.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(255, 220, 140, 0.9)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([18, 70]);
+    ctx.lineDashOffset = -time * 120;
+    for (const [bx, by] of base) { ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ax, ay); ctx.stroke(); }
+    ctx.restore();
     glow(ctx, ax, ay, p.r * 0.5, 'rgba(255,190,80,0.9)', 0.6 + 0.3 * Math.sin(time * 2));
     ctx.fillStyle = '#ffe08a';
     ctx.beginPath(); ctx.arc(ax, ay, 10, 0, Math.PI * 2); ctx.fill();
   },
-  solar(ctx, p) {
+  solar(ctx, p, v, time) {
     // Rows of blue panels catching the light.
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -700,6 +816,15 @@ const DRAW: Record<string, Drawer> = {
       ctx.lineWidth = 1;
       for (let x = -p.w! / 2; x < p.w! / 2; x += 26) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + p.d! / 4 - 8); ctx.stroke(); }
     }
+    // A slow sheen sweeping across the panels.
+    const sweep = ((time * 0.25 + p.seed) % 1.6 - 0.3) * p.w! - p.w! / 2;
+    const sheen = ctx.createLinearGradient(sweep - 60, 0, sweep + 60, 0);
+    sheen.addColorStop(0, 'rgba(180, 220, 255, 0)');
+    sheen.addColorStop(0.5, 'rgba(180, 220, 255, 0.22)');
+    sheen.addColorStop(1, 'rgba(180, 220, 255, 0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = sheen;
+    ctx.fillRect(-p.w! / 2, -p.d! / 2, p.w!, p.d! - 8);
     ctx.restore();
   },
   turbine(ctx, p, v, time) {
@@ -804,6 +929,10 @@ function sign(ctx: CanvasRenderingContext2D, p: Prop, v: View, time: number, sca
   const x = p.x + lx, y = p.y + ly;
   ctx.fillStyle = '#0d1022';
   ctx.fillRect(x - w / 2, y - hgt / 2, w, hgt);
+  // Holographic scanlines drifting down the panel.
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+  const drift = (time * 20) % 6;
+  for (let sy = y - hgt / 2 + drift; sy < y + hgt / 2; sy += 6) ctx.fillRect(x - w / 2, sy, w, 2);
   ctx.strokeStyle = p.accent!;
   ctx.lineWidth = 4;
   ctx.strokeRect(x - w / 2, y - hgt / 2, w, hgt);
