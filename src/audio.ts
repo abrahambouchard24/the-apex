@@ -109,6 +109,25 @@ export class Sound {
     osc.stop(t + 0.32);
   }
 
+  /** A firework bursting: a soft thump, then a crackle tailing off. */
+  pop(): void {
+    const ctx = this.live();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const src = this.noiseSource();
+    const band = ctx.createBiquadFilter();
+    band.type = 'lowpass';
+    band.frequency.setValueAtTime(1800, t);
+    band.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    src.connect(band).connect(g).connect(this.sfx);
+    src.start(t);
+    src.stop(t + 0.65);
+  }
+
   /** Countdown light: a short beep for 3-2-1, a long higher one for GO. */
   beep(go: boolean): void {
     this.tone(go ? 1320 : 660, go ? 0.55 : 0.16, 0.16);

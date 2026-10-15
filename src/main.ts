@@ -4,7 +4,7 @@ import { Craft, LAUNCH_TIME, STALL_TIME, clamp, collideCrafts, lerp } from './cr
 import { Input } from './input';
 import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
-import { RaceState, TRACKS, Track, collideWalls, inCoolingLane, placeOnGrid } from './track';
+import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
 const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
@@ -346,6 +346,7 @@ function update(dt: number): void {
     emitTrail(car.craft, car.hue);
     emitHeat(car.craft);
   }
+  celebrate(dt);
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.life -= dt;
@@ -562,6 +563,49 @@ function emitHeat(craft: Craft): void {
     vy: -craft.vel.y * 0.1 + (Math.random() - 0.5) * 40 - 30,
     life: 0.7, max: 0.7, hue: lerp(40, 5, hot), size: 6 + hot * 6,
   });
+}
+
+/** Fireworks go off from the last stretch of the final lap until the results screen. */
+const FIREWORK_STRETCH = 0.85;   // fraction of the final lap after which they start
+const FIREWORK_RATE = 2.5;       // bursts per second
+let fireworkClock = 0;
+
+function celebrate(dt: number): void {
+  const r = player.race;
+  const finished = finishOrder.includes(player);
+  // Distance raced, in laps (the grid counts as just before 0, not the end of a lap).
+  const lastStretch = r.progress(track) / track.length > raceLaps - 1 + FIREWORK_STRETCH;
+  if (!(lastStretch || (finished && mode === 'racing'))) return;
+  fireworkClock += dt;
+  if (fireworkClock < 1 / FIREWORK_RATE) return;
+  fireworkClock = 0;
+  // Somewhere on screen, but off the track so the bursts never hide the racing line.
+  const viewW = innerWidth / cam.zoom, viewH = innerHeight / cam.zoom;
+  for (let tries = 0; tries < 8; tries++) {
+    const x = cam.x + (Math.random() - 0.5) * viewW * 0.85;
+    const y = cam.y + (Math.random() - 0.5) * viewH * 0.85;
+    if (track.nearest({ x, y }, r.index).dist < WALL_DIST + 90) continue;
+    burst(x, y);
+    sound.pop();
+    return;
+  }
+}
+
+/** One firework: a ring of sparks in one or two colors, with a white flash at the heart. */
+function burst(x: number, y: number): void {
+  const hue = Math.random() * 360, hue2 = Math.random() < 0.5 ? hue : (hue + 120) % 360;
+  const n = 64;
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2 + Math.random() * 0.1;
+    const v = 520 + Math.random() * 320;
+    particles.push({
+      x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+      life: 1 + Math.random() * 0.5, max: 1.5, hue: k % 2 ? hue : hue2, size: 5 + Math.random() * 3,
+    });
+  }
+  for (let k = 0; k < 8; k++) {
+    particles.push({ x, y, vx: (Math.random() - 0.5) * 80, vy: (Math.random() - 0.5) * 80, life: 0.4, max: 0.4, hue: 50, size: 30 });
+  }
 }
 
 /** Orange sparks thrown back along the wall while a craft grinds against it. */

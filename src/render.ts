@@ -91,7 +91,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
 
   ctx.restore();
 
-  drawMinimap(ctx, w, s.track, s.cars, s.player);
+  drawMinimap(ctx, w, h, s.track, s.cars, s.player);
   drawLapPanel(ctx, s.player.race, s.time, s.hud);
   drawGapPanel(ctx, s.hud);
   drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud);
@@ -305,9 +305,18 @@ function drawStartLine(ctx: CanvasRenderingContext2D, track: Track): void {
   ctx.restore();
 }
 
-function drawMinimap(ctx: CanvasRenderingContext2D, w: number, track: Track, cars: Car[], player: Car): void {
+/**
+ * How much bigger the minimap and the dash draw, so they can be read at a glance at speed:
+ * about 1.6x on a full-HD screen, 1.45x at 1280x720, and normal size on small windows.
+ */
+function hudScale(w: number, h: number): number {
+  return clamp(Math.min(w / 1280, h / 720) * 1.45, 1, 1.6);
+}
+
+function drawMinimap(ctx: CanvasRenderingContext2D, w: number, h: number, track: Track, cars: Car[], player: Car): void {
   const b = track.bounds;
-  const boxW = 220, boxH = 160, pad = 14;
+  const k = hudScale(w, h);
+  const boxW = 220 * k, boxH = 160 * k, pad = 14 * k;
   const scale = Math.min((boxW - pad * 2) / (b.maxX - b.minX), (boxH - pad * 2) / (b.maxY - b.minY));
   const x = w - boxW - 24, y = 24;
   const center = trackPaths(track).center;
@@ -320,21 +329,21 @@ function drawMinimap(ctx: CanvasRenderingContext2D, w: number, track: Track, car
   ctx.translate(-(b.minX + b.maxX) / 2, -(b.minY + b.maxY) / 2);
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#3a4278';
-  ctx.lineWidth = 9 / scale;
+  ctx.lineWidth = (9 * k) / scale;
   ctx.stroke(center);
   ctx.strokeStyle = '#8a93c0';
-  ctx.lineWidth = 3 / scale;
+  ctx.lineWidth = (3 * k) / scale;
   ctx.stroke(center);
   const s = track.pts[0];
   ctx.fillStyle = '#fff';
   ctx.beginPath();
-  ctx.arc(s.x, s.y, 4 / scale, 0, Math.PI * 2);
+  ctx.arc(s.x, s.y, (4 * k) / scale, 0, Math.PI * 2);
   ctx.fill();
   // Player drawn last so it sits on top.
   for (const car of [...cars.filter((c) => c !== player), player]) {
     ctx.fillStyle = car.color;
     ctx.beginPath();
-    ctx.arc(car.craft.pos.x, car.craft.pos.y, (car === player ? 6 : 5) / scale, 0, Math.PI * 2);
+    ctx.arc(car.craft.pos.x, car.craft.pos.y, ((car === player ? 6 : 5) * k) / scale, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
@@ -654,8 +663,12 @@ function drawSprite(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
 }
 
 function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean, hud: RaceHud): void {
-  const x = w - 260, y = h - 192;
   ctx.save();
+  // The dash is laid out at normal size, then scaled up from the bottom-right corner.
+  ctx.save();
+  ctx.translate(w - 24, h - 24);
+  ctx.scale(hudScale(w, h), hudScale(w, h));
+  const x = -236, y = -168;
   ctx.fillStyle = 'rgba(8,10,22,0.7)';
   roundRect(ctx, x, y, 236, 168, 12);
   ctx.fill();
@@ -756,6 +769,7 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
     ctx.fillStyle = i <= c.gear ? '#6ff3ff' : '#2a3060';
     ctx.fillRect(x + 168 + i * 11, y + 34, 8, 4);
   }
+  ctx.restore();
 
   if (toast && toast.t > 0) {
     ctx.globalAlpha = clamp(toast.t / 0.3, 0, 1);
