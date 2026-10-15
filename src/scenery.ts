@@ -151,14 +151,15 @@ function build(track: Track): Scenery {
     case 'SUMMIT PASS': {
       ground = 'rock';
       scatter(14, (x, y) => ({ kind: 'peak', x, y, r: between(260, 520), h: 300 }), 1200, 400);
-      for (let k = 0; k < 9; k++) {   // forest clumps
+      // Mostly bare grey stone: a few small, snowy stands of pine, and plenty of rock.
+      for (let k = 0; k < 3; k++) {   // forest clumps
         const x0 = b.minX + rand() * (b.maxX - b.minX), y0 = b.minY + rand() * (b.maxY - b.minY);
-        for (let j = 0; j < 14; j++) {
-          place({ kind: rand() < 0.5 ? 'pine-snow' : 'pine', x: x0 + (rand() - 0.5) * 500, y: y0 + (rand() - 0.5) * 500, r: between(26, 44), h: 40 }, 20);
+        for (let j = 0; j < 9; j++) {
+          place({ kind: rand() < 0.75 ? 'pine-snow' : 'pine', x: x0 + (rand() - 0.5) * 420, y: y0 + (rand() - 0.5) * 420, r: between(26, 44), h: 40 }, 20);
         }
       }
-      trees(40, true);
-      rocks(25, '#3d4a4a');
+      trees(12, true);
+      rocks(45, '#4b4d53');
       break;
     }
     case 'HARBOR LIGHTS': {
@@ -219,7 +220,6 @@ function build(track: Track): Scenery {
           color: pick(['#3a3366', '#2c3a5e', '#4a3460']), accent: pick(['#ff5e8a', '#4fe3ff', '#ffd23f']) };
       }, 900, 700);
       scatter(5, (x, y) => ({ kind: 'helipad', x, y, r: 120, h: 0 }), 300);
-      scatter(6, (x, y) => ({ kind: 'hologram', x, y, r: 60, h: 200, accent: '#ff5e8a', text: pick(['SKY', 'APEX', 'NOVA']) }), 300);
       break;
     }
   }
@@ -293,9 +293,9 @@ function groundPattern(ctx: CanvasRenderingContext2D, kind: GroundKind): CanvasP
       g.setLineDash([]);
       break;
     case 'rock':
-      g.fillStyle = '#111915'; g.fillRect(0, 0, size, size);
-      blotches(40, ['rgba(60,80,70,0.35)', 'rgba(0,0,0,0.35)', 'rgba(200,220,230,0.08)'], 30, 110);
-      lines(30, 'rgba(120,150,140,0.12)', 2, 90, 10);
+      g.fillStyle = '#17181b'; g.fillRect(0, 0, size, size);
+      blotches(40, ['rgba(95,97,104,0.35)', 'rgba(0,0,0,0.35)', 'rgba(215,220,228,0.09)'], 30, 110);
+      lines(30, 'rgba(160,164,172,0.13)', 2, 90, 10);
       break;
     case 'water':
       g.fillStyle = '#061428'; g.fillRect(0, 0, size, size);
@@ -607,26 +607,6 @@ const DRAW: Record<string, Drawer> = {
     ctx.beginPath(); ctx.moveTo(p.x + bx, p.y + by); ctx.lineTo(p.x + lx, p.y + ly); ctx.stroke();
     if (Math.sin(time * 3 + p.seed * 40) > 0.3) glow(ctx, p.x + lx, p.y + ly, 26, 'rgba(255,40,60,1)');
   },
-  hologram(ctx, p, v, time) {
-    // A floating, flickering holo-ad: a spinning ring and a word, drawn in light.
-    const [lx, ly] = lean(p, p.h, v);
-    const x = p.x + lx, y = p.y + ly;
-    const flicker = Math.sin(time * 23 + p.seed * 50) > -0.85 ? 1 : 0.3;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.8 * flicker;
-    ctx.strokeStyle = p.accent!;
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.ellipse(x, y, 70, 70 * Math.abs(Math.cos(time * 1.3 + p.seed * 9)), 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.font = '900 30px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = p.accent!;
-    ctx.fillText(p.text ?? '', x, y);
-    ctx.restore();
-    // Its projector on the ground.
-    glow(ctx, p.x, p.y, 40, p.accent!, 0.5);
-  },
   pine(ctx, p) { pine(ctx, p, false); },
   'pine-snow'(ctx, p) { pine(ctx, p, true); },
   rock(ctx, p) {
@@ -650,7 +630,7 @@ const DRAW: Record<string, Drawer> = {
       const light = 0.5 + 0.5 * Math.cos(mid + 2.3);  // lit from the top-left
       ctx.fillStyle = violet
         ? `rgb(${40 + light * 50}, ${30 + light * 30}, ${60 + light * 70})`
-        : `rgb(${40 + light * 55}, ${50 + light * 55}, ${50 + light * 50})`;
+        : `rgb(${52 + light * 88}, ${54 + light * 88}, ${60 + light * 88})`;
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); ctx.lineTo(ax, ay); ctx.closePath(); ctx.fill();
     }
     // Snow (or crystal frost) on the top third.

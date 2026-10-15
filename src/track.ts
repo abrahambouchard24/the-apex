@@ -105,7 +105,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'SUMMIT PASS',
     blurb: 'Mountain road: long sweepers, flowing esses',
-    theme: { wall: '#7dffb0', wallFace: '#dcffe9', lights: '200, 255, 120', kerb: '#2fd16b', surface: '#1f2a2a' },
+    theme: { wall: '#cfd8e3', wallFace: '#f2f5f8', lights: '220, 235, 255', kerb: '#8a919c', surface: '#232427' },
     control: [
       [0, 1500],
       [1800, 1500],
