@@ -1,6 +1,7 @@
 // Everything drawn to the canvas. Reads game state, never changes it.
 
 import { Craft, GEARS, clamp } from './craft';
+import { drawGround as drawSceneryGround, drawOverlays, drawProps, View } from './scenery';
 import { COOL_LANE, HALF_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
 
 export interface Camera { x: number; y: number; zoom: number; shake: number }
@@ -77,11 +78,16 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   ctx.scale(cam.zoom, cam.zoom);
   ctx.translate(-cam.x, -cam.y);
 
-  drawGround(ctx, cam, w, h);
+  // The visible world rectangle, for culling scenery, and the camera centre its 2.5D lean is measured from.
+  const viewW = w / cam.zoom, viewH = h / cam.zoom;
+  const view: View = { x0: cam.x - viewW / 2, y0: cam.y - viewH / 2, x1: cam.x + viewW / 2, y1: cam.y + viewH / 2, cx: cam.x, cy: cam.y };
+  drawSceneryGround(ctx, s.track, view, s.time);
   drawTrack(ctx, s.track, s.time);
+  drawProps(ctx, s.track, view, s.time);
   drawParticles(ctx, s.particles);
   drawSlipstreams(ctx, s.cars, s.time);
   for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite, car.hue);
+  drawOverlays(ctx, s.track, view, s.time);
 
   ctx.restore();
 
@@ -91,24 +97,6 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud);
   drawRaceBanners(ctx, w, h, s.hud);
   drawCursor(ctx, s.cursor);
-}
-
-function drawGround(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number): void {
-  // Only draw grid lines that are on screen.
-  const viewW = w / cam.zoom, viewH = h / cam.zoom;
-  const x0 = cam.x - viewW / 2, x1 = cam.x + viewW / 2;
-  const y0 = cam.y - viewH / 2, y1 = cam.y + viewH / 2;
-  ctx.fillStyle = '#0b0d1a';
-  ctx.fillRect(x0, y0, viewW, viewH);
-
-  for (const [step, color, width] of [[100, '#121630', 1], [500, '#1c2248', 2]] as const) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    for (let x = Math.ceil(x0 / step) * step; x <= x1; x += step) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
-    for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) { ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
-    ctx.stroke();
-  }
 }
 
 /** Static track geometry as Path2Ds, built once per track. */
