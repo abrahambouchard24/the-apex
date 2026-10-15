@@ -90,6 +90,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   drawOverlays(ctx, s.track, view, s.time);
 
   ctx.restore();
+  drawVignette(ctx, w, h);
 
   drawMinimap(ctx, w, h, s.track, s.cars, s.player);
   drawLapPanel(ctx, s.player.race, s.time, s.hud);
@@ -100,7 +101,10 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
 }
 
 /** Static track geometry as Path2Ds, built once per track. */
-interface TrackPaths { center: Path2D; kerbRed: Path2D; kerbWhite: Path2D; strips: Path2D; lights: Path2D; coolLane: Path2D; coolLine: Path2D }
+interface TrackPaths {
+  center: Path2D; kerbRed: Path2D; kerbWhite: Path2D; kerbEdge: Path2D; seams: Path2D; lanes: Path2D; rails: Path2D;
+  chevrons: Path2D; lights: Path2D; coolLane: Path2D; coolLine: Path2D;
+}
 const pathCache = new WeakMap<Track, TrackPaths>();
 
 const KERB_CURVE = 1 / 900;   // corners tighter than this radius get kerbs
@@ -116,23 +120,47 @@ function trackPaths(track: Track): TrackPaths {
 
   const off = (i: number, d: number) => { const p = pts[i % m]; return [p.x + p.nx * d, p.y + p.ny * d]; };
 
-  // Kerbs: striped quads along both edges through each corner.
-  const kerbRed = new Path2D(), kerbWhite = new Path2D();
+  // Kerbs: light-strip segments along both edges through each corner (lit and dark in turn),
+  // with a thin glowing line along their inner edge.
+  const kerbRed = new Path2D(), kerbWhite = new Path2D(), kerbEdge = new Path2D();
   for (let i = 0; i < m; i++) {
     if (Math.abs(pts[i].curve) < KERB_CURVE) continue;
     const path = Math.floor(i / 2) % 2 ? kerbRed : kerbWhite;
     for (const side of [1, -1]) {
-      const a = off(i, side * (HALF_WIDTH - 16)), b = off(i + 1, side * (HALF_WIDTH - 16));
+      const a = off(i, side * (HALF_WIDTH - 14)), b = off(i + 1, side * (HALF_WIDTH - 14));
       const c = off(i + 1, side * HALF_WIDTH), d = off(i, side * HALF_WIDTH);
       path.moveTo(a[0], a[1]); path.lineTo(b[0], b[1]); path.lineTo(c[0], c[1]); path.lineTo(d[0], d[1]); path.closePath();
+      kerbEdge.moveTo(a[0], a[1]); kerbEdge.lineTo(b[0], b[1]);
     }
   }
 
-  // Faint light strips across the surface: they stream past and sell the speed.
-  const strips = new Path2D();
-  for (let i = 0; i < m; i += 8) {
-    const a = off(i, HALF_WIDTH - 20), b = off(i, -(HALF_WIDTH - 20));
-    strips.moveTo(a[0], a[1]); strips.lineTo(b[0], b[1]);
+  // Deck plates: fine seams across the surface every few samples.
+  const seams = new Path2D();
+  for (let i = 0; i < m; i += 4) {
+    const a = off(i, HALF_WIDTH - 16), b = off(i, -(HALF_WIDTH - 16));
+    seams.moveTo(a[0], a[1]); seams.lineTo(b[0], b[1]);
+  }
+  // Lane guides a third of the way in from each edge, and the energy rails along both edges.
+  const polyline = (path: Path2D, d: number) => {
+    for (let i = 0; i <= m; i++) { const [x, y] = off(i, d); if (i) path.lineTo(x, y); else path.moveTo(x, y); }
+  };
+  const lanes = new Path2D(), rails = new Path2D();
+  polyline(lanes, HALF_WIDTH / 3); polyline(lanes, -HALF_WIDTH / 3);
+  polyline(rails, HALF_WIDTH - 4); polyline(rails, -(HALF_WIDTH - 4));
+
+  // Chevrons pointing the way down the straights.
+  const chevrons = new Path2D();
+  for (let i = 0; i < m; i += 30) {
+    let straight = true;
+    for (let k = -6; k <= 6; k++) if (Math.abs(pts[(i + k + m) % m].curve) > 1 / 2500) straight = false;
+    if (!straight) continue;
+    const p = pts[i], dir = track.direction(i), fx = Math.cos(dir), fy = Math.sin(dir);
+    for (const lane of [-HALF_WIDTH / 1.5, 0, HALF_WIDTH / 1.5]) {
+      const cx = p.x + p.nx * lane, cy = p.y + p.ny * lane;
+      chevrons.moveTo(cx - fx * 12 + p.nx * 18, cy - fy * 12 + p.ny * 18);
+      chevrons.lineTo(cx + fx * 8, cy + fy * 8);
+      chevrons.lineTo(cx - fx * 12 - p.nx * 18, cy - fy * 12 - p.ny * 18);
+    }
   }
 
   // Lights set into the top of both barriers.
@@ -159,7 +187,7 @@ function trackPaths(track: Track): TrackPaths {
     if (i === COOL_LANE.from) coolLine.moveTo(x, y); else coolLine.lineTo(x, y);
   }
 
-  const built = { center, kerbRed, kerbWhite, strips, lights, coolLane, coolLine };
+  const built = { center, kerbRed, kerbWhite, kerbEdge, seams, lanes, rails, chevrons, lights, coolLane, coolLine };
   pathCache.set(track, built);
   return built;
 }
@@ -195,15 +223,72 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
   ctx.strokeStyle = theme.surface;
   ctx.lineWidth = HALF_WIDTH * 2;
   ctx.stroke(p.center);
+  // A softly lit racing groove down the middle: darker toward the edges, brighter in the centre.
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)';
+  ctx.lineWidth = HALF_WIDTH * 2;
+  ctx.stroke(p.center);
+  ctx.strokeStyle = theme.surface;
+  ctx.lineWidth = HALF_WIDTH * 2 - 36;
+  ctx.stroke(p.center);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.028)';
+  ctx.lineWidth = HALF_WIDTH * 1.2;
+  ctx.stroke(p.center);
+  ctx.lineWidth = HALF_WIDTH * 0.6;
+  ctx.stroke(p.center);
 
-  ctx.strokeStyle = 'rgba(120, 160, 255, 0.07)';
-  ctx.lineWidth = 6;
-  ctx.stroke(p.strips);
+  // Deck plate seams and lane guides.
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.32)';
+  ctx.lineWidth = 2;
+  ctx.stroke(p.seams);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+  ctx.lineWidth = 1;
+  ctx.translate(0, 1);
+  ctx.stroke(p.seams);
+  ctx.translate(0, -1);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = theme.wall;
+  ctx.globalAlpha = 0.1;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([26, 34]);
+  ctx.stroke(p.lanes);
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.09;
+  ctx.lineWidth = 5;
+  ctx.lineJoin = 'miter';
+  ctx.stroke(p.chevrons);
+  ctx.restore();
 
+  // Kerbs: lit segments in the track's colour, dark ones between, and a glowing inner edge.
   ctx.fillStyle = theme.kerb;
   ctx.fill(p.kerbRed);
-  ctx.fillStyle = '#f2f4ff';
+  ctx.fillStyle = '#0d0f1c';
   ctx.fill(p.kerbWhite);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = theme.kerb;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 2;
+  ctx.stroke(p.kerbEdge);
+  ctx.restore();
+
+  // Energy rails along both edges, with pulses of light streaming forward along them.
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = theme.wall;
+  ctx.globalAlpha = 0.22;
+  ctx.lineWidth = 9;
+  ctx.stroke(p.rails);
+  ctx.globalAlpha = 0.9;
+  ctx.lineWidth = 2;
+  ctx.stroke(p.rails);
+  ctx.strokeStyle = '#ffffff';
+  ctx.globalAlpha = 0.85;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([46, 330]);
+  ctx.lineDashOffset = -time * 1100;
+  ctx.stroke(p.rails);
+  ctx.restore();
 
   const pulse = 0.55 + 0.45 * Math.sin(time * 4);
   ctx.fillStyle = `rgba(${theme.lights}, ${pulse})`;
@@ -212,7 +297,7 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
   drawCoolLane(ctx, track, p, time);
 
   drawDrsZones(ctx, track);
-  drawStartLine(ctx, track);
+  drawStartLine(ctx, track, time);
   ctx.restore();
 }
 
@@ -288,7 +373,7 @@ function drawDrsZones(ctx: CanvasRenderingContext2D, track: Track): void {
   ctx.restore();
 }
 
-function drawStartLine(ctx: CanvasRenderingContext2D, track: Track): void {
+function drawStartLine(ctx: CanvasRenderingContext2D, track: Track, time: number): void {
   const p = track.pts[0];
   ctx.save();
   ctx.translate(p.x, p.y);
@@ -301,6 +386,21 @@ function drawStartLine(ctx: CanvasRenderingContext2D, track: Track): void {
       ctx.fillStyle = (r + c) % 2 ? '#0a0a12' : '#ffffff';
       ctx.fillRect(r * sq - sq, y0 + c * sq, sq, sq);
     }
+  }
+  // Holographic gantry: glowing beams either side of the line and emitter posts at each end.
+  ctx.globalCompositeOperation = 'lighter';
+  const flicker = 0.75 + 0.25 * Math.sin(time * 9) * Math.sin(time * 3.7);
+  for (const bx of [-sq - 7, sq + 7]) {
+    ctx.fillStyle = `rgba(${track.theme.lights}, ${0.18 * flicker})`;
+    ctx.fillRect(bx - 6, -HALF_WIDTH, 12, HALF_WIDTH * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.7 * flicker})`;
+    ctx.fillRect(bx - 1, -HALF_WIDTH, 2, HALF_WIDTH * 2);
+  }
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = `rgba(${track.theme.lights}, 0.9)`;
+    ctx.beginPath(); ctx.arc(0, side * (HALF_WIDTH + WALL_THICKNESS / 2), 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(0, side * (HALF_WIDTH + WALL_THICKNESS / 2), 4, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 }
@@ -535,6 +635,19 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
     drawSprite(ctx, sprite);
   }
   ctx.restore();
+}
+
+/** A soft darkening toward the screen edges that draws the eye to the middle (cached per size). */
+let vignette: { w: number; h: number; g: CanvasGradient } | null = null;
+function drawVignette(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  if (!vignette || vignette.w !== w || vignette.h !== h) {
+    const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) * 0.6);
+    g.addColorStop(0, 'rgba(4, 5, 12, 0)');
+    g.addColorStop(1, 'rgba(4, 5, 12, 0.55)');
+    vignette = { w, h, g };
+  }
+  ctx.fillStyle = vignette.g;
+  ctx.fillRect(0, 0, w, h);
 }
 
 const DRS_GLOW = '#4dff9a';
