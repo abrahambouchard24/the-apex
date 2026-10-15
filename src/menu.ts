@@ -129,7 +129,23 @@ const CSS = `
 .sc-story .sun { position: absolute; left: 50%; top: 44%; width: 150px; height: 150px; margin: -75px; border-radius: 50%;
   background: radial-gradient(circle, #ffd27a, #ff7a3d 60%, transparent 72%); filter: blur(1px); }
 .sc-story .stand { position: absolute; left: -5%; right: -5%; top: 52%; height: 11%; background:
-  repeating-linear-gradient(90deg, #1b1528 0 14px, #251c36 14px 16px); border-top: 3px solid #3a2a4a; }
+  radial-gradient(circle, rgba(255,214,140,0.9) 0 1.5px, transparent 2px) 0 4px / 11px 9px,
+  radial-gradient(circle, rgba(79,227,255,0.8) 0 1.5px, transparent 2px) 5px 8px / 13px 9px,
+  repeating-linear-gradient(90deg, #1b1528 0 14px, #251c36 14px 16px); }
+/* An LED ribbon along the top of the stand, colour washing along it. */
+.sc-story .stand::before { content: ''; position: absolute; left: 0; right: 0; top: -4px; height: 4px;
+  background: linear-gradient(90deg, #ff3d6e, #ffd23f, #4fe3ff, #b86bff, #ff3d6e) 0 0 / 50% 100%;
+  box-shadow: 0 0 12px rgba(255,160,120,0.7); animation: hr-wash 3s linear infinite; }
+/* The deck the cars sit on: plates, a lit groove and a glowing energy rail with a pulse running along it. */
+.sc-story .deck { position: absolute; left: 0; right: 0; top: 63%; bottom: 0;
+  background: repeating-linear-gradient(90deg, rgba(0,0,0,0.35) 0 2px, transparent 2px 46px),
+  linear-gradient(180deg, #2a2236, #17121f 70%); }
+.sc-story .deck::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: #ff9a4a;
+  box-shadow: 0 0 14px 2px rgba(255,154,74,0.7); }
+.sc-story .deck::after { content: ''; position: absolute; top: -1px; height: 5px; width: 60px; border-radius: 3px; background: #fff;
+  box-shadow: 0 0 14px 4px rgba(255,220,170,0.9); animation: hr-pulse-run 1.8s linear infinite; }
+@keyframes hr-wash { to { background-position: 100% 0; } }
+@keyframes hr-pulse-run { from { left: -20%; } to { left: 110%; } }
 .sc-story .flood { position: absolute; top: 18%; width: 4px; height: 38%; background: #3a3350; }
 .sc-story .flood::before { content: ''; position: absolute; top: -8px; left: -14px; width: 32px; height: 12px; border-radius: 3px; background: #fff6d8;
   box-shadow: 0 0 30px 12px rgba(255,236,170,0.55); animation: hr-flicker 3.2s infinite; }
@@ -144,12 +160,23 @@ const CSS = `
 
 /* Quick race: a red car flat out down a neon straight. */
 .sc-quick { background: #0a0d1c; }
-.sc-quick .road { position: absolute; left: -20%; right: -20%; top: 30%; height: 40%; background: #23283f;
-  border-top: 5px solid #4fe3ff; border-bottom: 5px solid #4fe3ff; box-shadow: 0 0 30px rgba(79,227,255,0.35); transform: rotate(-8deg); }
-.sc-quick .road::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 70px, rgba(120,160,255,0.12) 70px 76px);
-  animation: hr-scroll 0.45s linear infinite; }
-.sc-quick .road::after { content: ''; position: absolute; left: 0; right: 0; top: -14px; height: 9px;
-  background: repeating-linear-gradient(90deg, #ff2d75 0 26px, #f2f4ff 26px 52px); animation: hr-scroll 0.45s linear infinite; }
+.sc-quick .road { position: absolute; left: -20%; right: -20%; top: 30%; height: 40%; transform: rotate(-8deg);
+  background: linear-gradient(180deg, #181c2e, #262b44 30%, #2b3150 50%, #262b44 70%, #181c2e);
+  box-shadow: 0 0 40px rgba(79,227,255,0.25); }
+/* Deck plate seams and chevrons sliding past. */
+.sc-quick .road::before { content: ''; position: absolute; inset: 0; animation: hr-scroll 0.45s linear infinite;
+  background: repeating-linear-gradient(90deg, transparent 0 36px, rgba(0,0,0,0.35) 36px 38px); }
+.sc-quick .chev { position: absolute; left: 0; right: 0; top: 50%; height: 26px; margin-top: -13px; opacity: 0.22; animation: hr-scroll 0.45s linear infinite;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='76' height='26'%3E%3Cpath d='M20 3 L34 13 L20 23' fill='none' stroke='%234fe3ff' stroke-width='4'/%3E%3C/svg%3E") repeat-x; }
+/* Energy rails on both edges, with light pulses streaming along them. */
+.sc-quick .rail { position: absolute; left: 0; right: 0; height: 3px; background: #4fe3ff; box-shadow: 0 0 10px 2px rgba(79,227,255,0.8); overflow: hidden; }
+.sc-quick .rail.t { top: 6px; } .sc-quick .rail.b { bottom: 6px; }
+.sc-quick .rail::after { content: ''; position: absolute; inset: 0; animation: hr-scroll-fast 0.35s linear infinite;
+  background: repeating-linear-gradient(90deg, transparent 0 140px, #fff 140px 170px); }
+/* Light-strip kerb along the top edge: lit and dark segments with a glow. */
+.sc-quick .road::after { content: ''; position: absolute; left: 0; right: 0; top: -12px; height: 9px; animation: hr-scroll 0.45s linear infinite;
+  background: repeating-linear-gradient(90deg, #ff2d75 0 38px, #0d0f1c 38px 76px); box-shadow: 0 0 12px rgba(255,45,117,0.6); }
+@keyframes hr-scroll-fast { to { background-position: -340px 0; } }
 .sc-quick img { position: absolute; left: 34%; top: 38%; height: 90px; transform: rotate(82deg); filter: drop-shadow(0 12px 10px rgba(0,0,0,0.6)); animation: hr-bob 1.1s ease-in-out infinite; }
 .sc-quick .trail { position: absolute; left: -10%; width: 50%; top: 47%; height: 10px; border-radius: 6px; transform: rotate(-8deg);
   background: linear-gradient(90deg, transparent, rgba(79,227,255,0.85)); filter: blur(3px); }
@@ -218,12 +245,12 @@ export class Menus {
         <p class="hr-sub">HOVER RACING · ROOKIE SEASON</p>
         <div class="hr-front">
           <button class="hr-window" data-act="story" style="--c:#ff7a3d">
-            <div class="scene sc-story"><div class="sun"></div><div class="stand"></div><div class="flood a"></div><div class="flood b"></div>
+            <div class="scene sc-story"><div class="sun"></div><div class="stand"></div><div class="deck"></div><div class="flood a"></div><div class="flood b"></div>
               <img class="me" src="${cars[0]?.url ?? ''}" alt=""><span class="vs">VS</span><img class="him" src="${cars[3]?.url ?? ''}" alt=""></div>
             <div class="label"><b>STORY</b><small>From the county speedway to the top of the Apex Series. Your first season starts with one race against a legend.</small></div>
           </button>
           <button class="hr-window" data-act="quick" style="--c:#4fe3ff">
-            <div class="scene sc-quick"><div class="road"></div><div class="trail"></div><img src="${cars[0]?.url ?? ''}" alt=""></div>
+            <div class="scene sc-quick"><div class="road"><div class="chev"></div><div class="rail t"></div><div class="rail b"></div></div><div class="trail"></div><img src="${cars[0]?.url ?? ''}" alt=""></div>
             <div class="label"><b>QUICK RACE</b><small>One race. Pick your car, your track and your laps, and go.</small></div>
           </button>
           <button class="hr-window" data-act="online" style="--c:#7dffb0">
