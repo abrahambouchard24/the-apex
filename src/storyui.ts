@@ -459,5 +459,5 @@ const missingPortraits = new Set<Speaker>();
 function portrait(who: Speaker, name: string): string {
   const initials = name.split(/\s+/).filter((w) => w !== 'MR.').map((w) => w[0]).join('').slice(0, 2).replace(/'/g, '');
   if (missingPortraits.has(who)) return initials;
-  return `<img src="/portraits/${who}.png" alt="" onerror="__apexNoPortrait('${who}');this.replaceWith(document.createTextNode('${initials}'))">`;
+  return `<img src="portraits/${who}.png" alt="" onerror="__apexNoPortrait('${who}');this.replaceWith(document.createTextNode('${initials}'))">`;
 }

@@ -36,12 +36,12 @@ let trackIndex = 0;
 let track = tracks[0];
 /** The field. The player picks one on the start screen; the rest are AI. hue = exhaust flame color. */
 const LIVERIES = [
-  { name: '01 RED', url: '/sprites/craft-red.png', color: '#ff3d6e', hue: 190 },
-  { name: '02 CYAN', url: '/sprites/craft-cyan.webp', color: '#3ff0ff', hue: 190 },
-  { name: '03 GREEN', url: '/sprites/craft-green.png', color: '#2fd16b', hue: 120 },
-  { name: '04 ORANGE', url: '/sprites/craft-orange.png', color: '#ff8a1f', hue: 35 },
-  { name: '05 PURPLE', url: '/sprites/craft-purple.png', color: '#a46bff', hue: 275 },
-  { name: '06 BLUE', url: '/sprites/craft-blue.png', color: '#3d7bff', hue: 215 },
+  { name: '01 RED', url: 'sprites/craft-red.png', color: '#ff3d6e', hue: 190 },
+  { name: '02 CYAN', url: 'sprites/craft-cyan.webp', color: '#3ff0ff', hue: 190 },
+  { name: '03 GREEN', url: 'sprites/craft-green.png', color: '#2fd16b', hue: 120 },
+  { name: '04 ORANGE', url: 'sprites/craft-orange.png', color: '#ff8a1f', hue: 35 },
+  { name: '05 PURPLE', url: 'sprites/craft-purple.png', color: '#a46bff', hue: 275 },
+  { name: '06 BLUE', url: 'sprites/craft-blue.png', color: '#3d7bff', hue: 215 },
 ].map((l) => ({ ...l, sprite: loadSprite(l.url) }));
 
 /** menu = start screen; paused = pause menu; racing = the simulation runs; results = it keeps
@@ -370,7 +370,7 @@ function fitCanvas(): void {
 }
 
 // Dev-only handle for poking at game state from the console.
-if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
+if (import.meta.env.DEV) {
   (window as unknown as { game: object }).game = {
     get player() { return player; }, get rivals() { return rivals; }, get track() { return track; },
     get mode() { return mode; },
