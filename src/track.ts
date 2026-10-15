@@ -219,36 +219,33 @@ export const TRACKS: TrackDef[] = [
   },
   {
     name: 'SKYLINE CAROUSEL',
-    blurb: 'Rooftop circuit with a long, banked carousel',
+    blurb: 'Rooftop circuit: one huge, round carousel',
     theme: { wall: '#ff5e8a', wallFace: '#ffd3e0', lights: '255, 240, 120', kerb: '#ff3060', surface: '#251c2a' },
+    // Nearly a circle (radius 2350 around (0, -450)): the main straight is a chord across the
+    // bottom and the rest of the lap is one long, steady carousel.
     control: [
       [0, 1300],
-      [1700, 1300],
-      [2500, 1000],   // T1
-      [2700, 300],
-      [2400, -300],   // T2: left, heading west
-      [1800, -500],
-      [1400, -200],   // T3-T4: the rooftop dip
-      [1000, -400],
-      [600, -1000],
-      [700, -1700],   // T5: into the carousel
-      [300, -2300],
-      [-500, -2500],  // the carousel: one long, steady left
-      [-1300, -2300],
-      [-1800, -1700],
-      [-1900, -1000],
-      [-1600, -400],
-      [-1000, -200],  // out of the carousel, heading east
-      [-550, 150],    // T8: a wide right, dropping south
-      [-850, 600],
-      [-1500, 650],
-      [-1950, 520],   // T9-T10: a wide loop back onto the straight
-      [-2400, 460],
-      [-2697, 583],
-      [-2820, 880],
-      [-2697, 1177],
-      [-2400, 1300],
-      [-1600, 1300],
+      [863, 1300],
+      [1568, 1300],   // T1: off the straight onto the carousel
+      [1976, 822],
+      [2242, 254],
+      [2348, -364],
+      [2287, -989],
+      [2063, -1575],
+      [1692, -2081],
+      [1200, -2471],
+      [622, -2716],
+      [0, -2800],
+      [-622, -2716],
+      [-1200, -2471],
+      [-1692, -2081],
+      [-2063, -1575],
+      [-2287, -989],
+      [-2348, -364],
+      [-2242, 254],
+      [-1976, 822],
+      [-1568, 1300],  // the last corner onto the straight
+      [-863, 1300],
     ],
   },
 ];
