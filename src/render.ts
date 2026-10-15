@@ -529,13 +529,12 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
   }
   ctx.restore();
 
-  // Glowing outlines: green while the DRS wing is open, purple while the ERS battery is full.
+  // Electric outlines: green while the DRS wing is open, purple while the ERS battery is full.
   if (sprite.canvas) {
-    const pulse = 0.7 + 0.3 * Math.sin(time * 8);
     const full = c.energy >= ENERGY_FULL;
-    // Both at once: green ring on the outside, a tighter purple ring inside it.
-    if (c.drsOpen) drawOutline(ctx, sprite, DRS_GLOW, full ? 5 : 2.5, pulse, 14);
-    if (full) drawOutline(ctx, sprite, ERS_GLOW, 2.5, pulse, c.drsOpen ? 3 : 14);
+    // Both at once: the green charge crackles outside, the purple one hugs the hull.
+    if (c.drsOpen) drawElectric(ctx, sprite, DRS_GLOW, full ? 4.5 : 2);
+    if (full) drawElectric(ctx, sprite, ERS_GLOW, 2);
     drawSprite(ctx, sprite);
   }
   ctx.restore();
@@ -569,21 +568,52 @@ function silhouette(sprite: Sprite, color: string): HTMLCanvasElement {
 }
 
 /**
- * A glowing outline around the craft's own shape: its silhouette drawn a few px out in every
- * direction with a soft glow, so the sprite drawn on top leaves just a colored rim.
+ * An electric outline around the craft's own shape: a thin rim that jitters and flickers every
+ * frame, a white-hot core, and short lightning arcs crackling off the hull.
  * Call in the craft's local frame (nose along +x).
  */
-function drawOutline(ctx: CanvasRenderingContext2D, sprite: Sprite, color: string, thickness: number, alpha: number, glow: number): void {
-  const sil = silhouette(sprite, color);
+function drawElectric(ctx: CanvasRenderingContext2D, sprite: Sprite, color: string, thickness: number): void {
   const width = CRAFT_LENGTH * sprite.aspect;
   ctx.save();
   ctx.rotate(Math.PI / 2);
-  ctx.globalAlpha = alpha;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = glow;
+  // The rim: the silhouette nudged out in 8 directions, each by a slightly different random amount.
+  const sil = silhouette(sprite, color);
+  ctx.globalAlpha = 0.55 + Math.random() * 0.45;
   for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2;
-    ctx.drawImage(sil, -width / 2 + Math.cos(a) * thickness, -CRAFT_LENGTH / 2 + Math.sin(a) * thickness, width, CRAFT_LENGTH);
+    const a = (k / 8) * Math.PI * 2, d = thickness * (0.6 + Math.random() * 0.8);
+    ctx.drawImage(sil, -width / 2 + Math.cos(a) * d, -CRAFT_LENGTH / 2 + Math.sin(a) * d, width, CRAFT_LENGTH);
+  }
+  // White-hot core just outside the hull.
+  const core = silhouette(sprite, '#ffffff');
+  ctx.globalAlpha = 0.35 + Math.random() * 0.35;
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+    ctx.drawImage(core, -width / 2 + Math.cos(a), -CRAFT_LENGTH / 2 + Math.sin(a), width, CRAFT_LENGTH);
+  }
+  ctx.restore();
+
+  // Lightning: a few jagged arcs that jump around the hull, redrawn somewhere new each frame.
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineJoin = 'miter';
+  const rx = CRAFT_LENGTH / 2 + thickness + 2, ry = width / 2 + thickness + 2;
+  const arcs = 2 + Math.floor(Math.random() * 2);
+  for (let n = 0; n < arcs; n++) {
+    const start = Math.random() * Math.PI * 2, span = 0.5 + Math.random() * 0.6;
+    const pts: [number, number][] = [];
+    for (let k = 0; k <= 6; k++) {
+      const t = start + (span * k) / 6;
+      const out = k === 0 || k === 6 ? 0 : (Math.random() - 0.3) * 7;
+      pts.push([Math.cos(t) * (rx + out), Math.sin(t) * (ry + out)]);
+    }
+    for (const [w, style] of [[3, color], [1, '#ffffff']] as const) {
+      ctx.lineWidth = w;
+      ctx.strokeStyle = style;
+      ctx.globalAlpha = w === 3 ? 0.7 : 0.9;
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -706,14 +736,16 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
   ctx.fillStyle = c.deploying ? '#d9a6ff' : '#9d5cff';
   if (c.energy >= ENERGY_FULL) {
-    // Full battery: the bar pulses and glows.
-    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
-    ctx.save();
-    ctx.shadowColor = ERS_GLOW;
-    ctx.shadowBlur = 8 + pulse * 10;
-    ctx.fillStyle = `rgb(${Math.round(157 + pulse * 70)}, ${Math.round(92 + pulse * 80)}, 255)`;
+    // Full battery: the bar flickers with charge and a spark jumps along it.
+    const flicker = Math.random();
+    ctx.fillStyle = flicker > 0.8 ? '#ffffff' : `rgb(${Math.round(160 + flicker * 60)}, ${Math.round(95 + flicker * 70)}, 255)`;
     ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
-    ctx.restore();
+    const sx = bx + 80 + Math.random() * (bw - 80);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx - 6, y + 126); ctx.lineTo(sx - 1, y + 131); ctx.lineTo(sx + 2, y + 127); ctx.lineTo(sx + 7, y + 133);
+    ctx.stroke();
   } else {
     ctx.fillRect(bx + 80, y + 128, (bw - 80) * c.energy, 6);
   }
