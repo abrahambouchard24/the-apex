@@ -110,7 +110,7 @@ export class LobbyUI {
     const taken = new Set(lobby.players.filter((p) => p.id !== me).map((p) => p.car));
     const maxAi = Math.max(0, 6 - lobby.players.length);
     const players = lobby.players.map((p) => `<li><span style="color:${this.cars[p.car].color}">${esc(p.name)}${p.id === me ? ' (YOU)' : ''}</span>
-      <small>${this.cars[p.car].name}${p === lobby.players[0] ? ' · HOST' : ''}</small></li>`).join('')
+      <small>${this.cars[p.car].name}${p === lobby.players[0] ? ' · HOST' : ''} · ${p.setup?.assist === 0 ? 'PRO' : 'ASSISTED'}</small></li>`).join('')
       + (lobby.ai ? `<li><span style="color:#8a93c0">AI × ${Math.min(lobby.ai, maxAi)}</span><small>COMPUTER</small></li>` : '');
     const cars = this.cars.map((c, i) => `<button class="hr-car ${mine?.car === i ? 'selected' : ''}" style="--c:${c.color}" data-car="${i}"
       ${taken.has(i) ? 'disabled' : ''}><img src="${c.url}" alt=""><span style="color:${c.color}">${c.name}</span></button>`).join('');

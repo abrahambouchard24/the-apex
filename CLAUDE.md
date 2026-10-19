@@ -17,6 +17,7 @@ Project brief (vision, visual reference, art prompts, roadmap): https://claude.a
 - Drift: heading and velocity are separate, so the craft slides. There is no drift boost (removed on purpose).
 - Acceleration builds gradually: about 3.7 s to reach 5th gear. Each upshift is a light 0.12 s dip to 65% thrust (a felt shift, not a stall).
 - Turning does not brake for you. Grip redirects sideways momentum forward (`GRIP_KEEP` 0.9) instead of deleting it, and grip fades with speed (2.6 at a standstill down to 0.95 at top speed; braking loosens it further). A 90° turn at 200 km/h slides about 1,070 px wide, so drivers must brake before corners. The AI brakes on its own and steers against its slide (`slipCorrect` 0.5, `CORNER_K` 40, skill 0.82 to 0.97).
+- Handling assist (TUNE CAR → HANDLING, `Setup.assist` → `Mods.assist`): ASSISTED (the default for players) brings back the original feel. Grip stays strong at speed (`ASSIST_GRIP_FAST` 1.45) and only 70% of sideways momentum is redirected forward (`ASSIST_KEEP`), so turning hard scrubs speed off by itself. In simulation it is about 4% slower than a perfect PRO lap, but a driver who never brakes almost never overheats. Presets and RESET keep the handling choice. The AI always drive PRO. The online lobby shows each player's handling.
 - The 2.5D look is faked: one rotated sprite plus an offset shadow and hover bob for now, with sprite stacking later.
 - Visual reference: the mobile drift racer Hot Slide (stylized, bright, readable from above), reimagined with neon and hovercraft.
 

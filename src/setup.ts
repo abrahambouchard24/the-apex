@@ -5,7 +5,8 @@
 import { Mods, NO_MODS } from './craft';
 
 export type SliderId = 'gearing' | 'wing' | 'cooling' | 'ers';
-export type Setup = Record<SliderId, number>;
+/** assist: 1 = ASSISTED handling (turning scrubs speed for you), 0 = PRO. */
+export type Setup = Record<SliderId, number> & { assist: number };
 
 export const STEPS = 3;   // each slider runs from -STEPS to +STEPS
 
@@ -26,13 +27,13 @@ export const SLIDERS: Slider[] = [
   { id: 'ers', name: 'ERS MODE', low: 'HARVEST · FAST CHARGE', high: 'POWER · STRONG BOOST', perStep: { ers: 0.08, harvest: -0.12 } },
 ];
 
-export const BALANCED: Setup = { gearing: 0, wing: 0, cooling: 0, ers: 0 };
+export const BALANCED: Setup = { gearing: 0, wing: 0, cooling: 0, ers: 0, assist: 1 };
 
 export const PRESETS: { name: string; setup: Setup }[] = [
   { name: 'BALANCED', setup: BALANCED },
-  { name: 'SPEED', setup: { gearing: 2, wing: -2, cooling: -1, ers: 1 } },
-  { name: 'GRIP', setup: { gearing: -1, wing: 3, cooling: 0, ers: 0 } },
-  { name: 'ENDURANCE', setup: { gearing: 0, wing: 1, cooling: 3, ers: -2 } },
+  { name: 'SPEED', setup: { gearing: 2, wing: -2, cooling: -1, ers: 1, assist: 1 } },
+  { name: 'GRIP', setup: { gearing: -1, wing: 3, cooling: 0, ers: 0, assist: 1 } },
+  { name: 'ENDURANCE', setup: { gearing: 0, wing: 1, cooling: 3, ers: -2, assist: 1 } },
 ];
 
 /** A setup's effect on the car. */
@@ -42,6 +43,7 @@ export function setupMods(s: Setup): Mods {
     const step = clampStep(s[sl.id]);
     for (const k of Object.keys(sl.perStep) as (keyof Mods)[]) m[k] += (sl.perStep[k] ?? 0) * step;
   }
+  m.assist = s.assist ? 1 : 0;
   return m;
 }
 
@@ -75,6 +77,8 @@ function clampStep(v: unknown): number {
 export function sanitize(s: Partial<Setup> | null | undefined): Setup {
   const out = { ...BALANCED };
   if (s) for (const sl of SLIDERS) out[sl.id] = clampStep(s[sl.id]);
+  // Setups saved before handling existed start out ASSISTED.
+  if (s && s.assist !== undefined) out.assist = s.assist ? 1 : 0;
   return out;
 }
 

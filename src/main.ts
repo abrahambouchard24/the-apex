@@ -967,6 +967,7 @@ const lobbyUI = new LobbyUI(LIVERIES, trackChoices, {
       carSetup = s;
       saveSetup(s);
       if (online?.role === 'guest') online.guest.send({ t: 'setup', setup: s });
+      else broadcastLobby();
     }, () => {});
   },
 });
@@ -994,6 +995,7 @@ function startHosting(name: string): void {
     if (online?.role !== 'host') return;
     const p = online.lobby.players.find((q) => q.id === id);
     if (p) p.setup = sanitize(setup);
+    broadcastLobby();
   };
   host.onJoin = (id, pname, car, setup) => {
     if (online?.role !== 'host') return;
@@ -1027,6 +1029,7 @@ function startHosting(name: string): void {
 /** Everyone gets the lobby (each told which player they are); the host sees it too if it's up. */
 function broadcastLobby(): void {
   if (online?.role !== 'host') return;
+  online.lobby.players[0].setup = carSetup;   // so everyone sees the host's handling too
   for (const p of online.lobby.players.slice(1)) online.host.send({ t: 'lobby', lobby: online.lobby, you: p.id }, p.id);
   if (mode === 'menu') lobbyUI.showLobby(online.lobby, 'host', true, online.code);
 }
