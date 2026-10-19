@@ -478,8 +478,28 @@ addEventListener('keydown', startAudio);
 input.onUnlock = pause;
 
 // Checked every frame: zoom and display changes alter devicePixelRatio without a resize event.
+// The canvas renders at most about 1080p worth of pixels (the browser scales it up to fill bigger
+// or high-DPI screens): beyond that the extra pixels cost far more frame time than they add.
+const MAX_PIXELS = 2.2e6;
+/**
+ * Render resolution on top of that, lowered while racing if frames keep running slow (a weak GPU,
+ * or the browser drawing without hardware acceleration). It only goes down; a resize resets it.
+ */
+const perf = { quality: 1, frames: 0, slow: 0, w: 0, h: 0 };
+const QUALITY_MIN = 0.5;
+function watchFrameRate(dt: number): void {
+  if (innerWidth !== perf.w || innerHeight !== perf.h) { perf.w = innerWidth; perf.h = innerHeight; perf.quality = 1; perf.frames = perf.slow = 0; }
+  if (mode !== 'racing' || dt > 0.25) return;   // menus, pauses and tab switches don't count
+  perf.frames++;
+  if (dt > 1 / 45) perf.slow++;
+  if (perf.frames < 90) return;
+  // Most of a second and a half under 45 fps: drop the resolution a step.
+  if (perf.slow > 45 && perf.quality > QUALITY_MIN) perf.quality = Math.max(QUALITY_MIN, perf.quality * 0.85);
+  perf.frames = perf.slow = 0;
+}
+
 function fitCanvas(): void {
-  const dpr = devicePixelRatio || 1;
+  const dpr = Math.min(devicePixelRatio || 1, Math.sqrt(MAX_PIXELS / (innerWidth * innerHeight))) * perf.quality;
   const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) {
     canvas.width = w;
@@ -1428,6 +1448,7 @@ function blendForDrawing(alpha: number): () => void {
 
 function frame(now: number): void {
   acc += Math.min(0.25, (now - last) / 1000);
+  watchFrameRate((now - last) / 1000);
   last = now;
   if (input.takeMute()) showToast(sound.toggleMute() ? 'SOUND OFF' : 'SOUND ON', '#ffffff');
   if (online?.role === 'guest') {

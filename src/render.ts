@@ -1,7 +1,7 @@
 // Everything drawn to the canvas. Reads game state, never changes it.
 
 import { Craft, GEARS, clamp } from './craft';
-import { drawGround as drawSceneryGround, drawOverlays, drawProps, View } from './scenery';
+import { drawGround as drawSceneryGround, drawOverlays, drawProps, groundMoves, View } from './scenery';
 import { COOL_LANE, HALF_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
 
 export interface Camera { x: number; y: number; zoom: number; shake: number }
@@ -69,6 +69,7 @@ export interface Scene {
 
 export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s: Scene): void {
   const { cam } = s;
+  const baseScale = ctx.getTransform().a;   // canvas pixels per CSS pixel
   ctx.fillStyle = '#07080f';
   ctx.fillRect(0, 0, w, h);
 
@@ -81,8 +82,11 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   // The visible world rectangle, for culling scenery, and the camera centre its 2.5D lean is measured from.
   const viewW = w / cam.zoom, viewH = h / cam.zoom;
   const view: View = { x0: cam.x - viewW / 2, y0: cam.y - viewH / 2, x1: cam.x + viewW / 2, y1: cam.y + viewH / 2, cx: cam.x, cy: cam.y };
-  drawSceneryGround(ctx, s.track, view, s.time);
-  drawTrack(ctx, s.track, s.time);
+  // The ground and the track's static layers come from pre-rendered tiles; only the animated
+  // parts (rail pulses, lights, cooling lane, start gantry) are drawn live.
+  if (groundMoves(s.track)) drawSceneryGround(ctx, s.track, view, s.time);
+  drawWorldTiles(ctx, s.track, view, baseScale * TILE_ZOOM);
+  drawTrackLive(ctx, s.track, s.time);
   drawProps(ctx, s.track, view, s.time);
   drawParticles(ctx, s.particles);
   drawSlipstreams(ctx, s.cars, s.time);
@@ -193,7 +197,8 @@ function trackPaths(track: Track): TrackPaths {
   return built;
 }
 
-function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): void {
+/** Everything about the track that never changes (drawn once into the world tiles). */
+function drawTrackStatic(ctx: CanvasRenderingContext2D, track: Track): void {
   const p = trackPaths(track);
   const theme = track.theme;
   ctx.save();
@@ -283,6 +288,21 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
   ctx.globalAlpha = 0.9;
   ctx.lineWidth = 2;
   ctx.stroke(p.rails);
+  ctx.restore();
+
+  drawDrsZones(ctx, track);
+  ctx.restore();
+}
+
+/** The moving parts of the track, drawn every frame over the tiles. */
+function drawTrackLive(ctx: CanvasRenderingContext2D, track: Track, time: number): void {
+  const p = trackPaths(track);
+  const theme = track.theme;
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
   ctx.strokeStyle = '#ffffff';
   ctx.globalAlpha = 0.85;
   ctx.lineWidth = 3;
@@ -296,8 +316,6 @@ function drawTrack(ctx: CanvasRenderingContext2D, track: Track, time: number): v
   ctx.fill(p.lights);
 
   drawCoolLane(ctx, track, p, time);
-
-  drawDrsZones(ctx, track);
   drawStartLine(ctx, track, time);
   ctx.restore();
 }
@@ -642,16 +660,79 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
 }
 
 /** A soft darkening toward the screen edges that draws the eye to the middle (cached per size). */
-let vignette: { w: number; h: number; g: CanvasGradient } | null = null;
-function drawVignette(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  if (!vignette || vignette.w !== w || vignette.h !== h) {
-    const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) * 0.6);
-    g.addColorStop(0, 'rgba(4, 5, 12, 0)');
-    g.addColorStop(1, 'rgba(4, 5, 12, 0.55)');
-    vignette = { w, h, g };
+let vignette: { w: number; h: number; c: HTMLCanvasElement } | null = null;
+
+// --- pre-rendered world tiles --------------------------------------------------------------------
+// The ground and the static track are many full-screen layers (a dozen wide strokes of the whole
+// circuit), far too much to paint 60 times a second. They're drawn once into 512 px tiles, kept
+// around the camera, and each frame just copies the visible ones.
+
+const TILE = 512;            // world px per tile
+const TILE_ZOOM = 1.15;      // tiles are rendered for the closest camera zoom, so they stay sharp
+const MAX_TILES = 60;
+const TILE_BLEED = 1;        // tile px of neighbouring content around each tile, so no seams show
+interface WorldTiles { track: Track; scale: number; tiles: Map<string, HTMLCanvasElement> }
+let world: WorldTiles | null = null;
+
+function drawWorldTiles(ctx: CanvasRenderingContext2D, track: Track, v: View, rawScale: number): void {
+  // Quantized so a small zoom or window change doesn't throw the cache away.
+  const scale = Math.max(0.5, Math.ceil(rawScale * 8) / 8);
+  if (!world || world.track !== track || world.scale !== scale) world = { track, scale, tiles: new Map() };
+  const tiles = world.tiles;
+  const x0 = Math.floor(v.x0 / TILE), x1 = Math.floor(v.x1 / TILE), y0 = Math.floor(v.y0 / TILE), y1 = Math.floor(v.y1 / TILE);
+  const pad = TILE_BLEED / scale;
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      const key = tx + ',' + ty;
+      let c = tiles.get(key);
+      if (c) tiles.delete(key);   // re-inserted below: the Map's order doubles as least-recently-used
+      else c = renderTile(track, tx, ty, scale);
+      tiles.set(key, c);
+      ctx.drawImage(c, tx * TILE - pad, ty * TILE - pad, TILE + pad * 2, TILE + pad * 2);
+    }
   }
-  ctx.fillStyle = vignette.g;
-  ctx.fillRect(0, 0, w, h);
+  // Build one tile just outside the view each frame, so turning a corner rarely has to wait for one.
+  outer: for (let ty = y0 - 1; ty <= y1 + 1; ty++) {
+    for (let tx = x0 - 1; tx <= x1 + 1; tx++) {
+      const key = tx + ',' + ty;
+      if (!tiles.has(key)) { tiles.set(key, renderTile(track, tx, ty, scale)); break outer; }
+    }
+  }
+  while (tiles.size > MAX_TILES) tiles.delete(tiles.keys().next().value!);
+}
+
+function renderTile(track: Track, tx: number, ty: number, scale: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = c.height = Math.ceil(TILE * scale) + TILE_BLEED * 2;
+  const g = c.getContext('2d')!;
+  g.translate(TILE_BLEED, TILE_BLEED);
+  g.scale(scale, scale);
+  g.translate(-tx * TILE, -ty * TILE);
+  const pad = TILE_BLEED / scale;
+  const v: View = { x0: tx * TILE - pad, y0: ty * TILE - pad, x1: (tx + 1) * TILE + pad, y1: (ty + 1) * TILE + pad, cx: 0, cy: 0 };
+  if (!groundMoves(track)) drawSceneryGround(g, track, v, 0);
+  // Skip the strokes for tiles nowhere near the circuit.
+  const b = track.bounds, m = 80;
+  if (v.x1 > b.minX - m && v.x0 < b.maxX + m && v.y1 > b.minY - m && v.y0 < b.maxY + m) drawTrackStatic(g, track);
+  return c;
+}
+function drawVignette(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  // Painted once at an eighth of the size and stretched: a gradient this smooth looks the same,
+  // and copying it is far cheaper than working out the gradient for every pixel each frame.
+  if (!vignette || vignette.w !== w || vignette.h !== h) {
+    const c = document.createElement('canvas');
+    const k = 1 / 8;
+    c.width = Math.max(1, Math.ceil(w * k)); c.height = Math.max(1, Math.ceil(h * k));
+    const g = c.getContext('2d')!;
+    g.scale(k, k);
+    const grd = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) * 0.6);
+    grd.addColorStop(0, 'rgba(4, 5, 12, 0)');
+    grd.addColorStop(1, 'rgba(4, 5, 12, 0.55)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, w, h);
+    vignette = { w, h, c };
+  }
+  ctx.drawImage(vignette.c, 0, 0, w, h);
 }
 
 const DRS_GLOW = '#4dff9a';

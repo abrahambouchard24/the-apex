@@ -233,6 +233,9 @@ function build(track: Track): Scenery {
 const tiles = new Map<GroundKind, CanvasPattern>();
 
 /** Fill the visible world with this track's ground texture. */
+/** Whether the ground moves (Harbor Lights' water), so it can't be pre-rendered with the track. */
+export function groundMoves(track: Track): boolean { return sceneryFor(track).ground === 'water'; }
+
 export function drawGround(ctx: CanvasRenderingContext2D, track: Track, v: View, time: number): void {
   const s = sceneryFor(track);
   const pattern = groundPattern(ctx, s.ground);
