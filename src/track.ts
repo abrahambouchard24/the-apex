@@ -13,7 +13,12 @@ export interface TrackDef {
   /** The first point is the start/finish line; the last few should lie on the straight before it (the grid). */
   control: [number, number][];
   theme: TrackTheme;
+  /** Layout scale: tracks with tight bends are spread out so the wide road still fits through them. */
+  scale?: number;
 }
+
+/** Kerb width at the track edge through corners. */
+export const KERB_WIDTH = 21;
 
 const NEON: TrackTheme = { wall: '#4fe3ff', wallFace: '#bff6ff', lights: '255, 79, 216', kerb: '#ff2d75', surface: '#23283f' };
 
@@ -21,6 +26,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'APEX GRAND PRIX',
     blurb: 'Balanced F1 circuit: chicane, hairpin, esses',
+    scale: 1.27,
     theme: NEON,
     control: [
       [0, 1200],      // start/finish line, halfway down the main straight heading east
@@ -73,6 +79,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'NEON STREETS',
     blurb: 'Tight street circuit: square corners, short straights',
+    scale: 1.51,
     theme: { wall: '#ff4fd8', wallFace: '#ffd1f4', lights: '79, 227, 255', kerb: '#4fe3ff', surface: '#211f33' },
     control: [
       [0, 1000],
@@ -190,6 +197,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'DESERT MIRAGE',
     blurb: 'Long straights into heavy-braking hairpins',
+    scale: 1.49,
     theme: { wall: '#ffb347', wallFace: '#ffe6c2', lights: '255, 120, 60', kerb: '#ff6a2b', surface: '#2a2420' },
     control: [
       [0, 1500],
@@ -220,6 +228,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'SKYLINE CAROUSEL',
     blurb: 'Rooftop circuit with a long, banked carousel',
+    scale: 1.44,
     theme: { wall: '#ff5e8a', wallFace: '#ffd3e0', lights: '255, 240, 120', kerb: '#ff3060', surface: '#251c2a' },
     control: [
       [0, 1300],
@@ -253,7 +262,7 @@ export const TRACKS: TrackDef[] = [
   },
 ];
 
-export const HALF_WIDTH = 130;     // half the racing surface width, px
+export const HALF_WIDTH = 195;     // half the racing surface width, px
 export const WALL_THICKNESS = 14;  // barrier band drawn just outside the racing surface, px
 export const WALL_DIST = HALF_WIDTH + WALL_THICKNESS;  // centerline to the outside of the barrier
 const SAMPLES_PER_SEGMENT = 40;
@@ -264,7 +273,7 @@ export const SECTORS = 10;         // checkpoints per lap; all must be passed in
  * Cooling lane: a strip along the outside edge of the main straight (right-hand side heading
  * down it, away from the infield). Driving over it sheds heat fast.
  */
-export const COOL_LANE = { from: 6, to: 32, side: -1, width: 52 };
+export const COOL_LANE = { from: 6, to: 32, side: -1, width: 78 };
 
 export interface TrackPoint { x: number; y: number; nx: number; ny: number; curve: number }
 
@@ -284,7 +293,8 @@ export class Track {
   constructor(def: TrackDef = TRACKS[0]) {
     this.name = def.name;
     this.theme = def.theme;
-    const CONTROL = def.control;
+    const k = def.scale ?? 1;
+    const CONTROL = def.control.map(([x, y]) => [x * k, y * k] as [number, number]);
     const n = CONTROL.length;
     const raw: Vec[] = [];
     for (let i = 0; i < n; i++) {

@@ -63,8 +63,29 @@ function centreCursor(): void {
  * Chase view steering: the mouse's distance left or right of centre sets how hard the car turns
  * (full lock at STEER_RANGE of the screen width), as a world angle the physics turns toward.
  */
+/**
+ * Keyboard steering (A / D or the arrow keys), in either view: eases toward full lock over a
+ * moment so a tap is a small correction. Called once per physics step; null while no key is
+ * steering, so the mouse is in charge.
+ */
+let keySteer = 0;
+let keyMouseMark = -1;   // mouse movement count when the keys last steered
+function keyAim(c: Craft, brake: boolean): number | null {
+  const target = input.steer;
+  const rate = target === 0 ? 12 : 6.5;   // eases in, lets go faster
+  keySteer += clamp(target - keySteer, -rate * STEP, rate * STEP);
+  if (target !== 0) {
+    // The keys take over from the mouse: centre the chase view's steering so letting go means straight.
+    keyMouseMark = input.mouseMoves;
+    if (view === 'chase') input.cursor.x = innerWidth / 2;
+  }
+  if (target === 0 && keySteer === 0) return keyMouseMark === input.mouseMoves ? c.heading : null;
+  return c.heading + keySteer * c.maxTurn(STEP, brake);
+}
+
 function chaseAim(c: Craft, brake: boolean): number {
-  const s = clamp((input.cursor.x - innerWidth / 2) / (innerWidth * STEER_RANGE), -1, 1);
+  // (A zero-width window, e.g. a hidden frame, would make this 0 / 0.)
+  const s = clamp((input.cursor.x - innerWidth / 2) / Math.max(1, innerWidth * STEER_RANGE), -1, 1);
   const steer = Math.abs(s) < 0.03 ? 0 : s;
   return c.heading + steer * c.maxTurn(STEP, brake);
 }
@@ -608,7 +629,7 @@ function update(dt: number): void {
   const csx = (pc.pos.x - cam.x) * cam.zoom + innerWidth / 2;
   const csy = (pc.pos.y - cam.y) * cam.zoom + innerHeight / 2;
   const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
-  const aim = view === 'chase' ? chaseAim(pc, input.brake) : Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
+  const aim = keyAim(pc, input.brake) ?? (view === 'chase' ? chaseAim(pc, input.brake) : Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading);
   if (autopilot && racing) {
     const c = autopilot.think(track, time, cars);
     pc.deploy = c.deploy;
@@ -1354,7 +1375,7 @@ function guestFrame(dt: number): void {
   pred.acc += dt;
   while (pred.acc >= STEP) {
     pred.acc -= STEP;
-    const c: Controls = { seq: ++pred.seq, aim: steering ? (view === 'chase' ? chaseAim(pc, input.brake) : aim) : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy };
+    const c: Controls = { seq: ++pred.seq, aim: steering ? (keyAim(pc, input.brake) ?? (view === 'chase' ? chaseAim(pc, input.brake) : aim)) : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy };
     g.guest.send({ t: 'input', ...c });
     if (pred.ready) {
       const racingNow = hostNow >= goTime;
@@ -1510,7 +1531,7 @@ function frame(now: number): void {
   if (chaseOn) chase!.render({ time, cam, player, cars, track, particles }, renderScale);
   drawFrame(ctx, innerWidth, innerHeight, {
     time, cam, player, cars, track, hud: raceHud(),
-    particles, cursor: input.cursor, toast, locked: input.locked, chase: chaseOn,
+    particles, cursor: input.cursor, toast, locked: input.locked, chase: chaseOn, keySteer: keySteer || null,
   });
   restore?.();
   if (shift) { player.craft.pos.x -= pred.errX; player.craft.pos.y -= pred.errY; }

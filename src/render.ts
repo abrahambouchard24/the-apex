@@ -2,7 +2,7 @@
 
 import { Craft, GEARS, clamp } from './craft';
 import { drawGround as drawSceneryGround, drawOverlays, drawProps, groundMoves, View } from './scenery';
-import { COOL_LANE, HALF_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
+import { COOL_LANE, HALF_WIDTH, KERB_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
 
 export interface Camera { x: number; y: number; zoom: number; shake: number }
 
@@ -67,6 +67,8 @@ export interface Scene {
   particles: Particle[]; cursor: { x: number; y: number }; toast: Toast | null; locked: boolean;
   /** The 3D chase view draws the world underneath; this canvas then only carries the HUD. */
   chase?: boolean;
+  /** Keyboard steering in use (-1..1): the steering bar shows it instead of the mouse. */
+  keySteer?: number | null;
 }
 
 /** Whether the chase view is on (changes the help line and the cursor). */
@@ -116,7 +118,7 @@ function drawHudLayers(ctx: CanvasRenderingContext2D, w: number, h: number, s: S
   drawGapPanel(ctx, s.hud);
   drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud);
   drawRaceBanners(ctx, w, h, s.hud);
-  if (s.chase) drawSteerBar(ctx, w, h, s.cursor);
+  if (s.chase) drawSteerBar(ctx, w, h, s.keySteer != null ? { x: w / 2 + s.keySteer * w * STEER_RANGE, y: 0 } : s.cursor);
   else drawCursor(ctx, s.cursor);
 }
 
@@ -170,7 +172,7 @@ function trackPaths(track: Track): TrackPaths {
     if (Math.abs(pts[i].curve) < KERB_CURVE) continue;
     const path = Math.floor(i / 2) % 2 ? kerbRed : kerbWhite;
     for (const side of [1, -1]) {
-      const a = off(i, side * (HALF_WIDTH - 14)), b = off(i + 1, side * (HALF_WIDTH - 14));
+      const a = off(i, side * (HALF_WIDTH - KERB_WIDTH)), b = off(i + 1, side * (HALF_WIDTH - KERB_WIDTH));
       const c = off(i + 1, side * HALF_WIDTH), d = off(i, side * HALF_WIDTH);
       path.moveTo(a[0], a[1]); path.lineTo(b[0], b[1]); path.lineTo(c[0], c[1]); path.lineTo(d[0], d[1]); path.closePath();
       kerbEdge.moveTo(a[0], a[1]); kerbEdge.lineTo(b[0], b[1]);
@@ -1038,9 +1040,9 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
-  const steer = chaseHud ? 'Mouse left / right: steer' : 'Mouse: steer';
+  const steer = chaseHud ? 'Mouse left / right or A / D: steer' : 'Mouse or A / D: steer';
   const help = (locked ? '' : 'Click to lock the mouse   ') + steer
-    + '   Auto-accelerate   Left click: brake   Right click: boost   V: view   R: restart   Esc: pause';
+    + '   Left click / S: brake   Right click / E: boost   V: view   R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }

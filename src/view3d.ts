@@ -7,7 +7,7 @@
 
 import * as THREE from 'three';
 import { CRAFT_LENGTH, type Camera, type Car, type Particle } from './render';
-import { COOL_LANE, HALF_WIDTH, Track, WALL_DIST, WALL_THICKNESS } from './track';
+import { COOL_LANE, HALF_WIDTH, KERB_WIDTH, Track, WALL_DIST, WALL_THICKNESS } from './track';
 import { groundCanvas, groundMoves, sceneryFor, type Prop } from './scenery';
 
 const WALL_H = 24;            // barrier height
@@ -189,7 +189,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       const c = Math.floor(i / 2) % 2 ? lit : dark;
       for (const side of [1, -1]) {
         const base = pos.length / 3;
-        for (const [j, d] of [[i, HALF_WIDTH - 14], [i + 1, HALF_WIDTH - 14], [i + 1, HALF_WIDTH], [i, HALF_WIDTH]] as const) {
+        for (const [j, d] of [[i, HALF_WIDTH - KERB_WIDTH], [i + 1, HALF_WIDTH - KERB_WIDTH], [i + 1, HALF_WIDTH], [i, HALF_WIDTH]] as const) {
           const p = pts[j % m];
           pos.push(p.x + p.nx * d * side, 0.8, p.y + p.ny * d * side);
           col.push(c.r, c.g, c.b);
@@ -537,23 +537,56 @@ function windowsMaterial(base: string, lit: string, w: number, h: number): THREE
 
 // --- the cars ------------------------------------------------------------------------------------
 
-/** A hovercraft model in its livery colour, nose along +x. Shared shapes are built once. */
-let shapes: {
-  hull: THREE.BufferGeometry; skirt: THREE.BufferGeometry; aura: THREE.BufferGeometry; pod: THREE.BufferGeometry; flame: THREE.BufferGeometry;
-  canopy: THREE.BufferGeometry; glow: THREE.Texture; shadow: THREE.Texture;
-} | null = null;
+/**
+ * The hovercraft, built from voxels (4 px cubes) for a pixel-art look: 20 long, 11 wide, 6 tall,
+ * nose along +x. Each car is two instanced meshes (lit cubes and glowing cubes) plus its wing.
+ */
+const VOX = 4;
+type VoxKind = 'paint' | 'dark' | 'carbon' | 'glass' | 'shine' | 'white' | 'intake' | 'nozzle';
+interface Voxel { x: number; y: number; z: number; kind: VoxKind }
+const GLOWING: VoxKind[] = ['intake', 'nozzle'];
 
-function carShapes() {
-  if (shapes) return shapes;
-  const L = CRAFT_LENGTH / 2;
-  const outline = new THREE.Shape();
-  const half: [number, number][] = [[L, 0], [L - 10, 5], [L - 28, 9], [-6, 12], [-L + 10, 13], [-L + 2, 11], [-L, 6]];
-  outline.moveTo(half[0][0], half[0][1]);
-  for (const [x, y] of half.slice(1)) outline.lineTo(x, y);
-  for (const [x, y] of [...half].reverse()) outline.lineTo(x, -y);
-  const hull = new THREE.ExtrudeGeometry(outline, { depth: 8, bevelEnabled: true, bevelThickness: 2.5, bevelSize: 2, bevelSegments: 2 })
-    .rotateX(-Math.PI / 2).translate(0, 0, 0);
-  hull.computeVertexNormals();
+/** Half-width of the hull (in voxels) at each step from the tail (0) to the nose (19). */
+const HULL_HW = [2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 1, 1, 0];
+
+function hullVoxels(): Voxel[] {
+  const grid = new Map<string, Voxel>();
+  const set = (x: number, y: number, z: number, kind: VoxKind) => grid.set(`${x},${y},${z}`, { x, y, z, kind });
+  for (let x = 0; x < 20; x++) {
+    const hw = HULL_HW[x];
+    if (x >= 1 && x <= 17) for (let z = -hw - 1; z <= hw + 1; z++) set(x, 0, z, 'carbon');           // hover skirt
+    for (let z = -hw; z <= hw; z++) set(x, 1, z, 'paint');                                             // lower hull
+    if (x >= 1 && x <= 17) for (let z = -(hw - 1); z <= hw - 1; z++) set(x, 2, z, x >= 7 && z === 0 ? 'white' : 'paint');
+  }
+  for (const z of [-4, 4]) {
+    for (let x = 3; x <= 13; x++) for (const y of [1, 2]) set(x, y, z, 'dark');                       // side pods
+    for (const y of [1, 2]) set(14, y, z, 'intake');
+  }
+  for (let x = 9; x <= 13; x++) for (let z = -1; z <= 1; z++) set(x, 3, z, x === 12 && z === -1 ? 'shine' : 'glass');  // canopy
+  set(10, 4, 0, 'glass');
+  for (let x = 1; x <= 6; x++) for (let z = -2; z <= 2; z++) set(x, 3, z, 'dark');                    // engine cover
+  for (let x = 18; x <= 19; x++) for (let z = -5; z <= 5; z++) set(x, 0, z, Math.abs(z) === 5 ? 'paint' : 'carbon');  // front wing
+  for (const z of [-5, 5]) for (let x = 18; x <= 19; x++) set(x, 1, z, 'paint');
+  for (const z of [-2, 2]) {
+    for (const y of [1, 2]) { set(0, y, z, 'carbon'); set(-1, y, z, 'nozzle'); }                      // thrusters
+    for (const y of [3, 4]) set(1, y, z, 'carbon');                                                    // wing struts
+  }
+  return [...grid.values()];
+}
+
+/** The rear wing, around its pivot (it tilts flat when DRS opens). */
+function wingVoxels(): Voxel[] {
+  const v: Voxel[] = [];
+  for (let x = -1; x <= 1; x++) for (let z = -5; z <= 5; z++) v.push({ x, y: 0, z, kind: 'carbon' });
+  for (const z of [-5, 5]) for (let x = -1; x <= 1; x++) v.push({ x, y: -1, z, kind: 'paint' });
+  return v;
+}
+
+let shared: { cube: THREE.BufferGeometry; flame: THREE.BufferGeometry; aura: THREE.BufferGeometry; glow: THREE.Texture; shadow: THREE.Texture } | null = null;
+const sharedRes = new Set<unknown>();
+
+function carShared() {
+  if (shared) return shared;
   const radial = (inner: string, outer: string) => {
     const t = new THREE.CanvasTexture(canvas2d(64, 64, (g) => {
       const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -563,18 +596,39 @@ function carShapes() {
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
   };
-  shapes = {
-    hull,
-    aura: hull.clone().scale(1.18, 1.5, 1.35).translate(0, -2, 0),
-    pod: new THREE.CapsuleGeometry(3.4, 34, 4, 10).rotateZ(Math.PI / 2),
-    skirt: hull.clone().scale(1.08, 0.35, 1.12).translate(0, -1.5, 0),
-    // A cone with its base at the origin and its tip one unit back along -x (scaled to the flame length).
-    flame: new THREE.ConeGeometry(3.4, 1, 12, 1, true).translate(0, 0.5, 0).rotateZ(Math.PI / 2),
-    canopy: new THREE.SphereGeometry(1, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+  shared = {
+    cube: new THREE.BoxGeometry(VOX, VOX, VOX),
+    // A block one unit long reaching back along -x from the nozzle (scaled to the flame length).
+    flame: new THREE.BoxGeometry(1, 7, 7).translate(-0.5, 0, 0),
+    aura: new THREE.BoxGeometry(CRAFT_LENGTH + 12, 30, 52).translate(0, 12, 0),
     glow: radial('rgba(255,255,255,0.9)', 'rgba(255,255,255,0)'),
     shadow: radial('rgba(0,0,0,0.7)', 'rgba(0,0,0,0)'),
   };
-  return shapes;
+  for (const r of Object.values(shared)) sharedRes.add(r);
+  return shared;
+}
+
+/** Voxels as two instanced meshes: shaded cubes, and glowing ones that ignore the lighting. */
+function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>, origin: [number, number, number]): THREE.Object3D[] {
+  const s = carShared();
+  const out: THREE.Object3D[] = [];
+  for (const glowing of [false, true]) {
+    const list = voxels.filter((v) => GLOWING.includes(v.kind) === glowing);
+    if (!list.length) continue;
+    const mat = glowing ? new THREE.MeshBasicMaterial() : new THREE.MeshLambertMaterial();
+    const inst = new THREE.InstancedMesh(s.cube, mat, list.length);
+    const m4 = new THREE.Matrix4(), col = new THREE.Color();
+    list.forEach((v, i) => {
+      m4.makeTranslation((v.x - origin[0]) * VOX, (v.y - origin[1]) * VOX + VOX / 2, (v.z - origin[2]) * VOX);
+      inst.setMatrixAt(i, m4);
+      // A little per-cube shade variation, so the surfaces read as pixels.
+      const hash = (((v.x + 7) * 73856093) ^ ((v.y + 7) * 19349663) ^ ((v.z + 7) * 83492791)) >>> 0;
+      const jitter = glowing ? 1 : 0.93 + (hash % 100) / 100 * 0.14;
+      inst.setColorAt(i, col.copy(colors[v.kind]).multiplyScalar(jitter));
+    });
+    out.push(inst);
+  }
+  return out;
 }
 
 class CarRig {
@@ -591,54 +645,38 @@ class CarRig {
   private wingTilt = 0;
 
   constructor(car: Car) {
-    const s = carShapes();
+    const s = carShared();
     const livery = new THREE.Color(car.color);
-    const dark = livery.clone().multiplyScalar(0.45);
-    const paint = new THREE.MeshPhongMaterial({ color: livery, specular: 0x666666, shininess: 70 });
-    const trim = new THREE.MeshPhongMaterial({ color: dark, specular: 0x333333, shininess: 40 });
-    const carbon = new THREE.MeshPhongMaterial({ color: 0x15182a, specular: 0x222233, shininess: 30 });
-    const L = CRAFT_LENGTH / 2;
+    const colors: Record<VoxKind, THREE.Color> = {
+      paint: livery, dark: livery.clone().multiplyScalar(0.5), carbon: new THREE.Color(0x1a1d2e),
+      glass: new THREE.Color(0x10204a), shine: new THREE.Color(0x7fb4ff), white: new THREE.Color(0xf2f4ff),
+      intake: new THREE.Color(0xdff6ff), nozzle: new THREE.Color(0xbff4ff),
+    };
+    // Grid x 0..19 is centred on the car; the wing's pivot sits above the tail.
+    for (const m of voxelMeshes(hullVoxels(), colors, [9.5, 0, 0])) this.body.add(m);
+    for (const m of voxelMeshes(wingVoxels(), colors, [0, 0, 0])) this.wing.add(m);
+    this.wing.position.set((1 - 9.5) * VOX, 5 * VOX, 0);
+    this.body.add(this.wing);
 
-    this.body.add(mesh(s.hull, paint));
-    // A dark hover skirt under the hull, with a glowing seam where it meets the ground effect.
-    mesh(s.skirt, carbon, this.body);
-    // Side pods with glowing intakes at the front.
-    for (const z of [-16, 16]) {
-      mesh(s.pod, trim, this.body).position.set(-8, 4, z);
-      mesh(new THREE.BoxGeometry(1.5, 3, 4.5), new THREE.MeshBasicMaterial({ color: 0xdff6ff }), this.body).position.set(12.5, 4, z);
-    }
-    // Front wing.
-    mesh(new THREE.BoxGeometry(6, 1.4, 40), carbon, this.body).position.set(L - 8, 2.5, 0);
-    for (const z of [-20, 20]) mesh(new THREE.BoxGeometry(9, 5, 1.2), paint, this.body).position.set(L - 8, 3.5, z);
-    // Cockpit canopy and a racing stripe down the middle.
-    const canopy = mesh(s.canopy, new THREE.MeshPhongMaterial({ color: 0x0a1022, specular: 0xbfd8ff, shininess: 120, emissive: 0x08142e }), this.body);
-    canopy.scale.set(15, 7, 7);
-    canopy.position.set(5, 10.5, 0);
-    mesh(new THREE.BoxGeometry(46, 0.6, 3), new THREE.MeshPhongMaterial({ color: 0xffffff }), this.body).position.set(10, 10.6, 0);
-    // Engine cover with the car number on it.
-    mesh(new THREE.BoxGeometry(20, 6, 16), trim, this.body).position.set(-L + 14, 11, 0);
+    // The car number on the engine cover, in chunky pixels.
     const num = car.name.match(/^\d+/)?.[0];
     if (num) {
-      const decal = textPlane(num, '#ffffff', 14, 9);
+      const decal = textPlane(num, '#ffffff', 16, 10);
+      const map = (decal.material as THREE.MeshBasicMaterial).map!;
+      map.magFilter = THREE.NearestFilter;
+      map.minFilter = THREE.NearestFilter;
       decal.geometry.rotateY(-Math.PI / 2);
-      decal.position.set(-L + 14, 14.1, 0);
+      decal.position.set((3.5 - 9.5) * VOX, 4 * VOX + 0.2, 0);
       this.body.add(decal);
     }
-    // Twin thrusters, their glowing nozzles and the flames out of them.
-    this.flameMat = new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-    for (const z of [-7, 7]) {
-      mesh(new THREE.CylinderGeometry(4.2, 5.2, 12, 14).rotateZ(Math.PI / 2), carbon, this.body).position.set(-L + 2, 6, z);
-      mesh(new THREE.CircleGeometry(3.4, 14).rotateY(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xbff4ff }), this.body).position.set(-L - 4.1, 6, z);
+
+    // Blocky flames out of the twin thrusters.
+    this.flameMat = new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+    for (const z of [-2, 2]) {
       const f = mesh(s.flame, this.flameMat, this.body);
-      f.position.set(-L - 4, 6, z);
+      f.position.set((-1.5 - 9.5) * VOX, 2 * VOX, z * VOX);
       this.flames.push(f);
     }
-    // Rear wing on two struts, with endplates in the livery; it tilts flat when DRS opens.
-    for (const z of [-6, 6]) mesh(new THREE.BoxGeometry(2.5, 8, 1.5), carbon, this.body).position.set(-L + 4, 12, z);
-    mesh(new THREE.BoxGeometry(7, 1.2, 38), carbon, this.wing);
-    for (const z of [-19, 19]) mesh(new THREE.BoxGeometry(10, 9, 1.2), paint, this.wing).position.set(-1, -2, z);
-    this.wing.position.set(-L + 4, 16.5, 0);
-    this.body.add(this.wing);
     // A charge aura for a full ERS battery (purple) or an open DRS wing (green).
     this.auraMat = new THREE.MeshBasicMaterial({ color: ERS_GLOW, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide });
     this.aura = mesh(s.aura, this.auraMat, this.body);
@@ -676,7 +714,9 @@ class CarRig {
     const flame = 10 + c.thrust * 22 + (c.deploying ? 16 : 0) + Math.random() * 4;
     this.flameMat.color.setHSL(hue / 360, 1, 0.5);
     this.flameMat.opacity = 0.45 + c.thrust * 0.4;
-    for (const f of this.flames) f.scale.set(flame, 1 + c.thrust * 0.25, 1 + c.thrust * 0.25);
+    // Flames grow in whole voxel steps, keeping the pixel look.
+    const len = Math.max(VOX, Math.round(flame / VOX) * VOX);
+    for (const f of this.flames) f.scale.set(len, 1, 1);
 
     this.wingTilt += ((c.drsOpen ? -0.45 : 0) - this.wingTilt) * (1 - Math.exp(-12 * dt));
     this.wing.rotation.z = this.wingTilt;
@@ -766,12 +806,11 @@ function textPlane(text: string, color: string, w: number, h: number, back?: str
 function dispose(obj: THREE.Object3D): void {
   obj.traverse((o) => {
     const m = o as THREE.Mesh;
-    if (m.geometry && m.geometry !== shapes?.hull && m.geometry !== shapes?.skirt && m.geometry !== shapes?.aura && m.geometry !== shapes?.pod
-      && m.geometry !== shapes?.flame && m.geometry !== shapes?.canopy) m.geometry.dispose();
+    if (m.geometry && !sharedRes.has(m.geometry)) m.geometry.dispose();
     const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
     for (const mat of mats) {
       const map = (mat as THREE.MeshBasicMaterial).map;
-      if (map && map !== shapes?.glow && map !== shapes?.shadow) map.dispose();
+      if (map && !sharedRes.has(map)) map.dispose();
       mat.dispose();
     }
   });

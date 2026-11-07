@@ -155,11 +155,11 @@ export const MISSIONS: Mission[] = [
   {
     id: 'tryout', chapter: 0, title: 'THE TRYOUT', track: 'APEX GRAND PRIX', laps: 3, grid: 'pole', aiBuff: 0,
     rivals: [],
-    goal: { kind: 'lap', seconds: 27.5 }, bonus: { kind: 'lap', seconds: 25.5 }, points: 250, bonusPoints: 100,
+    goal: { kind: 'lap', seconds: 32.0 }, bonus: { kind: 'lap', seconds: 29.5 }, points: 250, bonusPoints: 100,
     unlocks: 'GARAGE UNLOCKED: spend team points on upgrades from the story menu.',
     intro: [
-      { who: 'lupis', text: 'An empty track, three laps. Leopard GP needs one lap under twenty-seven and a half seconds.' },
-      { who: 'lupis', text: 'Our previous driver managed twenty-five and a half. He has since... moved on.' },
+      { who: 'lupis', text: 'An empty track, three laps. Leopard GP needs one lap under thirty-two seconds.' },
+      { who: 'lupis', text: 'Our previous driver managed twenty-nine and a half. He has since... moved on.' },
       { who: 'charlie', text: 'Brake before the corners, kid. Not in them.' },
     ],
     win: [
