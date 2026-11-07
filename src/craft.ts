@@ -172,6 +172,12 @@ export class Craft {
     return clamp((this.speed - lo) / (hi - lo), 0, 1);
   }
 
+  /** The most the craft can turn in one step of dt right now (for proportional steering). */
+  maxTurn(dt: number, brake: boolean): number {
+    const speedFrac = clamp(this.speed / GEARS[GEARS.length - 1].top, 0, 1);
+    return lerp(TURN_RATE, TURN_RATE_FAST, speedFrac) * (brake ? BRAKE_TURN_BONUS : 1) * dt;
+  }
+
   /**
    * Advance one fixed step.
    * @param aimAngle world angle the player is steering toward

@@ -65,11 +65,22 @@ export interface RaceHud {
 export interface Scene {
   time: number; cam: Camera; player: Car; cars: Car[]; track: Track; hud: RaceHud;
   particles: Particle[]; cursor: { x: number; y: number }; toast: Toast | null; locked: boolean;
+  /** The 3D chase view draws the world underneath; this canvas then only carries the HUD. */
+  chase?: boolean;
 }
+
+/** Whether the chase view is on (changes the help line and the cursor). */
+let chaseHud = false;
 
 export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s: Scene): void {
   const { cam } = s;
   const baseScale = ctx.getTransform().a;   // canvas pixels per CSS pixel
+  chaseHud = !!s.chase;
+  if (s.chase) {
+    ctx.clearRect(0, 0, w, h);
+    drawHudLayers(ctx, w, h, s);
+    return;
+  }
   ctx.fillStyle = '#07080f';
   ctx.fillRect(0, 0, w, h);
 
@@ -95,14 +106,41 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   drawOverlays(ctx, s.track, view, s.time);
 
   ctx.restore();
-  drawVignette(ctx, w, h);
+  drawHudLayers(ctx, w, h, s);
+}
 
+function drawHudLayers(ctx: CanvasRenderingContext2D, w: number, h: number, s: Scene): void {
+  drawVignette(ctx, w, h);
   drawMinimap(ctx, w, h, s.track, s.cars, s.player);
   drawLapPanel(ctx, s.player.race, s.time, s.hud);
   drawGapPanel(ctx, s.hud);
   drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud);
   drawRaceBanners(ctx, w, h, s.hud);
-  drawCursor(ctx, s.cursor);
+  if (s.chase) drawSteerBar(ctx, w, h, s.cursor);
+  else drawCursor(ctx, s.cursor);
+}
+
+/** Chase view: steering is how far the mouse is left or right of centre, shown on a bar. */
+export const STEER_RANGE = 0.3;   // fraction of the screen width from centre to full lock
+function drawSteerBar(ctx: CanvasRenderingContext2D, w: number, h: number, cursor: { x: number; y: number }): void {
+  const half = w * STEER_RANGE, y = h - 46;
+  const x = Math.max(w / 2 - half, Math.min(w / 2 + half, cursor.x));
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,12,24,0.45)';
+  roundRect(ctx, w / 2 - half - 6, y - 5, half * 2 + 12, 10, 5);
+  ctx.fill();
+  const g = ctx.createLinearGradient(w / 2 - half, 0, w / 2 + half, 0);
+  g.addColorStop(0, 'rgba(79,227,255,0.6)'); g.addColorStop(0.5, 'rgba(79,227,255,0.05)'); g.addColorStop(1, 'rgba(79,227,255,0.6)');
+  ctx.fillStyle = g;
+  ctx.fillRect(Math.min(x, w / 2), y - 2, Math.abs(x - w / 2), 4);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(w / 2 - 1, y - 7, 2, 14);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(x, y - 9); ctx.lineTo(x + 6, y - 16); ctx.lineTo(x - 6, y - 16); ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(x - 1.5, y - 7, 3, 14);
+  ctx.restore();
 }
 
 /** Static track geometry as Path2Ds, built once per track. */
@@ -1000,9 +1038,9 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
-  const help = locked
-    ? 'Mouse: steer   Auto-accelerate   Left click: brake   Right click: boost   R: restart   Esc: pause'
-    : 'Click to lock the mouse   Mouse: steer   Auto-accelerate   Left click: brake   Right click: boost   R: restart   Esc: pause';
+  const steer = chaseHud ? 'Mouse left / right: steer' : 'Mouse: steer';
+  const help = (locked ? '' : 'Click to lock the mouse   ') + steer
+    + '   Auto-accelerate   Left click: brake   Right click: boost   V: view   R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }

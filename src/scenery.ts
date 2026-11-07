@@ -9,7 +9,7 @@ import { Track, WALL_DIST } from './track';
 
 type GroundKind = 'tarmac' | 'stadium' | 'city' | 'rock' | 'water' | 'canyon' | 'sand' | 'citylights';
 
-interface Prop {
+export interface Prop {
   kind: string;
   x: number;
   y: number;
@@ -329,7 +329,16 @@ function groundPattern(ctx: CanvasRenderingContext2D, kind: GroundKind): CanvasP
   }
   p = ctx.createPattern(c, 'repeat')!;
   tiles.set(kind, p);
+  tileCanvases.set(kind, c);
   return p;
+}
+
+const tileCanvases = new Map<GroundKind, HTMLCanvasElement>();
+
+/** The ground tile itself (512 px, repeating), for the 3D view to use as a texture. */
+export function groundCanvas(kind: GroundKind): HTMLCanvasElement {
+  if (!tileCanvases.has(kind)) groundPattern(document.createElement('canvas').getContext('2d')!, kind);
+  return tileCanvases.get(kind)!;
 }
 
 // --- props --------------------------------------------------------------------------------------

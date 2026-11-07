@@ -16,6 +16,7 @@ export class Input {
   private resetQueued = false;
   private pauseQueued = false;
   private muteQueued = false;
+  private viewQueued = false;
   /** Called when pointer lock is lost (e.g. the browser's own Esc handling). */
   onUnlock: (() => void) | null = null;
   private held = new Set<string>();
@@ -48,6 +49,7 @@ export class Input {
       }
       if (e.code === 'KeyR') this.resetQueued = true;
       if (e.code === 'KeyM' && !e.repeat) this.muteQueued = true;
+      if (e.code === 'KeyV' && !e.repeat) this.viewQueued = true;
       if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) this.pauseQueued = true;
       this.refresh();
     });
@@ -80,6 +82,7 @@ export class Input {
   takeReset(): boolean { const r = this.resetQueued; this.resetQueued = false; return r; }
   takePause(): boolean { const p = this.pauseQueued; this.pauseQueued = false; return p; }
   takeMute(): boolean { const m = this.muteQueued; this.muteQueued = false; return m; }
+  takeView(): boolean { const v = this.viewQueued; this.viewQueued = false; return v; }
 
   /** Lock the mouse to the game. Must be called from a click or key handler. */
   lock(): void {

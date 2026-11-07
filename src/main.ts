@@ -3,7 +3,8 @@ import { Sound } from './audio';
 import { Craft, LAUNCH_TIME, Mods, NO_MODS, STALL_TIME, bumpOff, clamp, collideCrafts, lerp, wrapAngle } from './craft';
 import { Input } from './input';
 import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
-import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
+import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, STEER_RANGE, Toast, drawFrame, formatTime, loadSprite } from './render';
+import { ChaseView } from './view3d';
 import {
   MISSIONS, REPLAY_SHARE, Save, Speaker, loadSave, met, playerMods, rivalMods, writeSave,
 } from './story';
@@ -32,6 +33,41 @@ const POINTS = [10, 8, 6, 4, 2, 1];
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
+// The HUD canvas sits over the 3D view's canvas.
+Object.assign(canvas.style, { position: 'fixed', inset: '0', zIndex: '1' });
+
+// --- view: the 3D chase camera (default) or the original top-down view; V switches -------------
+type ViewMode = 'chase' | 'top';
+let chase: ChaseView | null = null;
+try { chase = new ChaseView(); } catch { chase = null; }   // no WebGL: top-down only
+let view: ViewMode = chase && localStorage.getItem('the-apex-view') !== 'top' ? 'chase' : 'top';
+if (chase) chase.visible = view === 'chase';
+
+function toggleView(): void {
+  if (!chase) { showToast('3D VIEW NOT AVAILABLE', '#ff7a8a'); return; }
+  view = view === 'chase' ? 'top' : 'chase';
+  chase.visible = view === 'chase';
+  try { localStorage.setItem('the-apex-view', view); } catch { /* not kept */ }
+  centreCursor();
+  showToast(view === 'chase' ? 'CHASE CAM' : 'TOP-DOWN VIEW', '#ffffff');
+}
+
+/** Put the cursor where it means "straight ahead" for the current view. */
+function centreCursor(): void {
+  const h = player?.craft.heading ?? 0;
+  if (view === 'chase') { input.cursor.x = innerWidth / 2; input.cursor.y = innerHeight * 0.7; }
+  else { input.cursor.x = innerWidth / 2 + Math.cos(h) * 220; input.cursor.y = innerHeight / 2 + Math.sin(h) * 220; }
+}
+
+/**
+ * Chase view steering: the mouse's distance left or right of centre sets how hard the car turns
+ * (full lock at STEER_RANGE of the screen width), as a world angle the physics turns toward.
+ */
+function chaseAim(c: Craft, brake: boolean): number {
+  const s = clamp((input.cursor.x - innerWidth / 2) / (innerWidth * STEER_RANGE), -1, 1);
+  const steer = Math.abs(s) < 0.03 ? 0 : s;
+  return c.heading + steer * c.maxTurn(STEP, brake);
+}
 const input = new Input(canvas);
 const sound = new Sound();
 
@@ -263,9 +299,8 @@ function startRace(): void {
   goTime = time + COUNTDOWN;
   cam.x = player.craft.pos.x;
   cam.y = player.craft.pos.y;
-  // Point the cursor down the straight so the craft doesn't swerve on the first frame.
-  input.cursor.x = innerWidth / 2 + Math.cos(player.craft.heading) * 220;
-  input.cursor.y = innerHeight / 2 + Math.sin(player.craft.heading) * 220;
+  // Point the cursor straight ahead so the craft doesn't swerve on the first frame.
+  centreCursor();
 }
 startRace();   // lines up the grid behind the start screen
 
@@ -481,6 +516,7 @@ input.onUnlock = pause;
 // The canvas renders at most about 1080p worth of pixels (the browser scales it up to fill bigger
 // or high-DPI screens): beyond that the extra pixels cost far more frame time than they add.
 const MAX_PIXELS = 2.2e6;
+let renderScale = 1;
 /**
  * Render resolution on top of that, lowered while racing if frames keep running slow (a weak GPU,
  * or the browser drawing without hardware acceleration). It only goes down; a resize resets it.
@@ -500,6 +536,7 @@ function watchFrameRate(dt: number): void {
 
 function fitCanvas(): void {
   const dpr = Math.min(devicePixelRatio || 1, Math.sqrt(MAX_PIXELS / (innerWidth * innerHeight))) * perf.quality;
+  renderScale = dpr;
   const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) {
     canvas.width = w;
@@ -511,7 +548,7 @@ function fitCanvas(): void {
 // Dev-only handle for poking at game state from the console.
 if (import.meta.env.DEV) {
   (window as unknown as { game: object }).game = {
-    get player() { return player; }, get rivals() { return rivals; }, get track() { return track; },
+    get player() { return player; }, get rivals() { return rivals; }, get track() { return track; }, get chase() { return chase; },
     get mode() { return mode; },
     /** Let an AI drive the player's car (for testing whole races). */
     autodrive() {
@@ -571,7 +608,7 @@ function update(dt: number): void {
   const csx = (pc.pos.x - cam.x) * cam.zoom + innerWidth / 2;
   const csy = (pc.pos.y - cam.y) * cam.zoom + innerHeight / 2;
   const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
-  const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
+  const aim = view === 'chase' ? chaseAim(pc, input.brake) : Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
   if (autopilot && racing) {
     const c = autopilot.think(track, time, cars);
     pc.deploy = c.deploy;
@@ -1317,7 +1354,7 @@ function guestFrame(dt: number): void {
   pred.acc += dt;
   while (pred.acc >= STEP) {
     pred.acc -= STEP;
-    const c: Controls = { seq: ++pred.seq, aim: steering ? aim : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy };
+    const c: Controls = { seq: ++pred.seq, aim: steering ? (view === 'chase' ? chaseAim(pc, input.brake) : aim) : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy };
     g.guest.send({ t: 'input', ...c });
     if (pred.ready) {
       const racingNow = hostNow >= goTime;
@@ -1451,6 +1488,7 @@ function frame(now: number): void {
   watchFrameRate((now - last) / 1000);
   last = now;
   if (input.takeMute()) showToast(sound.toggleMute() ? 'SOUND OFF' : 'SOUND ON', '#ffffff');
+  if (input.takeView()) toggleView();
   if (online?.role === 'guest') {
     acc = 0;
     if (online.inRace) guestFrame(Math.min(0.1, (now - lastGuest) / 1000));
@@ -1468,9 +1506,11 @@ function frame(now: number): void {
   if (shift) { player.craft.pos.x += pred.errX; player.craft.pos.y += pred.errY; }
   const blended = online?.role !== 'guest' && (mode === 'racing' || mode === 'results');
   const restore = blended ? blendForDrawing(Math.min(1, acc / STEP)) : null;
+  const chaseOn = view === 'chase' && chase !== null;
+  if (chaseOn) chase!.render({ time, cam, player, cars, track, particles }, renderScale);
   drawFrame(ctx, innerWidth, innerHeight, {
     time, cam, player, cars, track, hud: raceHud(),
-    particles, cursor: input.cursor, toast, locked: input.locked,
+    particles, cursor: input.cursor, toast, locked: input.locked, chase: chaseOn,
   });
   restore?.();
   if (shift) { player.craft.pos.x -= pred.errX; player.craft.pos.y -= pred.errY; }
