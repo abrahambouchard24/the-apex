@@ -68,8 +68,8 @@ export const HARVEST_PER_LAP = 1;  // most energy a craft can harvest in one lap
 const DRIFT_CHARGE_FROM = 0.4;    // rad (~23°) of slip before a slide counts as a charging drift
 const DRIFT_DEEP = 0.8;           // rad (~46°) of slip that charges at the full rate
 const ERS_DRAIN = 0.25;           // energy per second while deploying (4 s from full)
-const ERS_PULL = 1.55;            // thrust multiplier while deploying
-const ERS_TOP = 0.09;             // extra top speed while deploying
+const ERS_PULL = 1.6875;          // thrust multiplier while deploying (+69%)
+const ERS_TOP = 0.1125;           // extra top speed while deploying (+11.25%)
 export const ERS_START = 0.5;     // charge at the start of a race
 // DRS: an open wing on a DRS straight sheds drag for extra top speed.
 const DRS_TOP = 0.07;
