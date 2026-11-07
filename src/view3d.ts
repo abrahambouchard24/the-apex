@@ -95,6 +95,7 @@ export class ChaseView {
   private camPos = new THREE.Vector3();
   private lastNow = 0;
   private sparks: Sparks;
+  private drafts = new Slipstreams();
   private hemi = new THREE.HemisphereLight(0xc8d8ff, 0x261c34, 1.5);
   private sun = new THREE.DirectionalLight(0xffffff, 1.7);
   /** Dev only: orbit the player's car instead of chasing it (yaw relative to its heading). */
@@ -111,6 +112,7 @@ export class ChaseView {
     this.scene.add(this.sun);
     this.sparks = new Sparks();
     this.scene.add(this.sparks.points);
+    this.scene.add(this.drafts.mesh);
   }
 
   set visible(on: boolean) { this.canvas.style.display = on ? 'block' : 'none'; }
@@ -151,6 +153,7 @@ export class ChaseView {
       if (!seen.has(car)) { this.scene.remove(rig.root); dispose(rig.root); this.rigs.delete(car); }
     }
     this.sparks.update(s.particles);
+    this.drafts.update(s.cars, s.time);
     this.updateCamera(s, dt);
     this.renderer.render(this.scene, this.camera);
   }
@@ -883,7 +886,7 @@ class CarRig {
     this.aura.visible = full || c.drsOpen;
     if (this.aura.visible) {
       this.auraMat.color.setHex(c.drsOpen ? DRS_GLOW : ERS_GLOW);
-      this.auraMat.opacity = 0.18 + Math.random() * 0.22;
+      this.auraMat.opacity = 0.06 + Math.random() * 0.08;
     }
   }
 }
@@ -891,6 +894,67 @@ class CarRig {
 // --- particles -------------------------------------------------------------------------------------
 
 /** Sparks, drift trails and smoke from the 2D particle list, as glowing points. */
+/**
+ * Slipstream: glowing dashes streaming from a car's nose to the tail of the car it is drafting, in
+ * three lanes that pinch in toward the leader (as in the top-down view), brighter the stronger the tow.
+ */
+const DRAFT_MAX = 720;
+const DASH = 14, DASH_GAP = 12;
+class Slipstreams {
+  mesh: THREE.InstancedMesh;
+  private m4 = new THREE.Matrix4();
+  private q = new THREE.Quaternion();
+  private up = new THREE.Vector3(0, 1, 0);
+  private pos = new THREE.Vector3();
+  private scl = new THREE.Vector3();
+  private col = new THREE.Color();
+
+  constructor() {
+    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), DRAFT_MAX);
+    this.mesh.frustumCulled = false;
+    this.mesh.count = 0;
+    this.mesh.setColorAt(0, this.col.setRGB(0, 0, 0));
+  }
+
+  update(cars: Car[], time: number): void {
+    let n = 0;
+    for (const car of cars) {
+      const c = car.craft, lead = c.slipFrom;
+      if (!lead || c.slipstream < 0.05) continue;
+      const ax = c.pos.x + Math.cos(c.heading) * CRAFT_LENGTH * 0.45, ay = c.pos.y + Math.sin(c.heading) * CRAFT_LENGTH * 0.45;
+      const bx = lead.pos.x - Math.cos(lead.heading) * CRAFT_LENGTH * 0.5, by = lead.pos.y - Math.sin(lead.heading) * CRAFT_LENGTH * 0.5;
+      const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+      if (len < 10) continue;
+      const ux = dx / len, uy = dy / len, px = -uy, py = ux;
+      this.q.setFromAxisAngle(this.up, -Math.atan2(uy, ux));
+      const period = DASH + DASH_GAP;
+      for (const lane of [-1, 0, 1]) {
+        const strength = c.slipstream * (lane === 0 ? 0.9 : 0.6);
+        // The dashes travel toward the car ahead.
+        for (let d = (time * 160 + lane * 7) % period; d < len && n < DRAFT_MAX; d += period) {
+          const t = d / len;
+          const spread = lane * 16 * (1 - t * 0.75);
+          const wave = Math.sin(t * len / 22 - time * 14 + lane) * 2.5 * (1 - t * 0.5);
+          this.pos.set(ax + ux * d + px * (spread + wave), 9 + t * 3, ay + uy * d + py * (spread + wave));
+          const thick = lane === 0 ? 2.2 : 1.4;
+          this.scl.set(DASH, thick, thick);
+          this.m4.compose(this.pos, this.q, this.scl);
+          this.mesh.setMatrixAt(n, this.m4);
+          // Fade in off our nose and out into the leader's wake.
+          const fade = Math.min(1, t * 6) * Math.min(1, (1 - t) * 4);
+          this.col.setHSL(car.hue / 360, 1, 0.72).multiplyScalar(strength * fade);
+          this.mesh.setColorAt(n, this.col);
+          n++;
+        }
+      }
+    }
+    this.mesh.count = n;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  }
+}
+
 class Sparks {
   points: THREE.Points;
   private pos = new Float32Array(3 * 3000);
