@@ -261,7 +261,7 @@ export class Menus {
             <div class="label"><b>SEASON</b><small>A championship across the circuits. Points for every finish, a title for the best.</small></div>
           </button>
         </div>
-        <p class="hr-keys">Mouse: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; Left click: brake &nbsp;·&nbsp; Right click: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
+        <p class="hr-keys">A / D or ← / →: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; S / ↓ / Space: brake &nbsp;·&nbsp; W / ↑ / Shift: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
       </div>`);
 
     this.start = overlay(`
@@ -281,7 +281,7 @@ export class Menus {
             ${SEASON_CHOICES.map((n) => `<button data-v="${n}">${n}</button>`).join('')}</div></div>
         </div>
         <div class="hr-btns row"><button class="hr-btn" data-act="start">START RACE</button><button class="hr-btn secondary" data-act="tune">TUNE CAR</button></div>
-        <p class="hr-keys">Mouse: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; Left click: brake &nbsp;·&nbsp; Right click: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
+        <p class="hr-keys">A / D or ← / →: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; S / ↓ / Space: brake &nbsp;·&nbsp; W / ↑ / Shift: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
       </div>`);
     const grid = this.start.querySelector('.hr-cars')!;
     cars.forEach((car, i) => {

@@ -67,8 +67,8 @@ export interface Scene {
   particles: Particle[]; cursor: { x: number; y: number }; toast: Toast | null; locked: boolean;
   /** The 3D chase view draws the world underneath; this canvas then only carries the HUD. */
   chase?: boolean;
-  /** Keyboard steering in use (-1..1): the steering bar shows it instead of the mouse. */
-  keySteer?: number | null;
+  /** Steering (-1 full left .. 1 full right), shown on the steering bar. */
+  steer?: number;
 }
 
 /** Whether the chase view is on (changes the help line and the cursor). */
@@ -118,15 +118,13 @@ function drawHudLayers(ctx: CanvasRenderingContext2D, w: number, h: number, s: S
   drawGapPanel(ctx, s.hud);
   drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud);
   drawRaceBanners(ctx, w, h, s.hud);
-  if (s.chase) drawSteerBar(ctx, w, h, s.keySteer != null ? { x: w / 2 + s.keySteer * w * STEER_RANGE, y: 0 } : s.cursor);
-  else drawCursor(ctx, s.cursor);
+  drawSteerBar(ctx, w, h, s.steer ?? 0);
 }
 
-/** Chase view: steering is how far the mouse is left or right of centre, shown on a bar. */
-export const STEER_RANGE = 0.3;   // fraction of the screen width from centre to full lock
-function drawSteerBar(ctx: CanvasRenderingContext2D, w: number, h: number, cursor: { x: number; y: number }): void {
-  const half = w * STEER_RANGE, y = h - 46;
-  const x = Math.max(w / 2 - half, Math.min(w / 2 + half, cursor.x));
+/** How hard the car is steering, as a marker on a bar at the bottom of the screen. */
+function drawSteerBar(ctx: CanvasRenderingContext2D, w: number, h: number, steer: number): void {
+  const half = Math.min(260, w * 0.2), y = h - 46;
+  const x = w / 2 + Math.max(-1, Math.min(1, steer)) * half;
   ctx.save();
   ctx.fillStyle = 'rgba(10,12,24,0.45)';
   roundRect(ctx, w / 2 - half - 6, y - 5, half * 2 + 12, 10, 5);
@@ -585,7 +583,7 @@ function drawRaceBanners(ctx: CanvasRenderingContext2D, w: number, h: number, hu
       ctx.shadowBlur = 0;
       ctx.font = '700 16px system-ui, sans-serif';
       ctx.fillStyle = '#c8d2ff';
-      ctx.fillText('Hold left click (brake), release it right on GO for a turbo start', w / 2, h * 0.38 + 40);
+      ctx.fillText('Hold the brake (S / Space), release it right on GO for a turbo start', w / 2, h * 0.38 + 40);
     }
   }
   if (hud.banner) {
@@ -605,28 +603,6 @@ function drawRaceBanners(ctx: CanvasRenderingContext2D, w: number, h: number, hu
 export function formatTime(t: number): string {
   const m = Math.floor(t / 60), s = t - m * 60;
   return `${m}:${s.toFixed(3).padStart(6, '0')}`;
-}
-
-function drawCursor(ctx: CanvasRenderingContext2D, cursor: { x: number; y: number }): void {
-  // A plain arrow pointer, tip at the cursor position.
-  ctx.save();
-  ctx.translate(cursor.x, cursor.y);
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(0, 22);
-  ctx.lineTo(5.5, 16.5);
-  ctx.lineTo(9.5, 25.5);
-  ctx.lineTo(13, 24);
-  ctx.lineTo(9, 15);
-  ctx.lineTo(16.5, 15);
-  ctx.closePath();
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-  ctx.strokeStyle = '#0a0a12';
-  ctx.lineWidth = 1.5;
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-  ctx.restore();
 }
 
 function drawParticles(ctx: CanvasRenderingContext2D, particles: Particle[]): void {
@@ -989,7 +965,7 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   // ERS energy: violet, brighter while deploying.
   ctx.font = '700 11px system-ui, sans-serif';
   ctx.fillStyle = c.deploying ? '#d9a6ff' : '#8a93c0';
-  ctx.fillText(c.deploying ? 'DEPLOYING' : 'ENERGY', bx, y + 136);
+  ctx.fillText(c.deploying ? 'BOOSTING' : 'BOOST (W)', bx, y + 136);
   ctx.fillStyle = '#1b2040';
   ctx.fillRect(bx + 80, y + 128, bw - 80, 6);
   ctx.fillStyle = c.deploying ? '#d9a6ff' : '#9d5cff';
@@ -1040,9 +1016,7 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
-  const steer = chaseHud ? 'Mouse left / right or A / D: steer' : 'Mouse or A / D: steer';
-  const help = (locked ? '' : 'Click to lock the mouse   ') + steer
-    + '   Left click / S: brake   Right click / E: boost   V: view   R: restart   Esc: pause';
+  const help = 'A / D or ← / →: steer   S / ↓ / Space: brake   W / ↑ / Shift: boost   V: view   R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }

@@ -3,7 +3,7 @@ import { Sound } from './audio';
 import { Craft, LAUNCH_TIME, Mods, NO_MODS, STALL_TIME, bumpOff, clamp, collideCrafts, lerp, wrapAngle } from './craft';
 import { Input } from './input';
 import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
-import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, STEER_RANGE, Toast, drawFrame, formatTime, loadSprite } from './render';
+import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
 import { ChaseView } from './view3d';
 import {
   MISSIONS, REPLAY_SHARE, Save, Speaker, loadSave, met, playerMods, rivalMods, writeSave,
@@ -48,47 +48,22 @@ function toggleView(): void {
   view = view === 'chase' ? 'top' : 'chase';
   chase.visible = view === 'chase';
   try { localStorage.setItem('the-apex-view', view); } catch { /* not kept */ }
-  centreCursor();
   showToast(view === 'chase' ? 'CHASE CAM' : 'TOP-DOWN VIEW', '#ffffff');
 }
 
-/** Put the cursor where it means "straight ahead" for the current view. */
-function centreCursor(): void {
-  const h = player?.craft.heading ?? 0;
-  if (view === 'chase') { input.cursor.x = innerWidth / 2; input.cursor.y = innerHeight * 0.7; }
-  else { input.cursor.x = innerWidth / 2 + Math.cos(h) * 220; input.cursor.y = innerHeight / 2 + Math.sin(h) * 220; }
-}
-
 /**
- * Chase view steering: the mouse's distance left or right of centre sets how hard the car turns
- * (full lock at STEER_RANGE of the screen width), as a world angle the physics turns toward.
- */
-/**
- * Keyboard steering (A / D or the arrow keys), in either view: eases toward full lock over a
- * moment so a tap is a small correction. Called once per physics step; null while no key is
- * steering, so the mouse is in charge.
+ * Steering is keyboard only (A / D or the arrow keys), in either view: it eases toward full lock
+ * over a moment so a tap is a small correction, and lets go a little faster. Called once per
+ * physics step; the result is the world angle the physics turns toward.
  */
 let keySteer = 0;
-let keyMouseMark = -1;   // mouse movement count when the keys last steered
-function keyAim(c: Craft, brake: boolean): number | null {
+function steerAim(c: Craft, brake: boolean): number {
   const target = input.steer;
-  const rate = target === 0 ? 12 : 6.5;   // eases in, lets go faster
+  const rate = target === 0 ? 12 : 6.5;
   keySteer += clamp(target - keySteer, -rate * STEP, rate * STEP);
-  if (target !== 0) {
-    // The keys take over from the mouse: centre the chase view's steering so letting go means straight.
-    keyMouseMark = input.mouseMoves;
-    if (view === 'chase') input.cursor.x = innerWidth / 2;
-  }
-  if (target === 0 && keySteer === 0) return keyMouseMark === input.mouseMoves ? c.heading : null;
   return c.heading + keySteer * c.maxTurn(STEP, brake);
 }
 
-function chaseAim(c: Craft, brake: boolean): number {
-  // (A zero-width window, e.g. a hidden frame, would make this 0 / 0.)
-  const s = clamp((input.cursor.x - innerWidth / 2) / Math.max(1, innerWidth * STEER_RANGE), -1, 1);
-  const steer = Math.abs(s) < 0.03 ? 0 : s;
-  return c.heading + steer * c.maxTurn(STEP, brake);
-}
 const input = new Input(canvas);
 const sound = new Sound();
 
@@ -320,8 +295,7 @@ function startRace(): void {
   goTime = time + COUNTDOWN;
   cam.x = player.craft.pos.x;
   cam.y = player.craft.pos.y;
-  // Point the cursor straight ahead so the craft doesn't swerve on the first frame.
-  centreCursor();
+  keySteer = 0;
 }
 startRace();   // lines up the grid behind the start screen
 
@@ -624,12 +598,9 @@ function update(dt: number): void {
   });
   updateDrs(ranked, racing);
 
-  // Player: aim from the craft's on-screen position toward the cursor.
+  // Player: steered with the keys.
   const pc = player.craft;
-  const csx = (pc.pos.x - cam.x) * cam.zoom + innerWidth / 2;
-  const csy = (pc.pos.y - cam.y) * cam.zoom + innerHeight / 2;
-  const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
-  const aim = keyAim(pc, input.brake) ?? (view === 'chase' ? chaseAim(pc, input.brake) : Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading);
+  const aim = steerAim(pc, input.brake);
   if (autopilot && racing) {
     const c = autopilot.think(track, time, cars);
     pc.deploy = c.deploy;
@@ -1362,20 +1333,15 @@ function guestFrame(dt: number): void {
   if (count !== lastCount) { if (count <= COUNTDOWN) sound.beep(count === 0); lastCount = count; }
   judgeLaunches(racing);   // just for the PERFECT START / JUMP START message; the host decides the real thing
 
-  // Our controls, aimed from where our car is on this screen, at the physics rate; each one
-  // also moves our predicted car straight away.
+  // Our controls at the physics rate; each one also moves our predicted car straight away.
   const pc = player.craft;
-  const csx = (pc.pos.x + pred.errX - cam.x) * cam.zoom + innerWidth / 2;
-  const csy = (pc.pos.y + pred.errY - cam.y) * cam.zoom + innerHeight / 2;
-  const dx = input.cursor.x - csx, dy = input.cursor.y - csy;
-  const aim = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : pc.heading;
   const steering = mode === 'racing' && !menus.pauseOpen;
   // Racing by the host's clock as of now (not the smoothed, slightly older one the others are drawn at).
   const hostNow = performance.now() / 1000 + g.offset!;
   pred.acc += dt;
   while (pred.acc >= STEP) {
     pred.acc -= STEP;
-    const c: Controls = { seq: ++pred.seq, aim: steering ? (keyAim(pc, input.brake) ?? (view === 'chase' ? chaseAim(pc, input.brake) : aim)) : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy };
+    const c: Controls = { seq: ++pred.seq, aim: steering ? steerAim(pc, input.brake) : pc.heading, brake: steering && input.brake, deploy: steering && input.deploy };
     g.guest.send({ t: 'input', ...c });
     if (pred.ready) {
       const racingNow = hostNow >= goTime;
@@ -1531,7 +1497,7 @@ function frame(now: number): void {
   if (chaseOn) chase!.render({ time, cam, player, cars, track, particles }, renderScale);
   drawFrame(ctx, innerWidth, innerHeight, {
     time, cam, player, cars, track, hud: raceHud(),
-    particles, cursor: input.cursor, toast, locked: input.locked, chase: chaseOn, keySteer: keySteer || null,
+    particles, cursor: input.cursor, toast, locked: input.locked, chase: chaseOn, steer: keySteer,
   });
   restore?.();
   if (shift) { player.craft.pos.x -= pred.errX; player.craft.pos.y -= pred.errY; }

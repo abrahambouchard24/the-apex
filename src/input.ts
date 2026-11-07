@@ -1,11 +1,11 @@
 // Mouse + keyboard. The mouse drives a virtual cursor so steering keeps working under pointer lock.
 
-const THROTTLE_KEYS = new Set(['KeyW', 'ArrowUp']);
+const THROTTLE_KEYS = new Set<string>();   // the throttle is always on
 // Mouse buttons count as held keys too: left click brakes, right click deploys ERS.
 const BRAKE_KEYS = new Set(['KeyS', 'ArrowDown', 'Space', 'Mouse0']);
 const LEFT_KEYS = new Set(['KeyA', 'ArrowLeft']);
 const RIGHT_KEYS = new Set(['KeyD', 'ArrowRight']);
-const DEPLOY_KEYS = new Set(['ShiftLeft', 'ShiftRight', 'KeyE', 'Mouse2']);
+const DEPLOY_KEYS = new Set(['KeyW', 'ArrowUp', 'ShiftLeft', 'ShiftRight', 'KeyE', 'Mouse2']);
 
 export class Input {
   /** Virtual cursor in canvas CSS pixels. */
@@ -16,8 +16,6 @@ export class Input {
   deploy = false;
   /** Steering keys: -1 left, +1 right, 0 none (or both). */
   steer = 0;
-  /** Counts mouse movements (so keyboard steering can tell when the mouse is back in use). */
-  mouseMoves = 0;
   locked = false;
   private resetQueued = false;
   private pauseQueued = false;
@@ -40,7 +38,6 @@ export class Input {
       if (was && !this.locked) this.onUnlock?.();
     });
     addEventListener('mousemove', (e) => {
-      this.mouseMoves++;
       if (this.locked) {
         this.cursor.x = clampTo(this.cursor.x + e.movementX, 0, innerWidth);
         this.cursor.y = clampTo(this.cursor.y + e.movementY, 0, innerHeight);
