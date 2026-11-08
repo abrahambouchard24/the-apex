@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { CRAFT_LENGTH, type Camera, type Car, type Particle } from './render';
 import { COOL_LANE, HALF_WIDTH, KERB_WIDTH, Track, WALL_DIST, WALL_THICKNESS } from './track';
 import { groundCanvas, groundMoves, sceneryFor, type Prop } from './scenery';
+import { liveryPainter, type Face, type Painter } from './liveries';
 
 const WALL_H = 24;            // barrier height
 const KERB_CURVE = 1 / 900;   // corners tighter than this get kerbs (as in render.ts)
@@ -1505,23 +1506,36 @@ function carShared() {
   return shared;
 }
 
-/** Voxels as two instanced meshes: shaded cubes, and glowing ones that ignore the lighting. */
-function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>): THREE.Object3D[] {
+/**
+ * Voxels as two instanced meshes: shaded cubes, and glowing ones that ignore the lighting. A
+ * livery painter (src/liveries.ts) can colour each cube of the paintwork itself; origin moves the
+ * voxels into car space for it (the wing is built around its own pivot).
+ */
+function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>, painter?: Painter, origin = { x: 0, y: 0 }): THREE.Object3D[] {
   const s = carShared();
   const out: THREE.Object3D[] = [];
+  const painted = voxels.map((v) => {
+    if (painter && (v.kind === 'paint' || v.kind === 'dark' || v.kind === 'white')) {
+      const x = v.x + origin.x, y = v.y + origin.y;
+      const face: Face = y >= hullTop(x) - 1.6 ? 'top' : Math.abs(v.z) >= hullHalfWidth(x) - 2.6 ? 'side' : 'other';
+      const p = painter(x, y, v.z, v.kind, face);
+      if (p) return { v, color: new THREE.Color(p[0]), glow: p[1] };
+    }
+    return { v, color: colors[v.kind], glow: GLOWING.includes(v.kind) };
+  });
   for (const glowing of [false, true]) {
-    const list = voxels.filter((v) => GLOWING.includes(v.kind) === glowing);
+    const list = painted.filter((p) => p.glow === glowing);
     if (!list.length) continue;
     const mat = glowing ? new THREE.MeshBasicMaterial() : new THREE.MeshLambertMaterial();
     const inst = new THREE.InstancedMesh(s.cube, mat, list.length);
     const m4 = new THREE.Matrix4(), col = new THREE.Color();
-    list.forEach((v, i) => {
+    list.forEach(({ v, color }, i) => {
       m4.makeTranslation(v.x, v.y, v.z);
       inst.setMatrixAt(i, m4);
       // A little per-cube shade variation, so the surfaces read as pixels.
       const hash = ((Math.round(v.x + 99) * 73856093) ^ (Math.round(v.y + 99) * 19349663) ^ (Math.round(v.z + 99) * 83492791)) >>> 0;
       const jitter = glowing ? 1 : 0.93 + (hash % 100) / 100 * 0.14;
-      inst.setColorAt(i, col.copy(colors[v.kind]).multiplyScalar(jitter));
+      inst.setColorAt(i, col.copy(color).multiplyScalar(jitter));
     });
     out.push(inst);
   }
@@ -1579,8 +1593,9 @@ class CarRig {
       neon: sk ? new THREE.Color(sk.glow) : livery.clone().lerp(new THREE.Color(0xffffff), 0.35),
     };
     const vox = carVoxels();
-    for (const m of voxelMeshes(vox.hull, colors)) { m.castShadow = true; this.body.add(m); }
-    for (const m of voxelMeshes(vox.wing, colors)) { m.castShadow = true; this.wing.add(m); }
+    const painter = liveryPainter(sk?.pattern);   // a mythic livery's own pattern, cube by cube
+    for (const m of voxelMeshes(vox.hull, colors, painter)) { m.castShadow = true; this.body.add(m); }
+    for (const m of voxelMeshes(vox.wing, colors, painter, { x: -36, y: 23 })) { m.castShadow = true; this.wing.add(m); }
     this.wing.position.set(-36, 23, 0);   // the wing's pivot, above the struts
     this.body.add(this.wing);
 
