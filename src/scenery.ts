@@ -7,7 +7,7 @@
 
 import { Track, WALL_DIST } from './track';
 
-type GroundKind = 'tarmac' | 'stadium' | 'city' | 'rock' | 'water' | 'canyon' | 'sand' | 'citylights';
+type GroundKind = 'tarmac' | 'stadium' | 'city' | 'rock' | 'water' | 'canyon' | 'sand' | 'citylights' | 'snow' | 'marble' | 'garden' | 'scorched';
 
 export interface Prop {
   kind: string;
@@ -106,120 +106,150 @@ function build(track: Track): Scenery {
   const rocks = (n: number, color: string) =>
     scatter(n, (x, y) => ({ kind: 'rock', x, y, r: between(30, 70), h: 20, color }));
 
+  /** Props in a row beside the track: every `step` samples, `off` px out (-1 outside, +1 infield). */
+  const row = (from: number, to: number, step: number, side: number, off: number, make: (q: { x: number; y: number; rot: number }) => Omit<Prop, 'seed' | 'x' | 'y'>, gap = 0) => {
+    for (let i = from; i <= to; i += step) { const q = beside(i, side, off); place({ ...make(q), x: q.x, y: q.y }, gap); }
+  };
+  /** Clusters of props around random centres. */
+  const clumps = (n: number, per: number, spread: number, make: (x: number, y: number) => Omit<Prop, 'seed'>, margin = 900) => {
+    for (let k = 0; k < n; k++) {
+      const x0 = b.minX - margin + rand() * (b.maxX - b.minX + margin * 2), y0 = b.minY - margin + rand() * (b.maxY - b.minY + margin * 2);
+      for (let j = 0; j < per; j++) place(make(x0 + (rand() - 0.5) * spread, y0 + (rand() - 0.5) * spread), 10);
+    }
+  };
+
   let ground: GroundKind = 'tarmac';
   switch (track.name) {
-    case 'APEX GRAND PRIX': {
-      ground = 'tarmac';
-      // Grandstands along the outside of the main straight, floodlights between them.
-      for (let i = -44; i <= 40; i += 10) {
-        const q = beside(i, -1, WALL_DIST + 75);
-        place({ kind: 'grandstand', ...q, r: 70, h: 60, w: 170, d: 80 }, 0);
-      }
-      for (let i = -50; i <= 46; i += 20) {
-        const q = beside(i, -1, WALL_DIST + 160);
-        place({ kind: 'floodlight', ...q, r: 18, h: 260 }, 0);
-      }
-      // Pit building on the infield side of the straight.
-      { const q = beside(-6, 1, WALL_DIST + 130); place({ kind: 'building', ...q, r: 120, h: 70, w: 420, d: 110, color: '#2a2f48', accent: '#ff3d6e', text: 'PIT' }, 0); }
-      { const q = beside(70, -1, WALL_DIST + 140); place({ kind: 'billboard', ...q, r: 90, h: 120, w: 240, text: 'THE APEX', accent: '#4fe3ff' }, 0); }
-      scatter(10, (x, y) => ({ kind: 'floodlight', x, y, r: 18, h: 260 }), 300);
-      trees(70);
+    case 'APEX ARENA': {
+      // A futurist arena: marble stands under gold arches along the main straight, a palace for a
+      // pit building, light pylons, holo screens and a monument in the infield.
+      ground = 'marble';
+      row(-44, 40, 10, -1, WALL_DIST + 85, (q) => ({ kind: 'arena-stand', r: 80, h: 70, w: 180, d: 90, rot: q.rot }));
+      row(-50, 46, 16, -1, WALL_DIST + 190, () => ({ kind: 'pylon', r: 20, h: 240 }));
+      { const q = beside(-6, 1, WALL_DIST + 150); place({ kind: 'pit-palace', ...q, r: 230, h: 80, w: 440, d: 120 }, 0); }
+      { const q = beside(70, -1, WALL_DIST + 140); place({ kind: 'holo', ...q, r: 120, h: 110, w: 240, text: 'THE APEX' }, 0); }
+      place({ kind: 'monument', x: cx, y: cy, r: 150, h: 360 }) || scatter(1, (x, y) => ({ kind: 'monument', x, y, r: 150, h: 360 }), 300);
+      scatter(10, (x, y) => ({ kind: 'pylon', x, y, r: 20, h: 240 }), 400);
+      scatter(6, (x, y) => ({ kind: 'holo', x, y, r: 120, h: 110, w: 220, text: 'APEX', rot: rand() * Math.PI }), 500);
+      scatter(40, (x, y) => ({ kind: 'cypress', x, y, r: 20, h: 110 }), 900);
       break;
     }
-    case 'VELOCITY RING': {
-      ground = 'stadium';
-      // Grandstands right round the outside of the oval.
-      for (let i = 0; i < m; i += 11) {
-        const q = beside(i, -1, WALL_DIST + 80);
-        place({ kind: 'grandstand', ...q, r: 70, h: 70, w: 170, d: 90 }, 0);
+    case 'VELOCITY COLOSSEUM': {
+      // A marble colosseum right round the oval, a great obelisk in the middle, and the blimp.
+      ground = 'marble';
+      for (let i = 0; i < m; i += 9) {
+        const q = beside(i, -1, WALL_DIST + 135);
+        place({ kind: 'colosseum', ...q, r: 125, h: 150, w: 268, d: 80 }, 0);
       }
-      place({ kind: 'scoreboard', x: cx, y: cy, r: 260, h: 220, w: 560, text: 'VELOCITY RING', accent: '#ffd23f' });
-      scatter(8, (x, y) => ({ kind: 'floodlight', x, y, r: 18, h: 300 }), 600);
+      place({ kind: 'obelisk', x: cx, y: cy, r: 70, h: 560, accent: '#ffd23f' });
+      for (const [dx, dy] of [[-420, 0], [420, 0], [0, -260], [0, 260]]) place({ kind: 'statue', x: cx + dx, y: cy + dy, r: 50, h: 150 }, 0);
+      scatter(10, (x, y) => ({ kind: 'pylon', x, y, r: 20, h: 280 }), 500);
       overlays.push({ kind: 'blimp', x: cx, y: cy, r: 1400, h: 0, text: 'APEX', seed: rand() });
       break;
     }
-    case 'NEON STREETS': {
+    case 'NEW YORK': {
+      // New York, reimagined: deco towers with gold crowns, a colossus with a torch, park terraces,
+      // the elevated line, steam from the streets.
       ground = 'city';
-      const neon = ['#ff4fd8', '#4fe3ff', '#ffd23f', '#7dffb0', '#b98cff'];
-      scatter(70, (x, y) => {
-        const w = between(160, 360), d = between(160, 360);
-        return { kind: 'building', x, y, r: Math.hypot(w, d) / 2, h: between(90, 260), w, d,
-          color: pick(['#171a2c', '#1c1830', '#141f2a']), accent: pick(neon) };
-      }, 700, 900);
+      place({ kind: 'colossus', x: cx, y: cy, r: 150, h: 520 }) || scatter(1, (x, y) => ({ kind: 'colossus', x, y, r: 150, h: 520 }), 600);
+      scatter(46, (x, y) => {
+        const w = between(150, 280), d = between(150, 280);
+        return { kind: 'deco-tower', x, y, r: Math.hypot(w, d) / 2, h: between(320, 860), w, d,
+          color: pick(['#1c2a44', '#22314f', '#2a2a3c', '#1e3340']) };
+      }, 800, 1200);
+      scatter(5, (x, y) => ({ kind: 'park', x, y, r: 190, h: 6, w: 320, d: 240, layer: 0 }), 500);
+      row(0, m - 1, 14, 1, WALL_DIST + 120, (q) => ({ kind: 'rail', r: 70, h: 120, w: 150, rot: q.rot }));
+      scatter(18, (x, y) => ({ kind: 'steam', x, y, r: 18, h: 90 }), 300);
       break;
     }
-    case 'SUMMIT PASS': {
-      ground = 'rock';
-      scatter(14, (x, y) => ({ kind: 'peak', x, y, r: between(260, 520), h: 300 }), 1200, 400);
-      // Mostly bare grey stone: a few small, snowy stands of pine, and plenty of rock.
-      for (let k = 0; k < 3; k++) {   // forest clumps
-        const x0 = b.minX + rand() * (b.maxX - b.minX), y0 = b.minY + rand() * (b.maxY - b.minY);
-        for (let j = 0; j < 9; j++) {
-          place({ kind: rand() < 0.75 ? 'pine-snow' : 'pine', x: x0 + (rand() - 0.5) * 420, y: y0 + (rand() - 0.5) * 420, r: between(26, 44), h: 40 }, 20);
-        }
-      }
-      trees(12, true);
-      rocks(45, '#4b4d53');
+    case 'LAPPLAND': {
+      // Arctic night under the aurora: snowfields, birch and pine, ice monoliths, lit pavilions
+      // shaped like Sámi lavvu tents, and reindeer.
+      ground = 'snow';
+      scatter(12, (x, y) => ({ kind: 'peak', x, y, r: between(300, 560), h: 320, color: 'snow' }), 1400, 500);
+      clumps(6, 10, 520, (x, y) => ({ kind: rand() < 0.5 ? 'birch' : 'pine-snow', x, y, r: between(22, 40), h: 60 }));
+      scatter(30, (x, y) => ({ kind: rand() < 0.5 ? 'birch' : 'pine-snow', x, y, r: between(22, 40), h: 60 }), 900);
+      scatter(10, (x, y) => ({ kind: 'ice', x, y, r: between(40, 70), h: between(140, 260) }), 800);
+      clumps(3, 3, 360, (x, y) => ({ kind: 'lavvu', x, y, r: 70, h: 120 }), 500);
+      clumps(4, 5, 300, (x, y) => ({ kind: 'reindeer', x, y, r: 26, h: 40, rot: rand() * Math.PI * 2 }), 500);
       break;
     }
-    case 'HARBOR LIGHTS': {
+    case 'NEW ATLANTIS': {
+      // A white marble city on the sea: islands with domed temples and colonnades, sea-glass towers
+      // with gold crowns, the crowned lighthouse spire, and glowing sea life in the water.
       ground = 'water';
-      // The lighthouse stands off the lighthouse hairpin (the top of the circuit).
       let top = 0;
       track.pts.forEach((p, i) => { if (p.y < track.pts[top].y) top = i; });
       for (const off of [520, 650, 800, 1000]) {
         const q = beside(top, -1, off);
-        if (place({ kind: 'lighthouse', x: q.x, y: q.y, r: 170, h: 420 }, 0)) {
-          overlays.push({ kind: 'beam', x: q.x, y: q.y, r: 2200, h: 420, seed: rand() });
+        if (place({ kind: 'spire', x: q.x, y: q.y, r: 170, h: 460 }, 0)) {
+          overlays.push({ kind: 'beam', x: q.x, y: q.y, r: 2200, h: 460, seed: rand() });
           break;
         }
       }
-      // Concrete piers, each stacked with containers; every other one has a gantry crane.
-      let piers = 0;
-      for (let k = 0; k < 600 && piers < 8; k++) {
-        const x = b.minX - 300 + rand() * (b.maxX - b.minX + 600), y = b.minY - 300 + rand() * (b.maxY - b.minY + 600);
-        const rot = rand() < 0.5 ? 0 : Math.PI / 2;
-        if (!place({ kind: 'pier', x, y, r: 250, h: 0, w: 440, d: 280, rot, layer: 0 })) continue;
-        piers++;
-        const c = Math.cos(rot), sn = Math.sin(rot);
-        for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
-          if (rand() < 0.2) continue;
-          const u = -120 + i * 120, t = -80 + j * 55;
-          props.push({ kind: 'container', x: x + u * c - t * sn, y: y + u * sn + t * c, r: 60, h: 18 + Math.floor(rand() * 3) * 18,
-            w: 110, d: 42, rot, color: pick(['#e0503a', '#2f8cff', '#ffb02e', '#2fd16b', '#d9dde8']), seed: rand() });
-        }
-        if (piers % 2) props.push({ kind: 'crane', x: x + 90 * sn, y: y - 90 * c, r: 110, h: 280, rot, seed: rand() });
+      let isles = 0;
+      for (let k = 0; k < 1400 && isles < 15; k++) {
+        const x = b.minX - 400 + rand() * (b.maxX - b.minX + 800), y = b.minY - 400 + rand() * (b.maxY - b.minY + 800);
+        const r = between(200, 290);
+        if (!place({ kind: 'isle', x, y, r, h: 8, layer: 0 })) continue;
+        isles++;
+        const what = isles % 3;
+        // Buildings on the island (inside its footprint, so they skip the clearance checks).
+        if (what === 0) props.push({ kind: 'dome-temple', x, y, r: r * 0.55, h: 150, seed: rand() });
+        else if (what === 1) props.push({ kind: 'sea-tower', x, y, r: 60, h: between(320, 520), seed: rand() });
+        else props.push({ kind: 'colonnade', x, y, r: r * 0.7, h: 70, w: r * 1.2, rot: rand() * Math.PI, seed: rand() });
       }
-      scatter(10, (x, y) => ({ kind: 'boat', x, y, r: 90, h: 20, rot: rand() * Math.PI * 2, accent: pick(['#3fd0ff', '#ffd23f', '#ff4fd8']) }), 1200);
+      scatter(40, (x, y) => ({ kind: 'sea-glow', x, y, r: 12, h: 4 }), 1000);
+      scatter(6, (x, y) => ({ kind: 'arch', x, y, r: 90, h: 160, w: 150, rot: rand() * Math.PI }), 700);
       break;
     }
-    case 'CRYSTAL CANYON': {
-      ground = 'canyon';
-      scatter(10, (x, y) => ({ kind: 'peak', x, y, r: between(280, 480), h: 260, color: 'violet' }), 1200, 400);
-      scatter(38, (x, y) => ({ kind: 'crystal', x, y, r: between(40, 90), h: between(60, 140),
-        accent: pick(['#b98cff', '#4fe3ff', '#ff6bd8']) }), 900);
-      rocks(30, '#3a2f52');
+    case 'CRYSTAL FRONT': {
+      // The crystal biome of a sci-fi war zone: great violet and emerald crystal spires, wrecked mechs
+      // and a crashed dropship half buried, cracked shield domes, scorched ground, a storm overhead.
+      ground = 'scorched';
+      scatter(10, (x, y) => ({ kind: 'peak', x, y, r: between(280, 480), h: 260, color: 'violet' }), 1300, 400);
+      const shard = () => pick(['#a46bff', '#37e0a0', '#c88bff', '#2fd0c0']);
+      clumps(14, 5, 460, (x, y) => { const c = shard(); return { kind: 'crystal', x, y, r: between(70, 140), h: between(220, 520), color: c, accent: c }; });
+      // Great shards rearing up right beside the track.
+      row(0, m - 1, 37, -1, WALL_DIST + 130, () => { const c = shard(); return { kind: 'crystal', r: between(80, 120), h: between(320, 560), color: c, accent: c }; });
+      row(18, m - 1, 41, 1, WALL_DIST + 130, () => { const c = shard(); return { kind: 'crystal', r: between(70, 110), h: between(260, 460), color: c, accent: c }; });
+      scatter(4, (x, y) => ({ kind: 'mech-wreck', x, y, r: 110, h: 150, rot: rand() * Math.PI * 2 }), 700);
+      scatter(1, (x, y) => ({ kind: 'dropship', x, y, r: 260, h: 140, rot: rand() * Math.PI * 2 }), 900);
+      scatter(3, (x, y) => ({ kind: 'shield-dome', x, y, r: 170, h: 170 }), 600);
+      scatter(10, (x, y) => ({ kind: 'crater', x, y, r: between(60, 120), h: 2, layer: 0 }), 800);
+      rocks(24, '#2a2234');
       break;
     }
-    case 'DESERT MIRAGE': {
+    case 'HIEROPOLIS': {
+      // A sacred city of the sun: a terraced pyramid arcology, gold-tipped obelisks with glowing glyph
+      // bands, guardian statues along the straights, palms and teal reflecting pools.
       ground = 'sand';
-      // One great pyramid (in the infield if it fits) and a few smaller ones.
-      place({ kind: 'pyramid', x: cx, y: cy, r: 460, h: 560 }) ||
-        scatter(1, (x, y) => ({ kind: 'pyramid', x, y, r: 460, h: 560 }), 900, 400);
-      scatter(4, (x, y) => ({ kind: 'pyramid', x, y, r: between(200, 280), h: 300 }), 1000, 300);
-      scatter(7, (x, y) => ({ kind: 'solar', x, y, r: 150, h: 10, w: 260, d: 160 }), 900);
-      scatter(10, (x, y) => ({ kind: 'turbine', x, y, r: 90, h: 320 }), 1100);
-      rocks(20, '#5a4330');
+      place({ kind: 'ziggurat', x: cx, y: cy, r: 460, h: 520 }) ||
+        scatter(1, (x, y) => ({ kind: 'ziggurat', x, y, r: 460, h: 520 }), 900, 400);
+      scatter(4, (x, y) => ({ kind: 'ziggurat', x, y, r: between(200, 280), h: 280 }), 1000, 300);
+      scatter(10, (x, y) => ({ kind: 'obelisk', x, y, r: 40, h: between(240, 380), accent: '#4fe3ff' }), 800);
+      row(0, m - 1, 22, -1, WALL_DIST + 70, () => ({ kind: 'statue', r: 40, h: 120 }));
+      scatter(5, (x, y) => ({ kind: 'pool', x, y, r: 150, h: 3, w: 260, d: 140, rot: rand() * Math.PI, layer: 0 }), 600);
+      clumps(8, 5, 300, (x, y) => ({ kind: 'palm', x, y, r: 26, h: 120 }));
+      rocks(12, '#9a7650');
       break;
     }
-    case 'SKYLINE CAROUSEL': {
-      ground = 'citylights';
-      scatter(34, (x, y) => {
-        const w = between(180, 320), d = between(180, 320);
-        return { kind: 'skyscraper', x, y, r: Math.hypot(w, d) / 2, h: between(220, 480), w, d,
-          color: pick(['#3a3366', '#2c3a5e', '#4a3460']), accent: pick(['#ff5e8a', '#4fe3ff', '#ffd23f']) };
-      }, 900, 700);
-      scatter(1, (x, y) => ({ kind: 'helipad', x, y, r: 120, h: 0 }), 600);
+    case 'HANGING GARDENS': {
+      // Babylon in the sky: terraced gardens with waterfalls between slim gold towers, cypress rows,
+      // above the clouds.
+      ground = 'garden';
+      // Cypress avenues line both sides of the track; terraces rise just beyond them.
+      row(0, m - 1, 9, -1, WALL_DIST + 45, () => ({ kind: 'cypress', r: 18, h: 110 }));
+      row(4, m - 1, 9, 1, WALL_DIST + 45, () => ({ kind: 'cypress', r: 18, h: 110 }));
+      row(10, m - 1, 46, -1, WALL_DIST + 260, (q) => { const w = between(260, 360); return { kind: 'terrace', r: w * 0.62, h: between(220, 380), w, d: w * 0.8, rot: q.rot }; });
+      row(30, m - 1, 52, 1, WALL_DIST + 260, (q) => { const w = between(240, 320); return { kind: 'terrace', r: w * 0.62, h: between(200, 340), w, d: w * 0.8, rot: q.rot }; });
+      scatter(30, (x, y) => {
+        const w = between(240, 400);
+        return { kind: 'terrace', x, y, r: w * 0.62, h: between(200, 420), w, d: w * between(0.7, 1) };
+      }, 900, 1200);
+      scatter(16, (x, y) => ({ kind: 'gold-tower', x, y, r: 55, h: between(320, 520) }), 800);
+      scatter(40, (x, y) => ({ kind: 'cypress', x, y, r: 18, h: 100 }), 700);
+      scatter(4, (x, y) => ({ kind: 'pool', x, y, r: 120, h: 3, w: 200, d: 110, rot: rand() * Math.PI, layer: 0 }), 500);
       break;
     }
   }
@@ -325,6 +355,28 @@ function groundPattern(ctx: CanvasRenderingContext2D, kind: GroundKind): CanvasP
         const x = Math.floor(r() * 8) * 64 + 6 + r() * 52, y = Math.floor(r() * 8) * 64 + 6 + r() * 52;
         g.fillRect(x, y, 2, 2);
       }
+      break;
+    case 'snow':
+      g.fillStyle = '#c9d6e6'; g.fillRect(0, 0, size, size);
+      blotches(30, ['rgba(255,255,255,0.5)', 'rgba(150,175,205,0.35)'], 40, 140);
+      lines(40, 'rgba(255,255,255,0.35)', 3, 120, 8);
+      break;
+    case 'marble':
+      g.fillStyle = '#d9d2c4'; g.fillRect(0, 0, size, size);
+      lines(26, 'rgba(120,110,95,0.25)', 2, 180, 30);
+      g.strokeStyle = 'rgba(160,130,70,0.45)'; g.lineWidth = 3;
+      for (let k = 0; k <= size; k += 128) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k, size); g.moveTo(0, k); g.lineTo(size, k); g.stroke(); }
+      break;
+    case 'garden':
+      g.fillStyle = '#5f8f4e'; g.fillRect(0, 0, size, size);
+      blotches(36, ['rgba(120,170,90,0.4)', 'rgba(40,80,40,0.35)', 'rgba(255,220,150,0.12)'], 30, 110);
+      g.strokeStyle = 'rgba(240,230,210,0.5)'; g.lineWidth = 10;
+      for (let k = 0; k <= size; k += 256) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k, size); g.moveTo(0, k); g.lineTo(size, k); g.stroke(); }
+      break;
+    case 'scorched':
+      g.fillStyle = '#1a1620'; g.fillRect(0, 0, size, size);
+      blotches(40, ['rgba(0,0,0,0.5)', 'rgba(90,60,110,0.3)', 'rgba(255,120,60,0.08)'], 30, 120);
+      lines(30, 'rgba(160,120,255,0.18)', 2, 140, 22);
       break;
   }
   p = ctx.createPattern(c, 'repeat')!;
