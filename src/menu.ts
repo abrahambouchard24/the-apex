@@ -159,9 +159,9 @@ const CSS = `
   box-shadow: 0 0 14px 4px rgba(255,220,170,0.9); animation: hr-pulse-run 1.8s linear infinite; }
 @keyframes hr-wash { to { background-position: 100% 0; } }
 @keyframes hr-pulse-run { from { left: -20%; } to { left: 110%; } }
-.sc-story img { position: absolute; top: 44%; height: 72px; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
-.sc-story .me { left: 22%; transform: rotate(90deg); }
-.sc-story .him { right: 22%; transform: rotate(-90deg); }
+.sc-story img { position: absolute; top: 40%; height: 78px; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
+.sc-story .me { left: 8%; }
+.sc-story .him { right: 8%; transform: scaleX(-1); }   /* mirrored: the two cars face each other */
 .sc-story .vs { position: absolute; left: 50%; top: 49%; transform: translateX(-50%); font: 900 italic 30px system-ui; color: #ffd23f;
   text-shadow: 0 0 18px #ff7a3d; animation: hr-pulse 1.6s ease-in-out infinite; }
 @keyframes hr-pulse { 50% { transform: translateX(-50%) scale(1.12); } }
@@ -185,11 +185,11 @@ const CSS = `
 .sc-quick .road::after { content: ''; position: absolute; left: 0; right: 0; top: -12px; height: 9px; animation: hr-scroll 0.45s linear infinite;
   background: repeating-linear-gradient(90deg, #ff2d75 0 38px, #0d0f1c 38px 76px); box-shadow: 0 0 12px rgba(255,45,117,0.6); }
 @keyframes hr-scroll-fast { to { background-position: -340px 0; } }
-.sc-quick img { position: absolute; left: 34%; top: 38%; height: 90px; transform: rotate(82deg); filter: drop-shadow(0 12px 10px rgba(0,0,0,0.6)); animation: hr-bob 1.1s ease-in-out infinite; }
+.sc-quick img { position: absolute; left: 26%; top: 30%; height: 110px; filter: drop-shadow(0 12px 10px rgba(0,0,0,0.6)); animation: hr-bob 1.1s ease-in-out infinite; }
 .sc-quick .trail { position: absolute; left: -10%; width: 50%; top: 47%; height: 10px; border-radius: 6px; transform: rotate(-8deg);
   background: linear-gradient(90deg, transparent, rgba(79,227,255,0.85)); filter: blur(3px); }
 @keyframes hr-scroll { to { background-position: -152px 0; } }
-@keyframes hr-bob { 50% { transform: rotate(82deg) translateX(-5px); } }
+@keyframes hr-bob { 50% { transform: translateY(-4px); } }
 
 /* Season: a trophy under spotlights, with the circuits behind it. */
 .sc-season { background: radial-gradient(ellipse at 50% 35%, #2a2350, #0b0a18 70%); }
@@ -206,8 +206,8 @@ const CSS = `
 .sc-online { background: radial-gradient(ellipse at 50% 40%, #0f2a3a, #070a16 70%); }
 .sc-online .grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(79,227,255,0.08) 1px, transparent 1px),
   linear-gradient(90deg, rgba(79,227,255,0.08) 1px, transparent 1px); background-size: 34px 34px; }
-.sc-online img { position: absolute; top: 34%; height: 78px; transform: rotate(0deg); filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
-.sc-online .a { left: 18%; } .sc-online .b { right: 18%; }
+.sc-online img { position: absolute; top: 32%; height: 80px; filter: drop-shadow(0 10px 8px rgba(0,0,0,0.6)); }
+.sc-online .a { left: 4%; } .sc-online .b { right: 4%; transform: scaleX(-1); }
 .sc-online .wave { position: absolute; left: 50%; top: 44%; width: 30px; height: 30px; margin: -15px; border-radius: 50%;
   border: 3px solid #4fe3ff; animation: hr-wave 1.8s ease-out infinite; }
 .sc-online .wave:nth-child(3) { animation-delay: 0.6s; } .sc-online .wave:nth-child(4) { animation-delay: 1.2s; }
@@ -254,16 +254,16 @@ export class Menus {
         <div class="hr-front">
           <button class="hr-window" data-act="story" style="--c:#ff7a3d">
             <div class="scene sc-story"><div class="sun"></div><div class="stand"></div><div class="deck"></div>
-              <img class="me" src="${cars[0]?.url ?? ''}" alt=""><span class="vs">VS</span><img class="him" src="${cars[3]?.url ?? ''}" alt=""></div>
+              <img class="me" src="${cars[0]?.card ?? cars[0]?.url ?? ''}" alt=""><span class="vs">VS</span><img class="him" src="${cars[3]?.card ?? cars[3]?.url ?? ''}" alt=""></div>
             <div class="label"><b>STORY</b><small>From the county speedway to the top of the Apex Series. Your first season starts with one race against a legend.</small></div>
           </button>
           <button class="hr-window" data-act="quick" style="--c:#4fe3ff">
-            <div class="scene sc-quick"><div class="road"><div class="chev"></div><div class="rail t"></div><div class="rail b"></div></div><div class="trail"></div><img src="${cars[0]?.url ?? ''}" alt=""></div>
+            <div class="scene sc-quick"><div class="road"><div class="chev"></div><div class="rail t"></div><div class="rail b"></div></div><div class="trail"></div><img src="${cars[0]?.card ?? cars[0]?.url ?? ''}" alt=""></div>
             <div class="label"><b>QUICK RACE</b><small>One race. Pick your car, your track and your laps, and go.</small></div>
           </button>
           <button class="hr-window" data-act="online" style="--c:#7dffb0">
-            <div class="scene sc-online"><div class="grid"></div><img class="a" src="${cars[0]?.url ?? ''}" alt=""><div class="wave"></div><div class="wave"></div><div class="wave"></div>
-              <img class="b" src="${cars[1]?.url ?? ''}" alt=""></div>
+            <div class="scene sc-online"><div class="grid"></div><img class="a" src="${cars[0]?.card ?? cars[0]?.url ?? ''}" alt=""><div class="wave"></div><div class="wave"></div><div class="wave"></div>
+              <img class="b" src="${cars[1]?.card ?? cars[1]?.url ?? ''}" alt=""></div>
             <div class="label"><b>ONLINE</b><small>Host a race, send the code, and race your friends live.</small></div>
           </button>
           <button class="hr-window" data-act="season" style="--c:#ffd23f">

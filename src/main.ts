@@ -128,6 +128,16 @@ const LIVERIES = [
 // The selection cards show each car's 3D model (falling back to the top-down sprite without WebGL).
 try { if (chase) renderCarCards(LIVERIES).forEach((url, i) => { LIVERIES[i].card = url; }); } catch { /* sprites it is */ }
 
+/** A picture of one car for menus: its 3D model, in the player's equipped skin when asked. */
+function carPicture(i: number, withSkin = false): string {
+  const l = LIVERIES[i];
+  const skin = withSkin ? skinColors(achievements.equipped) : null;
+  if (skin && chase) {
+    try { return renderCarCards([{ color: l.color, name: l.name, hue: l.hue, skin }])[0]; } catch { /* fall back */ }
+  }
+  return l.card ?? l.url;
+}
+
 /** menu = start screen; paused = pause menu; racing = the simulation runs; results = it keeps
  * running behind the results table while the rest of the field finishes. */
 let mode: 'menu' | 'racing' | 'paused' | 'results' = 'menu';
@@ -382,7 +392,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
     startRound(0);   // Apex Grand Prix
   },
   tune(car) {
-    tuneUI.open(carSetup, LIVERIES[car].url, (s) => { carSetup = s; saveSetup(s); }, () => {});
+    tuneUI.open(carSetup, carPicture(car, true), (s) => { carSetup = s; saveSetup(s); }, () => {});
   },
   online() {
     endTutorial();
@@ -489,7 +499,7 @@ const storyUI = new StoryUI({
   },
   tune(back) {
     storyUI.hide();
-    tuneUI.open(carSetup, LIVERIES[0].url, (s) => { carSetup = s; saveSetup(s); }, back);
+    tuneUI.open(carSetup, carPicture(0, true), (s) => { carSetup = s; saveSetup(s); }, back);
   },
 });
 
@@ -1161,7 +1171,7 @@ const lobbyUI = new LobbyUI(LIVERIES, trackChoices, {
     const o = online;
     const car = o?.role === 'host' ? o.lobby.players[0].car
       : o?.role === 'guest' ? o.lobby?.players.find((p) => p.id === o.me)?.car ?? playerLivery : playerLivery;
-    tuneUI.open(carSetup, LIVERIES[car].url, (s) => {
+    tuneUI.open(carSetup, carPicture(car, true), (s) => {
       carSetup = s;
       saveSetup(s);
       if (online?.role === 'guest') online.guest.send({ t: 'setup', setup: s });

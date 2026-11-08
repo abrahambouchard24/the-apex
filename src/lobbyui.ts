@@ -52,12 +52,12 @@ const CSS = `
 .ol-tracks button:disabled { cursor: default; }
 .ol-wait { color: #8a93c0; font-weight: 700; letter-spacing: 0.1em; margin-top: 12px; }
 .ol-board { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-bottom: 8px; }
-.ol-board th { color: #8a93c0; font-size: 10px; letter-spacing: 0.16em; font-weight: 700; text-align: right; padding: 0 6px 5px; }
+.ol-board th { color: #c9a24a; font-size: 10px; letter-spacing: 0.16em; font-weight: 700; text-align: right; padding: 0 6px 5px; }
 .ol-board th:nth-child(-n+2) { text-align: left; }
-.ol-board td { padding: 6px; font-weight: 800; font-size: 13px; text-align: right; border-top: 1px solid #1d2346; }
+.ol-board td { padding: 6px; font-weight: 800; font-size: 13px; text-align: right; border-top: 1px solid rgba(201,162,74,0.18); }
 .ol-board td:nth-child(-n+2) { text-align: left; }
-.ol-board tr.me td { background: rgba(79,227,255,0.08); }
-.ol-board .lead { color: #ffd23f; }
+.ol-board tr.me td { background: rgba(63,224,208,0.08); }
+.ol-board .lead { color: #e8c25a; }
 `;
 
 export class LobbyUI {

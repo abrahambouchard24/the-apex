@@ -2,21 +2,23 @@
 // Every change applies at once and is saved; DONE just closes it.
 
 import { ACTIONS, DEFAULT_KEYS, keyLabel, type Action, type Quality, type Settings } from './settings';
+import { installDeco } from './deco';
 
 const CSS = `
 .st-set { width: min(560px, calc(100% - 32px)); margin: auto; text-align: left; }
-.st-set-bg { background: rgba(7,8,15,0.96) !important; }
-.st-set .hr-h2 { margin-bottom: 6px; }
+.st-set-bg { background: radial-gradient(ellipse at center, rgba(6,22,26,0.94), rgba(4,8,14,0.98)) !important; }
+.st-set { padding: 26px 32px 22px !important; }
+.st-set .hr-h2 { margin-bottom: 0; font-size: 36px; }
 .st-set h2 { text-align: center; }
-.st-set h3 { margin: 16px 0 6px; color: #8a93c0; font-size: 12px; letter-spacing: 0.2em; font-weight: 700; }
-.st-set .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 0; border-top: 1px solid #1d2346; }
+.st-set h3 { margin: 16px 0 6px; color: #c9a24a; font-size: 11px; letter-spacing: 0.24em; font-weight: 700; }
+.st-set .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 0; border-top: 1px solid rgba(201,162,74,0.16); }
 .st-set .row span { font-weight: 700; letter-spacing: 0.08em; font-size: 14px; }
-.st-set input[type=range] { width: 220px; accent-color: #4fe3ff; }
-.st-set .key { min-width: 150px; padding: 8px 14px; border-radius: 10px; border: 2px solid #252b52; background: rgba(20,24,48,0.85);
-  color: #e8ecff; font: 800 13px system-ui, sans-serif; letter-spacing: 0.08em; cursor: pointer; }
-.st-set .key:hover { border-color: #4a5590; }
-.st-set .key.wait { border-color: #ffd23f; color: #ffd23f; }
-.st-set .hint { color: #8a93c0; font-size: 12px; margin-top: 8px; }
+.st-set input[type=range] { width: 220px; accent-color: #3fe0d0; }
+.st-set .key { min-width: 150px; padding: 8px 14px; border-radius: 4px; border: 1px solid rgba(201,162,74,0.5); background: rgba(8,20,26,0.85);
+  color: #ece5d4; font: 800 13px system-ui, sans-serif; letter-spacing: 0.08em; cursor: pointer; }
+.st-set .key:hover { border-color: #e8c25a; }
+.st-set .key.wait { border-color: #3fe0d0; color: #3fe0d0; }
+.st-set .hint { color: #93aba8; font-size: 12px; margin-top: 8px; }
 .st-set .hr-btns { margin-top: 16px; }
 `;
 
@@ -28,6 +30,7 @@ export class SettingsUI {
 
   /** capture(fn): hand the next key press to fn (so the game doesn't also act on it). */
   constructor(private capture: (fn: ((code: string) => void) | null) => void) {
+    installDeco();
     const style = document.createElement('style');
     style.textContent = CSS;
     document.head.append(style);
@@ -60,8 +63,9 @@ export class SettingsUI {
     const q = (v: Quality, label: string) => `<button data-q="${v}" class="${s.quality === v ? 'on' : ''}">${label}</button>`;
     const keyText = (a: Action) => s.keys[a].map(keyLabel).join(' / ');
     this.el.innerHTML = `
-      <div class="hr-panel st-set">
-        <h2 class="hr-h2">SETTINGS</h2>
+      <div class="hr-panel st-set deco-panel">
+        <h2 class="hr-h2 deco-title">SETTINGS</h2>
+        <div class="deco-rule"></div>
         <h3>SOUND</h3>
         <div class="row"><span>MUSIC</span><input type="range" min="0" max="100" value="${Math.round(s.music * 100)}" data-vol="music"></div>
         <div class="row"><span>EFFECTS</span><input type="range" min="0" max="100" value="${Math.round(s.sfx * 100)}" data-vol="sfx"></div>

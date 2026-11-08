@@ -1382,7 +1382,7 @@ function clamp(v: number, lo: number, hi: number): number { return Math.max(lo, 
  * Pictures of each car's 3D model at a three-quarter angle on a transparent background, for the
  * car selection cards. Rendered once with a small renderer of its own, which is then released.
  */
-export function renderCarCards(cars: { color: string; name: string; hue: number }[], w = 360, h = 240): string[] {
+export function renderCarCards(cars: { color: string; name: string; hue: number; skin?: Car['skin'] }[], w = 360, h = 240): string[] {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setSize(w, h, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1400,7 +1400,7 @@ export function renderCarCards(cars: { color: string; name: string; hue: number 
   camera.lookAt(-4, 10, 0);
   const out: string[] = [];
   for (const c of cars) {
-    const rig = new CarRig({ color: c.color, name: c.name, hue: c.hue } as Car);
+    const rig = new CarRig({ color: c.color, name: c.name, hue: c.hue, skin: c.skin } as Car);
     rig.root.rotation.y = 0.1;
     scene.add(rig.root);
     renderer.render(scene, camera);

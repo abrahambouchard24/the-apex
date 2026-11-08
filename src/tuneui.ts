@@ -10,7 +10,7 @@ const CSS = `
 .tn-sub { color: #8a93c0; font-weight: 700; letter-spacing: 0.16em; font-size: 12px; margin-bottom: 18px; }
 .tn-cols { display: grid; grid-template-columns: 0.9fr 1.3fr; gap: 26px; }
 @media (max-width: 760px) { .tn-cols { grid-template-columns: 1fr; } }
-.tn-car { display: block; height: 130px; margin: 0 auto 14px; filter: drop-shadow(0 10px 10px rgba(0,0,0,0.5)); }
+.tn-car { display: block; height: 150px; margin: 0 auto 14px; filter: drop-shadow(0 10px 10px rgba(0,0,0,0.5)); }
 .tn-stat { display: grid; grid-template-columns: 110px 1fr 56px; gap: 8px; align-items: center; margin-bottom: 7px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; color: #8a93c0; }
 .tn-bar { height: 8px; border-radius: 4px; background: #1b2040; position: relative; overflow: hidden; }
 .tn-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #4fe3ff; transition: width 120ms; }
