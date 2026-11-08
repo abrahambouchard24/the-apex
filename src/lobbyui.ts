@@ -113,7 +113,7 @@ export class LobbyUI {
       <small>${this.cars[p.car].name}${p === lobby.players[0] ? ' · HOST' : ''} · ${p.setup?.assist === 0 ? 'PRO' : 'ASSISTED'}</small></li>`).join('')
       + (lobby.ai ? `<li><span style="color:#8a93c0">AI × ${Math.min(lobby.ai, maxAi)}</span><small>COMPUTER</small></li>` : '');
     const cars = this.cars.map((c, i) => `<button class="hr-car ${mine?.car === i ? 'selected' : ''}" style="--c:${c.color}" data-car="${i}"
-      ${taken.has(i) ? 'disabled' : ''}><img src="${c.url}" alt=""><span style="color:${c.color}">${c.name}</span></button>`).join('');
+      ${taken.has(i) ? 'disabled' : ''}><img src="${c.card ?? c.url}" alt=""><span style="color:${c.color}">${c.name}</span></button>`).join('');
     const tracks = this.tracks.map((t, i) => `<button data-track="${i}" class="${lobby.track === i ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${t.name}</button>`).join('');
     const seg = (name: string, values: number[], cur: number) => `<div class="hr-seg" data-seg="${name}">${values.map((v) =>
       `<button data-v="${v}" class="${v === cur ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${v}</button>`).join('')}</div>`;

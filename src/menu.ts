@@ -1,7 +1,9 @@
 // Start screen (car, track, laps and season setup), pause menu and race results: plain DOM
 // overlays on top of the canvas.
 
-export interface CarChoice { name: string; url: string; color: string }
+export interface CarChoice {
+  /** A picture of the car's 3D model for the selection card (else the sprite at url). */
+  card?: string; name: string; url: string; color: string }
 
 /** A track card: outline is an SVG polygon's points in a 120 x 80 box. */
 export interface TrackChoice { name: string; blurb: string; outline: string; color: string }
@@ -299,7 +301,7 @@ export class Menus {
       const b = document.createElement('button');
       b.className = 'hr-car';
       b.style.setProperty('--c', car.color);
-      b.innerHTML = `<img src="${car.url}" alt=""><span style="color:${car.color}">${car.name}</span>`;
+      b.innerHTML = `<img src="${car.card ?? car.url}" alt=""><span style="color:${car.color}">${car.name}</span>`;
       b.addEventListener('click', () => this.select(i));
       b.addEventListener('dblclick', () => this.on.start(this.setup()));
       grid.append(b);
