@@ -128,7 +128,8 @@ export class DailyUI {
 
   get isOpen(): boolean { return !this.el.classList.contains('hidden'); }
 
-  open(d: DailyDef, trackName: string, carName: string, carPic: string, fmt: (t: number) => string,
+  /** info: the line under the track name (laps or sprint distance, and the car). */
+  open(d: DailyDef, trackName: string, info: string, carPic: string, fmt: (t: number) => string,
     on: { start(): void; back(): void; tune(): void }): void {
     const st = dailyStatus(d.date);
     const nice = new Date(d.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -138,7 +139,7 @@ export class DailyUI {
         <div class="deco-label date">${nice.toUpperCase()}</div>
         <div class="deco-rule"></div>
         <div class="track">${trackName}</div>
-        <div class="deco-muted">${d.laps} LAPS · ${carName}</div>
+        <div class="deco-muted">${info}</div>
         <img class="car" src="${carPic}" alt="">
         <div class="twist">${twistText(d)}</div>
         ${st.done ? '<div class="done">◆ COMPLETED TODAY ◆</div>' : ''}

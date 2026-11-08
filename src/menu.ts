@@ -6,7 +6,8 @@ export interface CarChoice {
   card?: string; name: string; url: string; color: string }
 
 /** A track card: outline is an SVG polygon's points in a 120 x 80 box. */
-export interface TrackChoice { name: string; blurb: string; outline: string; color: string }
+/** sprint: a sprint's length in km (one run, no laps); undefined for a lap circuit. */
+export interface TrackChoice { name: string; blurb: string; outline: string; color: string; sprint?: string }
 
 /** One line of the results table. points is only shown in a season. */
 export interface ResultRow { name: string; color: string; time: string; gap: string; best: string; player: boolean; points?: number }
@@ -102,6 +103,7 @@ const CSS = `
 .hr-front-actions .hr-btn.fresh { background: linear-gradient(90deg, #4fe3ff, #7dffb0); color: #07080f; box-shadow: 0 0 24px -6px #4fe3ff; }
 .hr-track .hr-rec { color: #ffd23f; font-weight: 800; letter-spacing: 0.06em; }
 .hr-h2 { margin: 0 0 22px; font-size: 44px; font-weight: 900; letter-spacing: 0.1em; }
+.hr-dist { font: 800 15px system-ui, sans-serif; letter-spacing: 0.12em; color: #e8c25a; padding: 9px 4px; }
 .hr-tracks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
 @media (max-width: 760px) { .hr-tracks { grid-template-columns: repeat(2, 1fr); } }
 .hr-track {
@@ -265,6 +267,8 @@ export class Menus {
   /** 1 = single race; more = a season of that many races. */
   races = 1;
   private seasonRaces = 4;
+  /** Each track's sprint length in km (undefined for lap circuits). */
+  private sprintKm: (string | undefined)[] = [];
   /** Time Trial: alone on track against the ghost of your best lap. */
   trial = false;
   private resultsHtml = '';
@@ -277,7 +281,7 @@ export class Menus {
     // Front menu: Story, Quick Race and Season, each a window onto its own little scene.
     const sparks = Array.from({ length: 18 }, (_, i) => `<i class="spark" style="left:${(i * 37) % 100}%;top:-10px;`
       + `background:${['#ffd23f', '#ff3d6e', '#4fe3ff', '#7dffb0'][i % 4]};animation-duration:${3 + (i % 5) * 0.7}s;animation-delay:${(i * 0.43) % 4}s"></i>`).join('');
-    const outlines = tracks.map((t, i) => `<polygon points="${t.outline}" transform="translate(${(i % 4) * 130} ${Math.floor(i / 4) * 95})"
+    const outlines = tracks.filter((t) => !t.sprint).map((t, i) => `<polygon points="${t.outline}" transform="translate(${(i % 4) * 130} ${Math.floor(i / 4) * 95})"
       fill="none" stroke="${t.color}" stroke-width="3" stroke-linejoin="round"/>`).join('');
     this.front = overlay(`
       <div class="hr-panel" style="max-width:1240px">
@@ -323,10 +327,13 @@ export class Menus {
         <div class="hr-cars"></div>
         <p class="hr-sub" data-track-head>CHOOSE YOUR TRACK</p>
         <div class="hr-tracks"></div>
+        <p class="hr-sub" data-sprint-head>SPRINTS · ONE RUN, NO LAPS, BIG JUMPS</p>
+        <div class="hr-tracks hr-sprints"></div>
         <div class="hr-options">
           <div class="hr-option" style="display:none"><label>MODE</label><div class="hr-seg" data-seg="mode">
             <button data-v="single">SINGLE RACE</button><button data-v="season">SEASON</button></div></div>
-          <div class="hr-option"><label>LAPS</label><div class="hr-seg" data-seg="laps">
+          <div class="hr-option" data-opt="dist"><label>DISTANCE</label><div class="hr-dist"></div></div>
+          <div class="hr-option" data-opt="laps"><label>LAPS</label><div class="hr-seg" data-seg="laps">
             ${LAP_CHOICES.map((n) => `<button data-v="${n}">${n}</button>`).join('')}</div></div>
           <div class="hr-option" data-opt="races"><label>RACES</label><div class="hr-seg" data-seg="races">
             ${SEASON_CHOICES.map((n) => `<button data-v="${n}">${n}</button>`).join('')}</div></div>
@@ -347,7 +354,8 @@ export class Menus {
     });
     this.select(0);
 
-    const trackGrid = this.start.querySelector('.hr-tracks')!;
+    const trackGrid = this.start.querySelector('.hr-tracks')!, sprintGrid = this.start.querySelector('.hr-sprints')!;
+    this.sprintKm = tracks.map((t) => t.sprint);
     tracks.forEach((t, i) => {
       const b = document.createElement('button');
       b.className = 'hr-track';
@@ -356,7 +364,7 @@ export class Menus {
         stroke-width="3" stroke-linejoin="round"/></svg><b>${t.name}</b><small>${t.blurb}</small><small class="hr-rec"></small>`;
       b.addEventListener('click', () => this.selectTrack(i));
       b.addEventListener('dblclick', () => this.on.start(this.setup()));
-      trackGrid.append(b);
+      (t.sprint ? sprintGrid : trackGrid).append(b);
       this.trackCards.push(b);
     });
     this.selectTrack(0);
@@ -433,6 +441,15 @@ export class Menus {
     mark('laps', String(this.laps));
     mark('races', String(this.seasonRaces));
     this.start.querySelector('[data-opt="races"]')!.classList.toggle('hidden', this.races === 1);
+    // Sprints: not in seasons; a sprint shows its distance where the laps would be.
+    const season = this.races > 1;
+    if (season && this.sprintKm[this.selectedTrack]) { this.selectTrack(0); return; }
+    this.start.querySelector<HTMLElement>('[data-sprint-head]')!.style.display = season ? 'none' : '';
+    this.start.querySelector<HTMLElement>('.hr-sprints')!.style.display = season ? 'none' : '';
+    const km = this.sprintKm[this.selectedTrack];
+    this.start.querySelector<HTMLElement>('[data-opt="laps"]')!.style.display = km ? 'none' : '';
+    this.start.querySelector<HTMLElement>('[data-opt="dist"]')!.style.display = km ? '' : 'none';
+    this.start.querySelector('.hr-dist')!.textContent = km ? `${km} KM · ONE RUN` : '';
     this.start.querySelector('[data-track-head]')!.textContent = this.races > 1 ? 'CHOOSE THE OPENING TRACK' : 'CHOOSE YOUR TRACK';
     this.start.querySelector('[data-act="start"]')!.textContent = this.trial ? 'START TRIAL' : this.races > 1 ? 'START SEASON' : 'START RACE';
     this.start.querySelector('[data-setup-title]')!.textContent = this.trial ? 'TIME TRIAL' : this.races > 1 ? 'SEASON' : 'QUICK RACE';
@@ -451,6 +468,7 @@ export class Menus {
   selectTrack(i: number): void {
     this.selectedTrack = i;
     this.trackCards.forEach((c, k) => c.classList.toggle('selected', k === i));
+    if (this.start) this.refreshOptions();
   }
 
   /** Online, the pause menu doesn't stop the race: guests can only leave; the host can restart or go back to the lobby. */
