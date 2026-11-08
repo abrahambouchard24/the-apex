@@ -8,6 +8,8 @@ import { ChaseView } from './view3d';
 import { loadRecords, loadSettings, saveRecords, saveSettings, type Settings } from './settings';
 import { SettingsUI } from './settingsui';
 import { Tutorial } from './tutorial';
+import { Achievements, skinColors } from './achievements';
+import { GarageUI } from './garageui';
 import {
   MISSIONS, REPLAY_SHARE, Save, Speaker, loadSave, met, playerMods, rivalMods, writeSave,
 } from './story';
@@ -15,7 +17,7 @@ import { StoryUI } from './storyui';
 import { LobbyUI } from './lobbyui';
 import { addMods, loadSetup, sanitize, saveSetup, setupMods } from './setup';
 import { TuneUI } from './tuneui';
-import { CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
+import { BoardRow, CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
@@ -87,6 +89,25 @@ function openSettings(): void {
   settingsUI.open(settings, applySettings, () => input.release());
 }
 
+/** Achievements and the skins they unlock; the Garage to equip them. */
+const achievements = new Achievements();
+const garageUI = new GarageUI();
+achievements.onUnlock = (a) => garageUI.notify(a);
+/** Per race: did the player touch a wall, and how much battery did drifting charge. */
+let touchedWall = false;
+let driftCharge = 0;
+/** Each car's skin id (sent to guests in the start message). */
+const carSkin = new Map<Car, string>();
+function openGarage(): void {
+  input.release();
+  garageUI.open(achievements.p, (skin) => {
+    achievements.equip(skin);
+    if (player) player.skin = skinColors(achievements.equipped);
+    if (online?.role === 'guest') online.guest.send({ t: 'skin', skin: achievements.equipped });
+    if (online?.role === 'host') broadcastLobby();
+  }, () => input.release());
+}
+
 /** The tutorial lap, while it's running. */
 let tutorial: Tutorial | null = null;
 function endTutorial(): void { tutorial?.remove(); tutorial = null; }
@@ -127,7 +148,7 @@ let overheatedThisRace = false;
 let raceBestLap = 0;          // the player's best lap in this race only (for lap-time goals)
 
 /** One other car in a race: its livery, name, driving skill and performance mods. `peer` = an online player's car. */
-interface Entry { livery: number; name: string; skill: number; mods: Mods; who?: Speaker; peer?: string }
+interface Entry { livery: number; name: string; skill: number; mods: Mods; who?: Speaker; peer?: string; skin?: string }
 
 // --- online state -------------------------------------------------------------------------------
 
@@ -197,7 +218,7 @@ function raceConfig(): RaceConfig {
     const aiLiveries = LIVERIES.map((_, i) => i).filter((i) => !taken.includes(i)).slice(0, Math.max(0, Math.min(lb.ai, 6 - lb.players.length)));
     return {
       field: [
-        ...lb.players.slice(1).map((p) => ({ livery: p.car, name: p.name, skill: 1, mods: setupMods(sanitize(p.setup)), peer: p.id })),
+        ...lb.players.slice(1).map((p) => ({ livery: p.car, name: p.name, skill: 1, mods: setupMods(sanitize(p.setup)), peer: p.id, skin: p.skin })),
         ...aiLiveries.map((li) => ({ livery: li, name: LIVERIES[li].name, skill: lerp(AI_SKILL_MIN, AI_SKILL_MAX, Math.random()), mods: { ...NO_MODS } })),
       ],
       playerName: lb.players[0].name, playerMods: setupMods(carSetup), grid: 'random', startHeat: 0,
@@ -259,6 +280,7 @@ function livery(i: number) {
 
 /** Line everyone up on the grid and start the countdown. */
 function startRace(): void {
+  carSkin.clear();
   if (tutorial) { tutorial.remove(); tutorial = new Tutorial(settings.keys); }   // a restart starts the lesson over
   const cfg = raceConfig();
   names.clear();
@@ -281,6 +303,8 @@ function startRace(): void {
   const humans = cfg.field.filter((e) => e.peer).map((e) => {
     const car: Car = { craft: new Craft(), race: new RaceState(), ...livery(e.livery), name: e.name };
     car.craft.mods = { ...e.mods };   // that player's TUNE CAR setup
+    car.skin = skinColors(e.skin);
+    if (e.skin) carSkin.set(car, e.skin);
     names.set(car, e.name);
     carLivery.set(car, e.livery);
     remotes.set(e.peer!, car);
@@ -290,6 +314,10 @@ function startRace(): void {
   player = { craft: new Craft(), race: new RaceState(), ...livery(pl), name: cfg.playerName };
   player.craft.mods = { ...cfg.playerMods };
   player.craft.heat = cfg.startHeat;
+  player.skin = skinColors(achievements.equipped);
+  carSkin.set(player, achievements.equipped);
+  touchedWall = false;
+  driftCharge = 0;
   names.set(player, cfg.playerName);
   carLivery.set(player, pl);
   player.race.bestLap = mission !== null || online ? 0 : bestLaps[trackIndex];
@@ -340,6 +368,7 @@ const trackChoices: TrackChoice[] = tracks.map((t, i) => {
 
 const menus = new Menus(LIVERIES, trackChoices, {
   settings: openSettings,
+  garage: openGarage,
   tutorial() {
     endTutorial();
     mission = null;
@@ -631,6 +660,9 @@ function update(dt: number): void {
     const pc = player.craft;
     tutorial.update({ racing, speed: pc.speed, steer: input.steer, brake: input.brake, deploying: pc.deploying,
       energy: pc.energy, cooling: pc.cooling, lap: player.race.lap }, dt);
+    if (tutorial.finished && !achievements.p.unlocked.includes('graduate')) {
+      achievements.raceFinished({ track: track.name, place: 1, racers: 1, laps: raceLaps, online: false, tutorial: true, special: true, touchedWall, driftCharge });
+    }
     if (tutorial.finished && !settings.tutorialDone) {
       applySettings({ ...settings, tutorialDone: true });
       menus.setNewPlayer(false);
@@ -686,6 +718,10 @@ function update(dt: number): void {
       if (car === player) {
         showToast(`FINISHED ${ordinal(finishOrder.length)}`, '#ffd23f');
         sound.chime(true);
+        if (!online && !tutorial) {
+          achievements.raceFinished({ track: track.name, place: finishOrder.length, racers: cars.length, laps: raceLaps,
+            online: false, tutorial: false, special: mission !== null, touchedWall, driftCharge });
+        }
         // Hand the car to an AI driver for the cool-down lap.
         autopilot = new Driver(0.6, 9);
         autopilot.craft = player.craft;
@@ -706,6 +742,7 @@ function update(dt: number): void {
     if (contact) {
       emitSparks(contact.x, contact.y, car.craft);
       if (car === player) {
+        touchedWall = true;
         scraping = clamp(car.craft.speed / 500, 0.25, 1);
         if (contact.impact > 80) cam.shake = Math.min(16, contact.impact / 25);
         if (contact.impact > 120) sound.thud(contact.impact);
@@ -720,8 +757,11 @@ function update(dt: number): void {
     records[track.name] = player.race.bestLap;
     saveRecords(records);
     refreshRecords();
+    achievements.recordSet(track.name);
   }
   heardPasses(dt);
+  // The most battery charged by drifting in any one lap (the per-lap harvest count resets each lap).
+  driftCharge = Math.max(driftCharge, player.craft.harvested);
 
   for (let i = 0; i < cars.length; i++) {
     for (let j = i + 1; j < cars.length; j++) {
@@ -797,6 +837,15 @@ function scoreRound(s: Season): void {
 
 /** What the results screen shows: the race, plus the standings and next steps in a season. */
 function resultsView(): ResultsView {
+  if (season && season.round === season.races - 1 && finishOrder.length === cars.length) {
+    const totals = new Map<string, number>();
+    for (const [car, pts] of racePoints()) {
+      const nm = names.get(car) ?? '';
+      totals.set(nm, (season.points.get(nm) ?? 0) + pts);
+    }
+    const top = Math.max(...totals.values());
+    if (totals.get(names.get(player) ?? '') === top) achievements.unlock('champion');
+  }
   const rows = resultRows();
   const subtitle = `${TRACKS[trackIndex].name}  ·  ${raceLaps} ${raceLaps === 1 ? 'LAP' : 'LAPS'}`;
   if (online && !season) {
@@ -963,6 +1012,7 @@ function judgeLaunches(racing: boolean): void {
         if (result === 'perfect') {
           player.craft.launch = LAUNCH_TIME;
           showToast('PERFECT START!', '#4dff9a');
+          achievements.unlock('perfect-launch');
         } else if (result === 'stall') {
           player.craft.stall = STALL_TIME;
           showToast('JUMP START - STALLED', '#ffb02e');
@@ -1087,6 +1137,7 @@ function playerName(): string {
 }
 
 const lobbyUI = new LobbyUI(LIVERIES, trackChoices, {
+  garage: openGarage,
   host: startHosting,
   join: startJoining,
   pickCar(car) {
@@ -1141,9 +1192,14 @@ function startHosting(name: string): void {
     if (p) p.setup = sanitize(setup);
     broadcastLobby();
   };
-  host.onJoin = (id, pname, car, setup) => {
+  host.onSkin = (id, skin) => {
     if (online?.role !== 'host') return;
-    online.lobby.players.push({ id, name: pname.slice(0, 12), car: freeCar(online.lobby, car), setup: sanitize(setup) });
+    const p = online.lobby.players.find((q) => q.id === id);
+    if (p) { p.skin = skin; broadcastLobby(); }
+  };
+  host.onJoin = (id, pname, car, setup, skin) => {
+    if (online?.role !== 'host') return;
+    online.lobby.players.push({ id, name: pname.slice(0, 12), car: freeCar(online.lobby, car), setup: sanitize(setup), skin });
     broadcastLobby();
     showToast(`${pname} JOINED`, '#7dffb0');
   };
@@ -1174,13 +1230,15 @@ function startHosting(name: string): void {
 function broadcastLobby(): void {
   if (online?.role !== 'host') return;
   online.lobby.players[0].setup = carSetup;   // so everyone sees the host's handling too
+  online.lobby.players[0].skin = achievements.equipped;
+  checkMyBoard(online.lobby, online.lobby.players[0].name);
   for (const p of online.lobby.players.slice(1)) online.host.send({ t: 'lobby', lobby: online.lobby, you: p.id }, p.id);
   if (mode === 'menu') lobbyUI.showLobby(online.lobby, 'host', true, online.code);
 }
 
 function startJoining(code: string, name: string): void {
   rememberName(name);
-  const guest = new Guest(code, name, playerLivery, carSetup);
+  const guest = new Guest(code, name, playerLivery, carSetup, achievements.equipped);
   online = { role: 'guest', guest, code, me: '', lobby: null, snaps: [], offset: null, finishedAt: 0, inRace: false };
   lobbyUI.showStatus(`Joining race ${code}…`);
   guest.onError = (msg) => leaveOnline(msg);
@@ -1190,6 +1248,7 @@ function startJoining(code: string, name: string): void {
     if (m.t === 'lobby') {
       online.lobby = m.lobby;
       online.me = m.you;
+      checkMyBoard(m.lobby, m.lobby.players.find((p) => p.id === m.you)?.name ?? '');
       if (!online.inRace) lobbyUI.showLobby(m.lobby, m.you, false, online.code);
     } else if (m.t === 'start') {
       guestStart(m.track, m.laps, m.entrants);
@@ -1226,8 +1285,55 @@ function startJoining(code: string, name: string): void {
 }
 
 /** Host: start from the lobby: a single race, or round 1 of a season. */
+/** Host: a race has run since the leaderboard was last updated. */
+let sessionRaceOpen = false;
+
+/**
+ * Host: add the race just run to the session leaderboard (every human in it: races, wins,
+ * podiums, points, best lap and this race's place). Called when moving on from a race.
+ */
+function recordSessionRace(): void {
+  if (online?.role !== 'host' || !sessionRaceOpen) return;
+  sessionRaceOpen = false;
+  const ranked = rankCars();
+  const board: BoardRow[] = online.lobby.board ?? (online.lobby.board = []);
+  for (const car of [player, ...remotes.values()]) {
+    const name = names.get(car) ?? '';
+    if (!name) continue;
+    let row = board.find((r) => r.name === name);
+    if (!row) board.push(row = { name, races: 0, wins: 0, podiums: 0, points: 0, best: 0, last: 0 });
+    const place = ranked.indexOf(car) + 1;
+    row.races++;
+    if (place === 1) row.wins++;
+    if (place <= 3) row.podiums++;
+    row.points += POINTS[place - 1] ?? 0;
+    if (car.race.bestLap > 0 && (row.best === 0 || car.race.bestLap < row.best)) row.best = car.race.bestLap;
+    row.last = place;
+  }
+  // Share it straight away (mid-season too), so every player's own online record stays exact.
+  broadcastLobby();
+}
+
+/**
+ * Everyone (host and guests): when my line on the leaderboard gains a race, that was a race I
+ * finished online: update my own online record and check the online achievements.
+ */
+let myBoardRaces = -1;
+function checkMyBoard(lobby: LobbyState, myName: string): void {
+  const row = lobby.board?.find((r) => r.name === myName);
+  const races = row?.races ?? 0;
+  if (myBoardRaces < 0) { myBoardRaces = races; return; }   // first look at this lobby
+  if (row && races > myBoardRaces) {
+    achievements.onlineRace(row.last);
+    achievements.raceFinished({ track: TRACKS[lobby.track].name, place: row.last, racers: Math.max(2, lobby.players.length), laps: lobby.laps,
+      online: true, tutorial: false, special: true, touchedWall: true, driftCharge: 0 });
+  }
+  myBoardRaces = races;
+}
+
 function onlineStart(): void {
   if (online?.role !== 'host') return;
+  recordSessionRace();
   const lb = online.lobby;
   season = lb.races > 1 ? { races: lb.races, round: 0, openingTrack: lb.track, points: new Map() } : null;
   onlineRound(lb.track);
@@ -1236,6 +1342,7 @@ function onlineStart(): void {
 /** Host: race on a track with everyone in the lobby (a season round, or a single race). */
 function onlineRound(trackNo: number): void {
   if (online?.role !== 'host') return;
+  recordSessionRace();
   const lb = online.lobby;
   mission = null;
   playerLivery = lb.players[0].car;
@@ -1248,8 +1355,9 @@ function onlineRound(trackNo: number): void {
   const title = season ? `RACE ${season.round + 1} OF ${season.races}  ·  ${TRACKS[trackIndex].name}` : undefined;
   const peerOf = new Map([...remotes].map(([id, car]) => [car, id]));
   const entrants: NetEntrant[] = cars.map((c) => ({
-    name: names.get(c) ?? '', livery: carLivery.get(c) ?? 0, peer: c === player ? 'host' : peerOf.get(c) ?? null,
+    name: names.get(c) ?? '', livery: carLivery.get(c) ?? 0, peer: c === player ? 'host' : peerOf.get(c) ?? null, skin: carSkin.get(c),
   }));
+  sessionRaceOpen = true;
   online.host.send({ t: 'start', track: trackIndex, laps: raceLaps, entrants, title });
   lobbyUI.hide();
   play();
@@ -1259,6 +1367,7 @@ function onlineRound(trackNo: number): void {
 /** Host: everyone back to the lobby. */
 function onlineToLobby(): void {
   if (online?.role !== 'host') return;
+  recordSessionRace();
   season = null;
   online.host.send({ t: 'toLobby' });
   mode = 'menu';
@@ -1269,6 +1378,7 @@ function onlineToLobby(): void {
 }
 
 function leaveOnline(message?: string): void {
+  myBoardRaces = -1;
   if (!online) return;
   if (online.role === 'host') online.host.close(); else online.guest.close();
   online = null;
@@ -1363,7 +1473,7 @@ function guestStart(trackNo: number, laps: number, entrants: NetEntrant[]): void
   carLivery.clear();
   rivals = [];
   cars = entrants.map((e) => {
-    const car: Car = { craft: new Craft(), race: new RaceState(), ...livery(e.livery), name: e.name };
+    const car: Car = { craft: new Craft(), race: new RaceState(), ...livery(e.livery), name: e.name, skin: skinColors(e.skin) };
     names.set(car, e.name);
     carLivery.set(car, e.livery);
     return car;

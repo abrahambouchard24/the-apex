@@ -38,6 +38,8 @@ export interface MenuHandlers {
   settings(): void;
   /** The tutorial lap (HOW TO PLAY on the front menu). */
   tutorial(): void;
+  /** The Garage: skins and achievements. */
+  garage(): void;
   resume(): void;
   restart(): void;
   changeCar(): void;
@@ -270,6 +272,7 @@ export class Menus {
         </div>
         <div class="hr-btns row hr-front-actions">
           <button class="hr-btn secondary" data-act="tutorial">HOW TO PLAY</button>
+          <button class="hr-btn secondary" data-act="garage">GARAGE</button>
           <button class="hr-btn secondary" data-act="settings">SETTINGS</button>
         </div>
         <p class="hr-keys">A / D or ← / →: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; S / ↓ / Space: brake &nbsp;·&nbsp; W / ↑ / Shift: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
@@ -357,6 +360,7 @@ export class Menus {
         if (act === 'story') this.on.story();
         else if (act === 'settings') this.on.settings();
         else if (act === 'tutorial') this.on.tutorial();
+        else if (act === 'garage') this.on.garage();
         else if (act === 'online') this.on.online();
         else if (act === 'quick') this.showSetup('single');
         else if (act === 'season') this.showSetup('season');

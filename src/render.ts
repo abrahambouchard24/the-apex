@@ -1,5 +1,6 @@
 // Everything drawn to the canvas. Reads game state, never changes it.
 
+import type { SkinColors } from './achievements';
 import { Craft, GEARS, clamp } from './craft';
 import { drawGround as drawSceneryGround, drawOverlays, drawProps, groundMoves, View } from './scenery';
 import { COOL_LANE, HALF_WIDTH, KERB_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
@@ -47,7 +48,7 @@ export function loadSprite(url: string, height = 256): Sprite {
 }
 
 /** One racer: physics, race progress, art, minimap color and exhaust flame hue. */
-export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string }
+export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string; skin?: SkinColors | null }
 
 export interface RaceHud {
   position: number; racers: number; laps: number; countdown: string | null; banner: string | null;
@@ -106,7 +107,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
   drawParticles(ctx, s.particles);
   drawSlipstreams(ctx, s.cars, s.time);
   // Cars sit still on the grid; the hover bob starts with their race.
-  for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite, car.hue, car.race.lapStart >= 0);
+  for (const car of s.cars) drawCraft(ctx, car.craft, s.time, car.sprite, car.hue, car.race.lapStart >= 0, car.skin);
   drawOverlays(ctx, s.track, view, s.time);
 
   ctx.restore();
@@ -642,7 +643,7 @@ export const CRAFT_LENGTH = 80;
 export const NOZZLE_BACK = CRAFT_LENGTH / 2 - 4;
 export const NOZZLE_SIDE = 5.5;
 
-function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite, hue: number, bobbing: boolean): void {
+function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite, hue: number, bobbing: boolean, skin?: SkinColors | null): void {
   // (hue is reassigned below while ERS is deploying)
   const bob = bobbing ? Math.sin(time * 5 + c.pos.x * 0.001) * 2.5 : 0;
   const hoverHeight = 10 + bob;
@@ -692,6 +693,15 @@ function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite
     if (c.drsOpen) drawElectric(ctx, sprite, DRS_GLOW, full ? 4.5 : 2);
     if (full) drawElectric(ctx, sprite, ERS_GLOW, 2);
     drawSprite(ctx, sprite);
+    if (skin) {
+      // A skin recolours the art: its hue and saturation, the sprite's own shading.
+      const width = CRAFT_LENGTH * sprite.aspect;
+      ctx.save();
+      ctx.rotate(Math.PI / 2);
+      ctx.globalCompositeOperation = 'color';
+      ctx.drawImage(silhouette(sprite, skin.body), -width / 2, -CRAFT_LENGTH / 2, width, CRAFT_LENGTH);
+      ctx.restore();
+    }
   }
   ctx.restore();
 }

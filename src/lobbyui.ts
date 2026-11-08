@@ -17,6 +17,8 @@ export interface LobbyHandlers {
   leave(): void;
   /** Open the TUNE CAR screen for my car. */
   tune(): void;
+  /** Open the Garage (skins and achievements). */
+  garage(): void;
 }
 
 const CSS = `
@@ -49,6 +51,13 @@ const CSS = `
 .ol-tracks button.on { border-color: #4fe3ff; color: #fff; box-shadow: 0 0 14px -4px #4fe3ff; }
 .ol-tracks button:disabled { cursor: default; }
 .ol-wait { color: #8a93c0; font-weight: 700; letter-spacing: 0.1em; margin-top: 12px; }
+.ol-board { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-bottom: 8px; }
+.ol-board th { color: #8a93c0; font-size: 10px; letter-spacing: 0.16em; font-weight: 700; text-align: right; padding: 0 6px 5px; }
+.ol-board th:nth-child(-n+2) { text-align: left; }
+.ol-board td { padding: 6px; font-weight: 800; font-size: 13px; text-align: right; border-top: 1px solid #1d2346; }
+.ol-board td:nth-child(-n+2) { text-align: left; }
+.ol-board tr.me td { background: rgba(79,227,255,0.08); }
+.ol-board .lead { color: #ffd23f; }
 `;
 
 export class LobbyUI {
@@ -114,6 +123,14 @@ export class LobbyUI {
       + (lobby.ai ? `<li><span style="color:#8a93c0">AI × ${Math.min(lobby.ai, maxAi)}</span><small>COMPUTER</small></li>` : '');
     const cars = this.cars.map((c, i) => `<button class="hr-car ${mine?.car === i ? 'selected' : ''}" style="--c:${c.color}" data-car="${i}"
       ${taken.has(i) ? 'disabled' : ''}><img src="${c.url}" alt=""><span style="color:${c.color}">${c.name}</span></button>`).join('');
+    // The session leaderboard: everyone's tally across the races played together in this lobby.
+    const meName = mine?.name;
+    const rows = [...(lobby.board ?? [])].sort((a, b) => b.points - a.points || b.wins - a.wins || a.best - b.best);
+    const board = rows.length ? `<div class="ol-label">SESSION LEADERBOARD</div>
+      <table class="ol-board"><thead><tr><th></th><th>PLAYER</th><th>RACES</th><th>WINS</th><th>PODIUMS</th><th>PTS</th><th>BEST LAP</th></tr></thead><tbody>
+      ${rows.map((r, i) => `<tr class="${r.name === meName ? 'me' : ''}"><td class="${i === 0 ? 'lead' : ''}">${i + 1}</td><td>${esc(r.name)}</td>
+        <td>${r.races}</td><td>${r.wins}</td><td>${r.podiums}</td><td class="${i === 0 ? 'lead' : ''}">${r.points}</td><td>${r.best ? lapTime(r.best) : '-'}</td></tr>`).join('')}
+      </tbody></table>` : '';
     const tracks = this.tracks.map((t, i) => `<button data-track="${i}" class="${lobby.track === i ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${t.name}</button>`).join('');
     const seg = (name: string, values: number[], cur: number) => `<div class="hr-seg" data-seg="${name}">${values.map((v) =>
       `<button data-v="${v}" class="${v === cur ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${v}</button>`).join('')}</div>`;
@@ -126,6 +143,7 @@ export class LobbyUI {
             <div class="ol-code">${code}</div>
             <div class="ol-label">PLAYERS</div>
             <ul class="ol-players">${players}</ul>
+            ${board}
           </div>
           <div>
             <div class="ol-label">YOUR CAR</div>
@@ -148,10 +166,12 @@ export class LobbyUI {
         <div class="ol-row" style="margin:18px 0 0">
           ${isHost ? `<button class="hr-btn" data-start>${lobby.races > 1 ? 'START SEASON' : 'START RACE'}</button>` : '<div class="ol-wait">WAITING FOR THE HOST TO START…</div>'}
           <button class="hr-btn secondary" data-tune>TUNE CAR</button>
+          <button class="hr-btn secondary" data-garage>GARAGE</button>
           <button class="hr-btn secondary" data-leave>LEAVE</button>
         </div>
       </div>`);
     this.el.querySelector('[data-tune]')!.addEventListener('click', () => this.on.tune());
+    this.el.querySelector('[data-garage]')!.addEventListener('click', () => this.on.garage());
     this.el.querySelectorAll<HTMLElement>('[data-car]').forEach((b) => b.addEventListener('click', () => this.on.pickCar(Number(b.dataset.car))));
     this.el.querySelectorAll<HTMLElement>('[data-track]').forEach((b) => b.addEventListener('click', () => this.on.setTrack(Number(b.dataset.track))));
     this.el.querySelectorAll<HTMLElement>('[data-seg]').forEach((seg) => seg.addEventListener('click', (e) => {
@@ -170,6 +190,11 @@ export class LobbyUI {
     this.el.innerHTML = html;
     this.el.classList.remove('hidden');
   }
+}
+
+function lapTime(t: number): string {
+  const m = Math.floor(t / 60), sec = t - m * 60;
+  return `${m}:${sec.toFixed(3).padStart(6, '0')}`;
 }
 
 function esc(s: string): string {

@@ -88,8 +88,9 @@ export interface Mods {
   ers: number;     // boost effectiveness
   harvest: number; // how fast drifting charges the boost battery
   assist: number;  // above 0: ASSISTED handling (turning scrubs speed for you)
+  turn: number;    // steering rate (how fast the nose comes round)
 }
-export const NO_MODS: Mods = { top: 0, accel: 0, grip: 0, heat: 0, ers: 0, harvest: 0, assist: 0 };
+export const NO_MODS: Mods = { top: 0, accel: 0, grip: 0, heat: 0, ers: 0, harvest: 0, assist: 0, turn: 0 };
 
 /** A car's complete physics state (see Craft.getState). */
 export interface CraftState {
@@ -175,7 +176,7 @@ export class Craft {
   /** The most the craft can turn in one step of dt right now (for proportional steering). */
   maxTurn(dt: number, brake: boolean): number {
     const speedFrac = clamp(this.speed / GEARS[GEARS.length - 1].top, 0, 1);
-    return lerp(TURN_RATE, TURN_RATE_FAST, speedFrac) * (brake ? BRAKE_TURN_BONUS : 1) * dt;
+    return lerp(TURN_RATE, TURN_RATE_FAST, speedFrac) * (1 + this.mods.turn) * (brake ? BRAKE_TURN_BONUS : 1) * dt;
   }
 
   /**
@@ -195,7 +196,7 @@ export class Craft {
 
     // Steering: turn toward the aim at a capped rate that tightens a little with speed.
     const speedFrac = clamp(speed / GEARS[GEARS.length - 1].top, 0, 1);
-    let turnRate = lerp(TURN_RATE, TURN_RATE_FAST, speedFrac);
+    let turnRate = lerp(TURN_RATE, TURN_RATE_FAST, speedFrac) * (1 + this.mods.turn);
     if (brake) turnRate *= BRAKE_TURN_BONUS;
     const diff = wrapAngle(aimAngle - this.heading);
     const maxTurn = turnRate * dt;

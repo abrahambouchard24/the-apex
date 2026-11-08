@@ -18,14 +18,17 @@ export function newCode(): string {
 
 // --- messages -----------------------------------------------------------------------------------
 
-export interface LobbyPlayer { id: string; name: string; car: number; setup?: Setup }
+export interface LobbyPlayer { id: string; name: string; car: number; setup?: Setup; skin?: string }
+
+/** One player's line in the lobby's session leaderboard (all races played together this session). */
+export interface BoardRow { name: string; races: number; wins: number; podiums: number; points: number; best: number; last: number }
 
 /** The lobby as everyone sees it. */
 /** races: 1 = a single race; more = a season of that many. */
-export interface LobbyState { players: LobbyPlayer[]; track: number; laps: number; ai: number; races: number }
+export interface LobbyState { players: LobbyPlayer[]; track: number; laps: number; ai: number; races: number; board?: BoardRow[] }
 
 /** One entrant in an online race, in grid order of the cars array. */
-export interface NetEntrant { name: string; livery: number; peer: string | null }
+export interface NetEntrant { name: string; livery: number; peer: string | null; skin?: string }
 
 /** Per-car state in a snapshot (positions rounded to keep messages small). */
 export interface CarSnap {
@@ -54,7 +57,8 @@ export interface Snapshot {
 export interface Controls { seq: number; aim: number; brake: boolean; deploy: boolean }
 
 export type ToHost =
-  | { t: 'hello'; name: string; car: number; setup?: Setup }
+  | { t: 'hello'; name: string; car: number; setup?: Setup; skin?: string }
+  | { t: 'skin'; skin: string }
   | { t: 'car'; car: number }
   | { t: 'setup'; setup: Setup }
   | ({ t: 'input' } & Controls);
@@ -75,9 +79,10 @@ export class Host {
   private conns = new Map<string, DataConnection>();
   /** Each guest's controls not yet applied, oldest first (one is used per physics step). */
   private queues = new Map<string, Controls[]>();
-  onJoin: (id: string, name: string, car: number, setup?: Setup) => void = () => {};
+  onJoin: (id: string, name: string, car: number, setup?: Setup, skin?: string) => void = () => {};
   onCar: (id: string, car: number) => void = () => {};
   onSetup: (id: string, setup: Setup) => void = () => {};
+  onSkin: (id: string, skin: string) => void = () => {};
   onLeave: (id: string) => void = () => {};
   onReady: () => void = () => {};
   onError: (msg: string) => void = () => {};
@@ -97,11 +102,13 @@ export class Host {
     if (m.t === 'hello') {
       if (this.conns.size >= 5) { conn.close(); return; }   // 6 cars: the host and up to 5 guests
       this.conns.set(conn.peer, conn);
-      this.onJoin(conn.peer, m.name, m.car, m.setup);
+      this.onJoin(conn.peer, m.name, m.car, m.setup, m.skin);
     } else if (m.t === 'car') {
       this.onCar(conn.peer, m.car);
     } else if (m.t === 'setup') {
       this.onSetup(conn.peer, m.setup);
+    } else if (m.t === 'skin') {
+      this.onSkin(conn.peer, String(m.skin).slice(0, 24));
     } else if (m.t === 'input') {
       const q = this.queues.get(conn.peer) ?? [];
       q.push({ seq: m.seq, aim: m.aim, brake: m.brake, deploy: m.deploy });
@@ -142,13 +149,13 @@ export class Guest {
   onClose: () => void = () => {};
   onError: (msg: string) => void = () => {};
 
-  constructor(code: string, name: string, car: number, setup?: Setup) {
+  constructor(code: string, name: string, car: number, setup?: Setup, skin?: string) {
     this.peer = new Peer();
     this.peer.on('error', (e) => this.onError(friendly(e)));
     this.peer.on('open', () => {
       const conn = this.peer.connect(ID_PREFIX + code.trim().toLowerCase(), { reliable: true });
       this.conn = conn;
-      conn.on('open', () => conn.send({ t: 'hello', name, car, setup } satisfies ToHost));
+      conn.on('open', () => conn.send({ t: 'hello', name, car, setup, skin } satisfies ToHost));
       conn.on('data', (d) => this.onMessage(d as ToGuest));
       conn.on('close', () => this.onClose());
       conn.on('error', () => this.onClose());
