@@ -404,7 +404,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
     menus.setSeason(false);
     raceLaps = 2;
     tutorial = new Tutorial(settings.keys);
-    startRound(0);   // Apex Grand Prix
+    startRound(0);   // Apex Arena
   },
   tune(car) {
     tuneUI.open(carSetup, carPicture(car, true), (s) => { carSetup = s; saveSetup(s); }, () => {});

@@ -1,4 +1,4 @@
-// The tutorial lap: a solo run on Apex Grand Prix with one prompt at a time, each moving on once
+// The tutorial lap: a solo run on Apex Arena with one prompt at a time, each moving on once
 // the player has actually done the thing (steered, braked, drifted, boosted...).
 
 import { keyLabel, type Action } from './settings';
