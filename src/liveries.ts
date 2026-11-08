@@ -278,3 +278,182 @@ export function liveryMetal(pattern?: string): number | undefined {
 export function liveryPainter(pattern?: string): Painter | undefined {
   return pattern ? PAINTERS[pattern] : undefined;
 }
+
+// --- printed paper ------------------------------------------------------------------------------------
+// For the folded-paper craft: each livery as a seamless square of printed washi paper, drawn on the
+// skin's body colour. u runs along the craft (tail to nose), v across the span. Everything here
+// repeats exactly at the tile's edges (periodic noise and patterns whose periods divide the size).
+
+const TILE = 256;
+
+/** Value noise that wraps every `cells` lattice cells across the tile, so it repeats seamlessly. */
+function tnoise(u: number, v: number, cells: number, seed: number): number {
+  const x = (u / TILE) * cells, y = (v / TILE) * cells;
+  const xi = Math.floor(x), yi = Math.floor(y), xf = smooth(x - xi), yf = smooth(y - yi);
+  const h = (i: number, j: number) => hash3(((i % cells) + cells) % cells, ((j % cells) + cells) % cells, seed);
+  const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1);
+  return a + (b - a) * xf + (c - a) * yf + (a - b - c + d) * xf * yf;
+}
+function tfbm(u: number, v: number, seed: number): number {
+  return tnoise(u, v, 4, seed) * 0.55 + tnoise(u, v, 8, seed + 1) * 0.3 + tnoise(u, v, 16, seed + 2) * 0.15;
+}
+const TAU = Math.PI * 2;
+/** A wave with a whole number of cycles across the tile. */
+const per = (u: number, cycles: number) => Math.sin((u / TILE) * TAU * cycles);
+const mod = (a: number, m: number) => ((a % m) + m) % m;
+
+/** Each livery's print: the colour of one pixel of the tile. */
+const PRINTS: Record<string, (u: number, v: number) => number> = {
+  verdigris(u, v) {
+    const n = tfbm(u, v, 11), bronze = mix(0x6e4a22, 0xb08850, tnoise(u, v, 32, 12));
+    return n > 0.52 ? mix(bronze, 0x5fc2a2, (n - 0.52) * 3.4) : bronze;
+  },
+  obsidian(u, v) {
+    const crack = Math.abs(tfbm(u, v, 21) - 0.5);
+    if (crack < 0.018) return mix(GOLD, 0xffe6a0, tnoise(u, v, 64, 22));
+    return mix(0x0c0c11, 0x26262f, tnoise(u, v, 8, 23));
+  },
+  aureus(u, v) {
+    const row = Math.floor(v / 16), off = row % 2 ? 16 : 0;
+    const cx = Math.floor((u + off) / 32) * 32 + 16 - off, cy = row * 16;
+    const d = Math.hypot((u - cx) * 0.55, v - cy);
+    return d > 12.5 && d < 15 ? GOLD_DARK : mix(0xc8962e, 0xf0cc6a, tnoise(u, v, 16, 31));
+  },
+  zeus(u, v) {
+    // Two bolts along the craft, zig-zagging (8 kinks per tile), a pale electric core with blue edges.
+    for (const base of [64, 192]) {
+      const t = mod(u, 32) / 32, dir = Math.floor(u / 32) % 2 ? 1 : -1;
+      const y = base + dir * (t * 2 - 1) * 14;
+      const d = Math.abs(v - y);
+      if (d < 3) return 0xe8f8ff;
+      if (d < 6) return 0x3f8fe0;
+      if (d < 7.5) return GOLD;
+    }
+    return mix(0xf4f1e8, 0xe4e2da, tnoise(u, v, 16, 41));
+  },
+  marble(u, v) {
+    const warp = tfbm(u, v, 51) * 5;
+    const vein = Math.abs(Math.sin(((u + v) / TILE) * TAU * 2 + warp));
+    const base = mix(0xf6f3ec, 0xe6e1d6, tnoise(u, v, 8, 52));
+    if (vein < 0.04) return tnoise(u, v, 32, 53) > 0.7 ? GOLD : 0x8f887c;
+    if (vein < 0.12) return mix(base, 0xa8a196, 0.5);
+    return base;
+  },
+  sunfire(u, v) {
+    // Dawn red at the span's edges to gold along the middle, with sunburst rays fanning across it.
+    const t = 1 - Math.abs(v / TILE - 0.5) * 2;
+    const base = t < 0.5 ? mix(0x8e1a2e, 0xff6a2a, t * 2) : mix(0xff6a2a, 0xffc85a, (t - 0.5) * 2);
+    const ray = Math.floor(Math.atan2(v - TILE / 2, mod(u, 128) - 64) / Math.PI * 12);
+    return ray % 2 ? base : mix(base, 0xfff0b0, 0.22);
+  },
+  opal(u, v) {
+    const n = tfbm(u, v, 61);
+    if (hash3(u, v, 62) > 0.995) return hsl(n * 2.3, 0.9, 0.85);
+    return hsl(0.5 + per(u, 2) * 0.2 + n * 0.3, 0.5, 0.77 + n * 0.08);
+  },
+  platinum(u, v) {
+    const brushed = mix(0xc4cad4, 0xe9edf3, hash3(Math.floor(u / 2), 0, 71) * 0.6 + tnoise(u, v, 16, 72) * 0.4);
+    const c = mod(u - Math.abs(v - TILE / 2) * 0.9, 32);
+    if (c < 4) return 0x3b414c;
+    if (c < 6) return 0xffffff;
+    return brushed;
+  },
+  atlantis(u, v) {
+    // A gold Greek key along both edges of the span, waves between.
+    const KEY = ['######', '#.....', '#.###.', '#.#.#.', '#...#.', '#####.'];
+    for (const top of [8, TILE - 32]) {
+      if (v >= top && v < top + 24) {
+        const i = Math.floor(mod(u, 24) / 4), r = Math.floor((v - top) / 4);
+        return KEY[r][i] === '#' ? GOLD : 0x0b2a2e;
+      }
+    }
+    const wave = Math.abs(v - TILE / 2 - per(u, 8) * 10);
+    if (wave < 2) return 0xe2c27a;
+    return mix(0x0f4a52, 0x1f7f88, tfbm(u, v, 81));
+  },
+  imperial(u, v) {
+    const c = mod(u + Math.abs(v - TILE / 2) * 1.1, 32);
+    if (c < 4) return GOLD;
+    const gu = mod(u, 32) - 16, gv = mod(v, 32) - 16;
+    if (Math.abs(gu) + Math.abs(gv) < 4) return 0xd9b25b;
+    return mix(0x2e1659, 0x47267f, tnoise(u, v, 8, 91));
+  },
+  circuit(u, v) {
+    const i = Math.floor(u / 8), k = Math.floor(v / 8);
+    const run = k % 3 === 0 && mod(v, 8) < 3 && hash3(Math.floor(i / 4) % 8, k, 101) > 0.35;
+    const jog = i % 4 === 0 && mod(u, 8) < 3 && hash3(i, Math.floor(k / 3) % 11, 102) > 0.5;
+    if (run && jog) return 0xd8fff0;
+    if (run || jog) return 0x3fffb0;
+    return mix(0x10191d, 0x1d2c33, tnoise(u, v, 16, 103));
+  },
+  vanta(u, v) {
+    if (Math.abs(v - TILE / 2) < 3) return 0xff2d55;
+    return mix(0x0d0d10, 0x17171b, tnoise(u, v, 16, 111));
+  },
+  valkyrie(u, v) {
+    const row = Math.floor(v / 16), uu = mod(u + row * 14, 32);
+    const edge = Math.abs(uu - (16 - Math.abs(mod(v, 16) - 8) * 1.4)) < 1.6;
+    if (edge) return 0xb9cbe0;
+    return mix(0xf6f9fc, 0xe2eaf3, tnoise(u, v, 16, 121));
+  },
+  medusa(u, v) {
+    if (Math.abs(v - TILE / 2) < 12) {
+      const d = Math.abs(mod(u, 32) - 16) + Math.abs(v - TILE / 2);
+      if (d < 12) return d < 7 ? 0x07140e : 0xd9b85a;
+    }
+    const a = (u + v) * 0.7071, b = (u - v) * 0.7071;
+    if (mod(a, 11.3) < 1.6 || mod(b, 11.3) < 1.6) return 0x123f2b;
+    return mix(0x1f7a4f, 0x3fae6e, tnoise(u, v, 16, 131));
+  },
+  poseidon(u, v) {
+    if (Math.abs(v - TILE / 2) < 2) return GOLD;
+    const crest = (v2: number) => Math.abs(mod(v2, 64) - 32 - per(u, 8) * 9);
+    if (crest(v) < 2) return 0xeef9ff;
+    return mix(0x0a2a55, 0x2a7fb8, 0.3 + tfbm(u, v, 141) * 0.5);
+  },
+  vesta(u, v) {
+    if (hash3(u, v, 151) > 0.993) return mix(0xffb347, 0xffe7a0, hash3(v, u, 152));
+    const lick = mod(v, 64) / 64, tongue = (per(u, 8) * 0.5 + 0.5) * 0.6 + tfbm(u, v, 153) * 0.4;
+    if (lick < tongue * 0.5) return lick < tongue * 0.18 ? 0xffd27a : lick < tongue * 0.34 ? 0xff8a2a : 0xd2381e;
+    return mix(0x5e0f1c, 0x8e1a2e, tnoise(u, v, 8, 154));
+  },
+  anubis(u, v) {
+    const band = Math.floor(v / 16);
+    if (band % 4 === 1) return GOLD;
+    if (band % 4 === 3) return 0x2a4fbf;
+    return mix(0x0d0d11, 0x1b1b22, tnoise(u, v, 16, 161));
+  },
+};
+
+const prints = new Map<string, HTMLCanvasElement>();
+
+/**
+ * A livery as a seamless TILE x TILE square of printed paper (u along the craft, v across the span),
+ * with a soft paper fibre over the print. undefined for a plain skin.
+ */
+export function liveryPattern(pattern?: string): HTMLCanvasElement | undefined {
+  if (!pattern || !PRINTS[pattern]) return undefined;
+  const done = prints.get(pattern);
+  if (done) return done;
+  const c = document.createElement('canvas');
+  c.width = c.height = TILE;
+  const g = c.getContext('2d')!;
+  const img = g.createImageData(TILE, TILE);
+  const f = PRINTS[pattern];
+  for (let v = 0; v < TILE; v++) {
+    for (let u = 0; u < TILE; u++) {
+      const col = f(u, v);
+      // Paper fibre: a faint, tileable mottling over the ink.
+      const fibre = 0.95 + tnoise(u, v, 64, 7) * 0.07 + (hash3(u, v, 8) - 0.5) * 0.03;
+      const i = (v * TILE + u) * 4;
+      img.data[i] = Math.min(255, ((col >> 16) & 255) * fibre);
+      img.data[i + 1] = Math.min(255, ((col >> 8) & 255) * fibre);
+      img.data[i + 2] = Math.min(255, (col & 255) * fibre);
+      img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  prints.set(pattern, c);
+  return c;
+}
+

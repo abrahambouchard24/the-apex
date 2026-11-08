@@ -1,14 +1,15 @@
-// Story character portraits, drawn in code: vector busts in the game's look (a future that mixes
-// cyberpunk and archeofuturism with Atlantean, aristocratic grace: deep sea teal, ivory and gold,
-// classical arches and sunbursts, with neon in each character's team colour), then rendered down
-// to crisp pixel art so they sit with the voxel cars.
+// Story character portraits, drawn in code and then folded into paper: each figure is a vector
+// bust (in the game's palette: deep sea teal, ivory and gold, neon in the character's team colour)
+// which is cut into flat triangular planes like origami. Every plane takes the colour of the drawing
+// under it and a tone from the angle of its fold, with crisp creases between planes and a matte
+// paper grain. The backdrop is a folded paper sunburst under a faceted gold arch.
 
 import { CHARACTERS, Speaker } from './story';
 
 const GOLD = '#d9b25b', GOLD_HI = '#f6e3a1', INK = '#0b1a20', IVORY = '#efe6d2';
 
-/** Pixel grid of the finished portrait (shown at 2x). */
-export const PORTRAIT_GRID = 64;
+/** Size of the finished portrait, in pixels (shown at full resolution, no pixel grid). */
+export const PORTRAIT_SIZE = 400;
 
 interface Skin { base: string; shade: string }
 const SKIN: Record<string, Skin> = {
@@ -18,26 +19,6 @@ const SKIN: Record<string, Skin> = {
 };
 
 // --- shared pieces (a 200 x 200 canvas; the head sits around x 100, y 90) ---------------------------
-
-/** The backdrop: deep teal, a gold sunburst and an arch with a neon inner line in the team colour. */
-function backdrop(team: string): string {
-  let rays = '';
-  for (let k = 0; k < 24; k++) {
-    const a = (k / 24) * Math.PI * 2;
-    rays += `<line x1="100" y1="92" x2="${(100 + Math.cos(a) * 150).toFixed(1)}" y2="${(92 + Math.sin(a) * 150).toFixed(1)}"/>`;
-  }
-  return `
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#1d6670"/><stop offset="0.55" stop-color="#0c3540"/><stop offset="1" stop-color="#04141a"/></radialGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${GOLD_HI}"/><stop offset="1" stop-color="${GOLD}"/></linearGradient>
-  </defs>
-  <rect width="200" height="200" fill="url(#bg)"/>
-  <g stroke="${GOLD}" stroke-width="2.4" opacity="0.22">${rays}</g>
-  <path d="M26 200 V86 A74 74 0 0 1 174 86 V200" fill="none" stroke="url(#gold)" stroke-width="5"/>
-  <path d="M36 200 V88 A64 64 0 0 1 164 88 V200" fill="none" stroke="${team}" stroke-width="2.4" opacity="0.95"/>
-  <path d="M100 6 L109 16 L100 26 L91 16 Z" fill="url(#gold)" stroke="${INK}" stroke-width="1.5"/>
-  <circle cx="100" cy="16" r="3.6" fill="${team}"/>`;
-}
 
 /** Shoulders in a high-collared coat, with gold trim and a neon seam. */
 function coat(main: string, dark: string, team: string, opts: { broad?: boolean; collar?: string; lapels?: boolean } = {}): string {
@@ -97,9 +78,13 @@ function features(o: { iris: string; brow?: number; browColor?: string; mouth?: 
 
 // --- the cast ---------------------------------------------------------------------------------------
 
-/** The backdrop, then the figure framed head-and-shoulders (scaled up around the face). */
+/**
+ * The figure framed head-and-shoulders (scaled up around the face), on a transparent ground; the
+ * folded backdrop is drawn separately. The team colour rides along for the backdrop.
+ */
 function svg(team: string, figure: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">${backdrop(team)}
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" data-team="${team}">
+    <defs><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${GOLD_HI}"/><stop offset="1" stop-color="${GOLD}"/></linearGradient></defs>
     <g transform="translate(100 84) scale(1.32) translate(-100 -84)">${figure}</g></svg>`;
 }
 
@@ -219,12 +204,207 @@ const DRAW: Record<Speaker, () => string> = {
   },
 };
 
-// --- pixel art ----------------------------------------------------------------------------------------
+// --- folding into paper -----------------------------------------------------------------------------
+
+type Pt = [number, number];
+
+/** Delaunay triangulation (Bowyer-Watson): fine for the few hundred points of a portrait. */
+function triangulate(pts: Pt[]): [number, number, number][] {
+  const big = 1e5;
+  const all: Pt[] = [...pts, [-big, -big], [big, -big], [0, big]];
+  const n = pts.length;
+  type Tri = { a: number; b: number; c: number; x: number; y: number; r2: number };
+  const circ = (a: number, b: number, c: number): Tri => {
+    const [ax, ay] = all[a], [bx, by] = all[b], [cx, cy] = all[c];
+    const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by)) || 1e-9;
+    const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+    const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+    return { a, b, c, x: ux, y: uy, r2: (ax - ux) ** 2 + (ay - uy) ** 2 };
+  };
+  let tris: Tri[] = [circ(n, n + 1, n + 2)];
+  for (let i = 0; i < n; i++) {
+    const [px, py] = all[i];
+    const bad: Tri[] = [], keep: Tri[] = [];
+    for (const t of tris) ((px - t.x) ** 2 + (py - t.y) ** 2 < t.r2 ? bad : keep).push(t);
+    const edges = new Map<string, [number, number]>();
+    for (const t of bad) {
+      for (const [u, v] of [[t.a, t.b], [t.b, t.c], [t.c, t.a]] as [number, number][]) {
+        const k = u < v ? `${u},${v}` : `${v},${u}`;
+        if (edges.has(k)) edges.delete(k); else edges.set(k, [u, v]);
+      }
+    }
+    for (const [u, v] of edges.values()) keep.push(circ(u, v, i));
+    tris = keep;
+  }
+  return tris.filter((t) => t.a < n && t.b < n && t.c < n).map((t) => [t.a, t.b, t.c]);
+}
+
+/** A seeded random, so each portrait folds the same way every time. */
+function rng(seed: number): () => number {
+  return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+}
+
+const LIGHT: [number, number, number] = (() => { const v = [-0.45, -0.6, 0.66]; const l = Math.hypot(...v); return v.map((x) => x / l) as [number, number, number]; })();
+
+/** Fill and crease one flat paper plane: its colour, toned by how its fold faces the light. */
+function plane(g: CanvasRenderingContext2D, a: Pt, b: Pt, c: Pt, rgb: [number, number, number], ha: number, hb: number, hc: number): void {
+  // Treat brightness as height: the plane's tilt gives it a normal, and the light tones it.
+  const ux = b[0] - a[0], uy = b[1] - a[1], uz = hb - ha, vx = c[0] - a[0], vy = c[1] - a[1], vz = hc - ha;
+  let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+  if (nz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+  const nl = Math.hypot(nx, ny, nz) || 1;
+  const lit = (nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]) / nl;
+  const k = 0.86 + lit * 0.2;
+  const col = rgb.map((v) => Math.max(0, Math.min(255, Math.round(v * k))));
+  g.beginPath();
+  g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(c[0], c[1]); g.closePath();
+  g.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+  g.strokeStyle = g.fillStyle;
+  g.lineWidth = 0.8;
+  g.fill();
+  g.stroke();   // closes hairline seams between planes
+}
+
+/** Crisp crease lines: a pale highlight along each fold, faint enough to read as paper, not wire. */
+function creases(g: CanvasRenderingContext2D, pts: Pt[], tris: [number, number, number][]): void {
+  g.save();
+  g.lineWidth = 0.9;
+  g.strokeStyle = 'rgba(255,250,235,0.09)';
+  g.beginPath();
+  for (const [i, j, k] of tris) {
+    g.moveTo(pts[i][0], pts[i][1]); g.lineTo(pts[j][0], pts[j][1]); g.lineTo(pts[k][0], pts[k][1]); g.closePath();
+  }
+  g.stroke();
+  g.restore();
+}
+
+/** The backdrop folded from paper: a sunburst of alternating teal planes under a faceted gold arch. */
+function paperBackdrop(g: CanvasRenderingContext2D, S: number, team: string): void {
+  const u = S / 200, cx = 100 * u, cy = 92 * u, R = 210 * u, rays = 24;
+  for (let k = 0; k < rays; k++) {
+    const a0 = (k / rays) * Math.PI * 2, a1 = ((k + 1) / rays) * Math.PI * 2, am = (a0 + a1) / 2;
+    // Each ray is a valley fold: two planes meeting along its centre line, one catching the light.
+    const p0: Pt = [cx + Math.cos(a0) * R, cy + Math.sin(a0) * R], p1: Pt = [cx + Math.cos(a1) * R, cy + Math.sin(a1) * R];
+    const pm: Pt = [cx + Math.cos(am) * R * 0.98, cy + Math.sin(am) * R * 0.98];
+    const facing = Math.cos(am - (-2.2));
+    const base = k % 2 ? [16, 70, 78] : [12, 54, 62];
+    for (const [q, lift] of [[p0, 0.1], [p1, -0.1]] as [Pt, number][]) {
+      const t = 0.82 + (facing + lift) * 0.14;
+      g.beginPath(); g.moveTo(cx, cy); g.lineTo(q[0], q[1]); g.lineTo(pm[0], pm[1]); g.closePath();
+      g.fillStyle = `rgb(${base.map((v) => Math.round(v * t)).join(',')})`;
+      g.strokeStyle = g.fillStyle; g.lineWidth = 0.8;
+      g.fill(); g.stroke();
+    }
+  }
+  // Darken toward the corners, like paper in shadow.
+  const v = g.createRadialGradient(cx, cy * 0.9, S * 0.15, cx, cy, S * 0.75);
+  v.addColorStop(0, 'rgba(4,16,22,0)'); v.addColorStop(1, 'rgba(4,16,22,0.62)');
+  g.fillStyle = v; g.fillRect(0, 0, S, S);
+  // The arch: a gold paper band folded into facets, an inner neon line in the team colour.
+  const band = (r0: number, r1: number, segs: number, colA: string, colB: string) => {
+    const ax = 100 * u, ay = 86 * u;
+    const pts: [Pt, Pt][] = [];
+    pts.push([[ax - r1 * u, 200 * u], [ax - r0 * u, 200 * u]]);
+    for (let i = 0; i <= segs; i++) {
+      const a = Math.PI + (i / segs) * Math.PI;
+      pts.push([[ax + Math.cos(a) * r1 * u, ay + Math.sin(a) * r1 * u], [ax + Math.cos(a) * r0 * u, ay + Math.sin(a) * r0 * u]]);
+    }
+    pts.push([[ax + r1 * u, 200 * u], [ax + r0 * u, 200 * u]]);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [o0, i0] = pts[i], [o1, i1] = pts[i + 1];
+      // Outer half and inner half of the band: a ridge fold along its middle.
+      const m0: Pt = [(o0[0] + i0[0]) / 2, (o0[1] + i0[1]) / 2], m1: Pt = [(o1[0] + i1[0]) / 2, (o1[1] + i1[1]) / 2];
+      for (const [q, col] of [[[o0, o1, m1, m0], i % 2 ? colA : colB], [[m0, m1, i1, i0], i % 2 ? colB : colA]] as [Pt[], string][]) {
+        g.beginPath(); q.forEach(([x, y], n) => (n ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
+        g.fillStyle = col; g.strokeStyle = col; g.lineWidth = 0.8; g.fill(); g.stroke();
+      }
+    }
+  };
+  band(68, 78, 14, '#f3dc96', '#c99e45');
+  g.save();
+  g.strokeStyle = team; g.lineWidth = 2.2 * u; g.shadowColor = team; g.shadowBlur = 8 * u;
+  g.beginPath(); g.moveTo(36 * u, 200 * u); g.lineTo(36 * u, 88 * u); g.arc(100 * u, 88 * u, 64 * u, Math.PI, 0); g.lineTo(164 * u, 200 * u); g.stroke();
+  g.restore();
+  // The keystone: a folded gold diamond with the team colour at its heart.
+  const kx = 100 * u, ky = 16 * u, kr = 11 * u;
+  const facets: [Pt, Pt, string][] = [
+    [[kx, ky - kr], [kx - kr, ky], '#f6e3a1'], [[kx, ky - kr], [kx + kr, ky], '#d9b25b'],
+    [[kx, ky + kr], [kx - kr, ky], '#c99e45'], [[kx, ky + kr], [kx + kr, ky], '#a8802e'],
+  ];
+  for (const [a, b, col] of facets) { g.beginPath(); g.moveTo(kx, ky); g.lineTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.closePath(); g.fillStyle = col; g.fill(); }
+  g.fillStyle = team; g.beginPath(); g.arc(kx, ky, 3.6 * u, 0, Math.PI * 2); g.fill();
+}
+
+/** Matte paper: a fine grain over everything. */
+function grain(g: CanvasRenderingContext2D, S: number, seed: number): void {
+  const r = rng(seed ^ 0x9e37);
+  for (let i = 0; i < S * S / 40; i++) {
+    g.fillStyle = r() < 0.5 ? 'rgba(255,248,230,0.05)' : 'rgba(0,0,0,0.06)';
+    g.fillRect(r() * S, r() * S, 1, 1);
+  }
+}
+
+/** Fold a drawn figure (on a transparent canvas) into paper planes, drawn onto g. */
+function foldFigure(g: CanvasRenderingContext2D, src: HTMLCanvasElement, seed: number): void {
+  const S = src.width;
+  const data = src.getContext('2d')!.getImageData(0, 0, S, S).data;
+  const at = (x: number, y: number) => {
+    const i = (Math.max(0, Math.min(S - 1, Math.round(y))) * S + Math.max(0, Math.min(S - 1, Math.round(x)))) * 4;
+    return [data[i], data[i + 1], data[i + 2], data[i + 3]];
+  };
+  const lum = (x: number, y: number) => { const [r, gg, b, al] = at(x, y); return al < 128 ? -1 : (r * 0.3 + gg * 0.59 + b * 0.11) / 255; };
+  // Where the drawing changes sharply (eyes, mouth, edges of hair and coat): more, smaller planes.
+  const r = rng(seed);
+  const pts: Pt[] = [];
+  const near = (x: number, y: number, d: number) => pts.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < d * d);
+  const cand: [number, number, number][] = [];
+  for (let y = 2; y < S - 2; y += 2) {
+    for (let x = 2; x < S - 2; x += 2) {
+      const [, , , al] = at(x, y);
+      const l = lum(x, y);
+      const gx = lum(x + 2, y) - lum(x - 2, y), gy = lum(x, y + 2) - lum(x, y - 2);
+      const edgeA = Math.abs(at(x + 2, y)[3] - at(x - 2, y)[3]) + Math.abs(at(x, y + 2)[3] - at(x, y - 2)[3]);
+      const m = (al > 0 || edgeA > 0) ? Math.hypot(gx, gy) * (l < 0 ? 0 : 1) + edgeA / 255 : 0;
+      if (m > 0.22) cand.push([x, y, m]);
+    }
+  }
+  cand.sort((a, b) => b[2] - a[2]);
+  const minEdge = S / 46;
+  for (const [x, y] of cand) if (!near(x, y, minEdge)) pts.push([x + (r() - 0.5), y + (r() - 0.5)]);
+  // A looser jittered grid fills the flat areas with broad planes.
+  const step = S / 11;
+  for (let y = 0; y <= S; y += step) {
+    for (let x = 0; x <= S; x += step) {
+      const px = Math.max(0, Math.min(S, x + (r() - 0.5) * step * 0.6)), py = Math.max(0, Math.min(S, y + (r() - 0.5) * step * 0.6));
+      if (!near(px, py, minEdge * 1.6)) pts.push([px, py]);
+    }
+  }
+  for (const c of [[0, 0], [S, 0], [0, S], [S, S]] as Pt[]) pts.push(c);
+  const tris = triangulate(pts).filter(([i, j, k]) => {
+    const cx = (pts[i][0] + pts[j][0] + pts[k][0]) / 3, cy = (pts[i][1] + pts[j][1] + pts[k][1]) / 3;
+    return at(cx, cy)[3] > 140;
+  });
+  const height = (p: Pt) => { const l = lum(p[0], p[1]); return (l < 0 ? 0.3 : l) * S * 0.09; };
+  for (const [i, j, k] of tris) {
+    const a = pts[i], b = pts[j], c = pts[k];
+    // The plane's colour: the drawing sampled at its centre and toward each corner.
+    const sum = [0, 0, 0]; let n = 0;
+    const cx = (a[0] + b[0] + c[0]) / 3, cy = (a[1] + b[1] + c[1]) / 3;
+    for (const [x, y] of [[cx, cy], [(cx * 2 + a[0]) / 3, (cy * 2 + a[1]) / 3], [(cx * 2 + b[0]) / 3, (cy * 2 + b[1]) / 3], [(cx * 2 + c[0]) / 3, (cy * 2 + c[1]) / 3]]) {
+      const px = at(x, y);
+      if (px[3] < 100) continue;
+      sum[0] += px[0]; sum[1] += px[1]; sum[2] += px[2]; n++;
+    }
+    if (!n) continue;
+    plane(g, a, b, c, [sum[0] / n, sum[1] / n, sum[2] / n], height(a), height(b), height(c));
+  }
+  creases(g, pts, tris);
+}
 
 const cache = new Map<Speaker, string>();
 const pending = new Map<Speaker, Promise<string>>();
 
-/** The portrait as a PNG data URL, rendered down to a crisp PORTRAIT_GRID-pixel grid. */
+/** The portrait folded into paper, as a PNG data URL (PORTRAIT_SIZE square). */
 export function portraitUrl(who: Speaker): Promise<string> {
   const done = cache.get(who);
   if (done) return Promise.resolve(done);
@@ -233,29 +413,42 @@ export function portraitUrl(who: Speaker): Promise<string> {
     p = new Promise<string>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        const c = document.createElement('canvas');
-        c.width = c.height = PORTRAIT_GRID;
-        const g = c.getContext('2d')!;
-        g.imageSmoothingQuality = 'high';
-        g.drawImage(img, 0, 0, PORTRAIT_GRID, PORTRAIT_GRID);
-        const url = c.toDataURL('image/png');
+        const S = PORTRAIT_SIZE;
+        const fig = document.createElement('canvas');
+        fig.width = fig.height = S;
+        const fg = fig.getContext('2d', { willReadFrequently: true })!;
+        fg.drawImage(img, 0, 0, S, S);
+        const out = document.createElement('canvas');
+        out.width = out.height = S;
+        const g = out.getContext('2d')!;
+        const seed = [...who].reduce((h, ch) => h * 31 + ch.charCodeAt(0), 7) >>> 0;
+        paperBackdrop(g, S, CHARACTERS[who].color);
+        foldFigure(g, fig, seed);
+        grain(g, S, seed);
+        const url = out.toDataURL('image/png');
         cache.set(who, url);
         resolve(url);
       };
       img.onerror = reject;
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(DRAW[who]());
+      // Paper has no ink outlines: the thin dark strokes go, so planes meet edge to edge (brows and features stay).
+      const art = DRAW[who]().replace(/stroke="#0b1a20" stroke-width="(?:1\.2|1\.5|1\.6|2|2\.4|2\.6|3)"/g, 'stroke="none"');
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(art);
     });
     pending.set(who, p);
   }
   return p;
 }
 
-/** Synchronous version for markup: the pixel art if it's ready, else the vector drawing. */
+/** A plain teal paper placeholder while a portrait is being folded (only ever shown for a moment). */
+const PLACEHOLDER = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><rect width="2" height="2" fill="#0c3540"/></svg>');
+
+/** Synchronous version for markup: the folded portrait if it's ready, else a placeholder. */
 export function portraitSrc(who: Speaker): string {
-  return cache.get(who) ?? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(DRAW[who]());
+  if (!cache.has(who)) void portraitUrl(who).catch(() => {});
+  return cache.get(who) ?? PLACEHOLDER;
 }
 
-/** Render every portrait ahead of time so dialogue never waits on one. */
+/** Fold every portrait ahead of time so dialogue never waits on one. */
 export function preloadPortraits(): void {
   for (const who of Object.keys(DRAW) as Speaker[]) void portraitUrl(who).catch(() => {});
 }

@@ -93,7 +93,7 @@ const CSS = `
 .st-face { flex: none; width: 128px; height: 128px; border-radius: 64px 64px 4px 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;
   background: #0c3540; border: 3px solid #d9b25b; box-shadow: 0 0 0 2px var(--c), 0 0 22px -2px var(--c);
   font: 900 44px system-ui, sans-serif; color: #fff; }
-.st-face img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.st-face img { width: 100%; height: 100%; object-fit: cover; }
 .st-speaker { font: 700 20px 'Cinzel', 'Trajan Pro', Georgia, serif; letter-spacing: 0.16em; color: var(--c); text-shadow: 0 0 12px var(--c); }
 .st-role { color: #d9b25b; font-size: 11px; letter-spacing: 0.22em; font-weight: 700; margin: 3px 0 10px; text-transform: uppercase; }
 .st-text { font-size: 19px; line-height: 1.5; min-height: 56px; color: #f3ecdc; }
@@ -464,7 +464,7 @@ export class StoryUI {
 }
 
 /**
- * A character's portrait, drawn in code (src/portraits.ts) as pixel art. The old pictures in
+ * A character's portrait, drawn in code and folded into paper (src/portraits.ts). The old pictures in
  * public/portraits/ are no longer used but kept.
  */
 function portrait(who: Speaker, _name: string): string {
