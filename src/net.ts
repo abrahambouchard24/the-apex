@@ -25,7 +25,11 @@ export interface BoardRow { name: string; races: number; wins: number; podiums: 
 
 /** The lobby as everyone sees it. */
 /** races: 1 = a single race; more = a season of that many. */
-export interface LobbyState { players: LobbyPlayer[]; track: number; laps: number; ai: number; races: number; board?: BoardRow[] }
+export interface LobbyState {
+  players: LobbyPlayer[]; track: number; laps: number; ai: number; races: number; board?: BoardRow[];
+  /** Car-to-car contact; false = cars pass through each other. Missing = on. */
+  contact?: boolean;
+}
 
 /** One entrant in an online race, in grid order of the cars array. */
 export interface NetEntrant { name: string; livery: number; peer: string | null; skin?: string }

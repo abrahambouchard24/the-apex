@@ -11,6 +11,8 @@ export interface LobbyHandlers {
   setTrack(track: number): void;
   setLaps(laps: number): void;
   setAi(ai: number): void;
+  /** Car-to-car contact on or off. */
+  setContact(on: boolean): void;
   /** 1 = single race; more = a season of that many races. */
   setRaces(races: number): void;
   start(): void;
@@ -160,6 +162,9 @@ export class LobbyUI {
             <div class="ol-row" style="margin-top:12px;gap:22px">
               <div><div class="ol-label">LAPS</div>${seg('laps', LAP_CHOICES, lobby.laps)}</div>
               <div><div class="ol-label">AI CARS</div>${seg('ai', Array.from({ length: maxAi + 1 }, (_, i) => i), Math.min(lobby.ai, maxAi))}</div>
+              <div><div class="ol-label">CONTACT</div><div class="hr-seg" data-seg="contact">
+                <button data-v="on" class="${lobby.contact !== false ? 'on' : ''}" ${isHost ? '' : 'disabled'}>ON</button>
+                <button data-v="off" class="${lobby.contact === false ? 'on' : ''}" ${isHost ? '' : 'disabled'}>OFF</button></div></div>
             </div>
           </div>
         </div>
@@ -180,6 +185,7 @@ export class LobbyUI {
       if (v === null || v === undefined) return;
       if (seg.dataset.seg === 'laps') this.on.setLaps(Number(v));
       if (seg.dataset.seg === 'ai') this.on.setAi(Number(v));
+      if (seg.dataset.seg === 'contact') this.on.setContact(v === 'on');
       if (seg.dataset.seg === 'races') this.on.setRaces(Number(v));
       if (seg.dataset.seg === 'mode') this.on.setRaces(v === 'season' ? 4 : 1);
     }));

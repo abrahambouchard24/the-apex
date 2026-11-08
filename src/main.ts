@@ -738,6 +738,9 @@ function placeGhost(drawTime: number): boolean {
   return true;
 }
 
+/** Online with CONTACT set to OFF in the lobby: cars pass through each other. */
+function noContact(): boolean { return online?.lobby?.contact === false; }
+
 function showToast(text: string, color: string): void { toast = { text, color, t: 1.6 }; }
 
 function ordinal(n: number): string { return ['1ST', '2ND', '3RD'][n - 1] ?? `${n}TH`; }
@@ -859,7 +862,7 @@ function update(dt: number): void {
   // The most battery charged by drifting in any one lap (the per-lap harvest count resets each lap).
   driftCharge = Math.max(driftCharge, player.craft.harvested);
 
-  for (let i = 0; i < cars.length; i++) {
+  for (let i = 0; i < cars.length && !noContact(); i++) {
     for (let j = i + 1; j < cars.length; j++) {
       const hit = collideCrafts(cars[i].craft, cars[j].craft);
       if (hit > 80 && (cars[i] === player || cars[j] === player)) {
@@ -1254,6 +1257,7 @@ const lobbyUI = new LobbyUI(LIVERIES, trackChoices, {
   setTrack(t) { if (online?.role === 'host') { online.lobby.track = t; broadcastLobby(); } },
   setLaps(n) { if (online?.role === 'host') { online.lobby.laps = n; broadcastLobby(); } },
   setAi(n) { if (online?.role === 'host') { online.lobby.ai = n; broadcastLobby(); } },
+  setContact(on) { if (online?.role === 'host') { online.lobby.contact = on; broadcastLobby(); } },
   setRaces(n) { if (online?.role === 'host') { online.lobby.races = n; broadcastLobby(); } },
   start: onlineStart,
   leave: () => leaveOnline(),
@@ -1697,7 +1701,7 @@ function predictStep(c: Controls, racing: boolean): void {
   pc.step(STEP, racing ? c.aim : pc.heading, racing && !c.brake, racing && c.brake);
   if (pred.race.update(track, pc, 0, racing)) pc.harvested = 0;
   collideWalls(track, pc, pred.race, STEP);
-  for (const g of ghosts) bumpOff(pc, g);
+  if (!noContact()) for (const g of ghosts) bumpOff(pc, g);
   pc.cooling = inCoolingLane(track, pc, pred.race.index);
 }
 
