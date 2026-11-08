@@ -1,5 +1,6 @@
 // Start screen (car, track, laps and season setup), pause menu and race results: plain DOM
 // overlays on top of the canvas.
+import { installDeco } from './deco';
 
 /** An unlocked skin, offered as a card beside the cars. */
 export interface SkinChoice { id: string; name: string; card: string }
@@ -260,6 +261,77 @@ const CSS = `
   .hr-keys { display: none; }
   .hr-front-actions .hr-btn { min-width: 0; padding: 8px 14px; font-size: 12px; }
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * Vitalic futurism: the menus' look. Clean geometric type with wide tracking (Outfit), glassy
+ * sea-teal surfaces, gold only as fine hairlines and the primary action, teal light for what's
+ * selected. Same layouts and scenes as above; these rules restyle them.
+ * ------------------------------------------------------------------------------------------- */
+.hr-overlay { font-family: 'Outfit', system-ui, sans-serif; color: #ece5d4;
+  background: radial-gradient(ellipse 90% 70% at 50% 30%, rgba(16,58,64,0.55), rgba(4,10,16,0.94)); }
+.hr-title { font: 300 clamp(38px, 7vw, 72px) 'Outfit', system-ui, sans-serif; font-style: normal; letter-spacing: 0.34em; padding-left: 0.34em;
+  background: linear-gradient(180deg, #fffaf0 10%, #f1d79a 55%, #c9a24a); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 28px rgba(63,224,208,0.22)); }
+.hr-title + .hr-sub { position: relative; display: inline-block; padding: 0 64px; }
+.hr-title + .hr-sub::before, .hr-title + .hr-sub::after { content: ''; position: absolute; top: 50%; width: 48px; height: 1px;
+  background: linear-gradient(90deg, transparent, #c9a24a); }
+.hr-title + .hr-sub::before { left: 0; } .hr-title + .hr-sub::after { right: 0; transform: scaleX(-1); }
+.hr-sub { color: #93aba8; font-weight: 500; letter-spacing: 0.34em; font-size: 11px; }
+.hr-keys { color: #6f8a88; font-size: 12px; letter-spacing: 0.04em; }
+.hr-h2 { font: 200 40px 'Outfit', system-ui, sans-serif; letter-spacing: 0.42em; padding-left: 0.42em; color: #fffaf0; }
+
+/* Buttons: a gold pill for the main action, glass pills for the rest. */
+.hr-btn { border-radius: 999px; font: 600 14px 'Outfit', system-ui, sans-serif; letter-spacing: 0.26em; padding: 14px 30px; color: #0b1418;
+  background: linear-gradient(180deg, #f8e2a0, #d4ae58 60%, #b38a35); box-shadow: 0 0 0 1px rgba(255,244,214,0.5) inset, 0 10px 30px -14px rgba(232,194,90,0.8);
+  transition: transform 140ms, box-shadow 160ms, filter 160ms; }
+.hr-btn:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255,244,214,0.7) inset, 0 12px 34px -12px rgba(232,194,90,0.9); }
+.hr-btn.secondary { color: #ece5d4; background: rgba(10,32,38,0.55); backdrop-filter: blur(6px);
+  box-shadow: 0 0 0 1px rgba(201,162,74,0.45) inset; }
+.hr-btn.secondary:hover { color: #fffaf0; box-shadow: 0 0 0 1px rgba(63,224,208,0.8) inset, 0 0 22px -6px rgba(63,224,208,0.7); }
+.hr-front-actions .hr-btn { min-width: 0; padding: 11px 22px; font-size: 12px; }
+.hr-front-actions .hr-btn.fresh { color: #071214; background: linear-gradient(180deg, #8ff5ea, #3fe0d0); box-shadow: 0 0 26px -6px #3fe0d0; }
+.hr-front-actions .hr-btn.daily { color: #f1d79a; box-shadow: 0 0 0 1px rgba(232,194,90,0.85) inset; }
+.hr-back { border-radius: 999px; }
+
+/* Front windows: glass frames with a hairline that warms to gold on hover. */
+.hr-window { border: 1px solid rgba(201,162,74,0.32); border-radius: 22px; background: #071016;
+  box-shadow: 0 0 0 1px rgba(4,10,16,0.9) inset, 0 20px 50px -30px rgba(0,0,0,0.9); }
+.hr-window:hover, .hr-window:focus-visible { border-color: rgba(232,194,90,0.9); box-shadow: 0 0 0 1px rgba(232,194,90,0.25) inset, 0 22px 60px -18px rgba(63,224,208,0.45); }
+.hr-window .label b { font: 300 clamp(22px, 2.6vw, 32px) 'Outfit', system-ui, sans-serif; letter-spacing: 0.24em; color: #fffaf0; }
+.hr-window .label small { color: #c9d6d2; font-weight: 400; font-size: 12px; letter-spacing: 0.05em; }
+.hr-window::after { background: linear-gradient(transparent 42%, rgba(3,10,14,0.94)); }
+/* Scene accents moved to the palette: gold and teal light instead of pink and rainbow. */
+.sc-story .stand::before { background: linear-gradient(90deg, #e8c25a, #3fe0d0, #fffaf0, #3fe0d0, #e8c25a) 0 0 / 50% 100%; box-shadow: 0 0 12px rgba(232,194,90,0.6); }
+.sc-story .vs { font: 200 30px 'Outfit', system-ui; letter-spacing: 0.2em; color: #f1d79a; text-shadow: 0 0 18px rgba(232,194,90,0.8); }
+.sc-quick .road::after { background: repeating-linear-gradient(90deg, #e8c25a 0 38px, #0b1418 38px 76px); box-shadow: 0 0 12px rgba(232,194,90,0.5); }
+.sc-quick .rail { background: #3fe0d0; box-shadow: 0 0 10px 2px rgba(63,224,208,0.7); }
+.sc-season { background: radial-gradient(ellipse at 50% 35%, #123c44, #050d12 70%); }
+
+/* Setup screen: glass track cards, pill segments with a teal "on". */
+.hr-track { background: rgba(10,30,36,0.62); border: 1px solid rgba(201,162,74,0.22); border-radius: 16px; backdrop-filter: blur(4px); }
+.hr-track:hover { border-color: rgba(201,162,74,0.6); }
+.hr-track.selected { border-color: #e8c25a; box-shadow: 0 0 0 1px rgba(232,194,90,0.35) inset, 0 0 26px -6px rgba(63,224,208,0.6); }
+.hr-track b { font-weight: 600; letter-spacing: 0.16em; font-size: 12px; }
+.hr-track small { color: #93aba8; }
+.hr-track .hr-rec { color: #e8c25a; font-weight: 600; letter-spacing: 0.12em; }
+.hr-option label { color: #93aba8; font-weight: 500; letter-spacing: 0.3em; font-size: 11px; }
+.hr-seg { background: rgba(8,22,28,0.7); border: 1px solid rgba(201,162,74,0.35); border-radius: 999px; padding: 3px; }
+.hr-seg button { border-radius: 999px; color: #93aba8; font: 600 13px 'Outfit', system-ui, sans-serif; letter-spacing: 0.14em; }
+.hr-seg button:hover { color: #fffaf0; }
+.hr-seg button.on { background: linear-gradient(180deg, #8ff5ea, #3fe0d0); color: #071214; box-shadow: 0 0 16px -4px #3fe0d0; }
+.hr-dist { font: 600 14px 'Outfit', system-ui, sans-serif; letter-spacing: 0.22em; }
+
+/* Results: a clean ledger with hairline rows, the player's row lit teal, points in gold. */
+.hr-results th { color: #93aba8; font-weight: 500; letter-spacing: 0.26em; font-size: 10px; }
+.hr-results td { font-weight: 500; font-size: 15px; border-top: 1px solid rgba(201,162,74,0.16); }
+.hr-results td.pos { font-weight: 300; font-size: 22px; color: #f1d79a; }
+.hr-results tr.me td { background: rgba(63,224,208,0.1); }
+.hr-results tr.me td:first-child { box-shadow: 2px 0 0 #3fe0d0 inset; }
+.hr-results .dim { color: #93aba8; }
+.hr-results .pts { color: #e8c25a; }
+.hr-results-track { color: #93aba8; font-weight: 500; letter-spacing: 0.28em; font-size: 11px; }
+.hr-standings-head { font-weight: 300; letter-spacing: 0.3em; color: #fffaf0; }
+.hr-note { font-weight: 300; letter-spacing: 0.24em; color: #f1d79a; }
 `;
 
 const TROPHY = `<svg class="cup" viewBox="0 0 120 130"><defs><linearGradient id="hrg" x1="0" x2="1"><stop offset="0" stop-color="#b8860b"/><stop offset=".45" stop-color="#ffe7a0"/><stop offset="1" stop-color="#c8961e"/></linearGradient></defs>
@@ -289,6 +361,7 @@ export class Menus {
   private resultsHtml = '';
 
   constructor(cars: CarChoice[], tracks: TrackChoice[], private on: MenuHandlers) {
+    installDeco();
     const style = document.createElement('style');
     style.textContent = CSS;
     document.head.append(style);
