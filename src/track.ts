@@ -311,8 +311,8 @@ export const TRACKS: TrackDef[] = [
     name: 'FAE FOREST',
     blurb: 'Enchanted forest sprint: flowing sweepers and glade jumps',
     sprint: true, samples: 26, jumps: 20,
-    forks: [['jump', 'charge'], ['boost', 'cool'], ['jump', 'boost'], ['charge', 'boost']],
-    curveForks: [['plain', 'charge'], ['plain', 'boost']],
+    forks: [['jump', 'charge'], ['plain', 'cool'], ['jump', 'plain'], ['charge', 'cool']],
+    curveForks: [['plain', 'charge'], ['plain', 'cool']],
     theme: { wall: '#7dffb0', wallFace: '#e6fff0', lights: '190, 255, 210', kerb: '#c88bff', surface: '#1e2a26' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -340,8 +340,8 @@ export const TRACKS: TrackDef[] = [
     name: 'NOVA CAMELOT',
     blurb: 'Castle-city sprint: long straights and tight castle ramps',
     sprint: true, samples: 26, jumps: 20,
-    forks: [['jump', 'boost'], ['boost', 'charge'], ['jump', 'cool']],
-    curveForks: [['plain', 'boost'], ['plain', 'charge']],
+    forks: [['jump', 'plain'], ['plain', 'charge'], ['jump', 'cool']],
+    curveForks: [['plain', 'cool'], ['plain', 'charge']],
     theme: { wall: '#ffd23f', wallFace: '#fff6d8', lights: '255, 236, 170', kerb: '#3d7bff', surface: '#262a36' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -370,8 +370,8 @@ export const TRACKS: TrackDef[] = [
     name: 'ZOROPERSIA',
     blurb: 'Persian fire-temple sprint: long straights and big jumps',
     sprint: true, samples: 26, jumps: 20,
-    forks: [['fire', 'cool'], ['jump', 'fire'], ['charge', 'boost']],
-    curveForks: [['plain', 'fire'], ['plain', 'cool']],
+    forks: [['plain', 'cool'], ['jump', 'charge'], ['charge', 'cool']],
+    curveForks: [['plain', 'charge'], ['plain', 'cool']],
     theme: { wall: '#ff8a1f', wallFace: '#ffe8cc', lights: '255, 200, 120', kerb: '#4fe3ff', surface: '#2e2622' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -402,8 +402,8 @@ export const TRACKS: TrackDef[] = [
     name: 'BIFROST',
     blurb: 'Rainbow bridge between floating islands: jump after jump',
     sprint: true, samples: 26, jumps: 20,
-    forks: [['jump', 'boost'], ['jump', 'charge'], ['boost', 'charge'], ['jump', 'cool']],
-    curveForks: [['plain', 'boost']],
+    forks: [['jump', 'plain'], ['jump', 'charge'], ['cool', 'charge'], ['jump', 'cool']],
+    curveForks: [['plain', 'charge']],
     theme: { wall: '#b98cff', wallFace: '#f3eaff', lights: '230, 210, 255', kerb: '#4fe3ff', surface: '#232036' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -435,7 +435,7 @@ export const TRACKS: TrackDef[] = [
     name: 'EL DORADO',
     blurb: 'Golden jungle city: tight switchbacks and waterfall jumps',
     sprint: true, samples: 26, jumps: 20,
-    forks: [['cool', 'charge'], ['jump', 'boost'], ['fire', 'cool'], ['jump', 'charge']],
+    forks: [['cool', 'charge'], ['jump', 'plain'], ['plain', 'cool'], ['jump', 'charge']],
     curveForks: [['plain', 'cool'], ['plain', 'charge']],
     theme: { wall: '#ffd23f', wallFace: '#fff2c8', lights: '255, 230, 150', kerb: '#2fd16b', surface: '#24261c' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
