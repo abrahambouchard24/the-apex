@@ -1,106 +1,149 @@
-// Music: two loops synthesized live with Web Audio, scheduled a little ahead on a 16th-note grid.
-//   menu: chill house, 118 BPM in A minor (soft kick, offbeat hats, warm pads, Rhodes-ish stabs)
-//   race: deep / nu-disco house, 122 BPM in F# minor (pumping pads, octave bass, filtered arp)
-//   sprint: driving progressive house, 126 BPM in E minor (rolling bass, open hats, arp and stabs)
-// Everything goes through a shared reverb and delay, and a low-pass that muffles it on pause.
+// Music: an epic, Celtic-flavoured orchestra synthesized live with Web Audio (original themes),
+// scheduled a little ahead on a step grid.
+//   menu:   "The Apex Theme", 80 BPM 4/4 in D (Mixolydian): tin whistle over strings and a drone,
+//           horns join, then the choir
+//   race:   a galloping 12/8 jig in E minor: fiddle figures under heroic horn calls, taiko and bodhrán
+//   sprint: 132 BPM 4/4 in A minor: driving spiccato strings, a brass anthem, taiko and snare
+// Each song is an 8-bar cycle arranged over 32 bars: opening, build, full (choir and doubled
+// melody, a cymbal crash), and a breath that ends in a snare roll and cymbal swell. Everything goes
+// through a large hall reverb, and a low-pass muffles it on pause.
 
 export type SongName = 'menu' | 'race' | 'sprint';
 
+/** A melody note: bar in the cycle, step in the bar, MIDI pitch, length in steps. */
+type Note = [bar: number, step: number, midi: number, len: number];
+
 interface Song {
-  bpm: number;
-  /** One chord per bar, cycled: pad voicing (MIDI) and bass root (MIDI). */
-  chords: { pad: number[]; bass: number }[];
-  kick: number[];          // 16th steps in the bar
-  clap: number[];
-  openHat: number[];
-  closedHat: number[];
-  shaker: boolean;
-  bass: [step: number, octave: number, length: number][];
-  stabs: [step: number, length: number][];
-  arp: boolean;
-  padCutoff: number;       // Hz, the pad's low-pass
-  duck: number;            // how far pads/bass dip under each kick (0..1)
-  kickLevel: number;
+  bpm: number;              // beats per minute (quarter notes, or dotted quarters in 12/8)
+  steps: number;            // steps per bar: 16 (16ths in 4/4) or 12 (eighths in 12/8)
+  stepsPerBeat: number;     // 4 or 3
+  /** One chord per bar of the 8-bar cycle: voicing (MIDI) and bass root (MIDI). */
+  chords: { notes: number[]; bass: number }[];
+  melody: Note[];
+  /** Repeating figure under the melody: [step, chord-tone index (beyond the chord climbs an octave)]. */
+  ostinato: [number, number][];
+  ostinatoOctave: number;   // semitones added to the ostinato
+  ostinatoFrom: number;     // the section the ostinato starts in (0..3)
+  drone: boolean;
+  /** Drum steps in the bar. */
+  taiko: number[];
+  taikoSmall: number[];
+  frame: number[];
+  snare: number[];
+  /** Which sections the whistle and the horns carry the melody in, and the horns' octave. */
+  whistleIn: number[];
+  hornsIn: number[];
+  hornOctave: number;
+  level: number;            // overall level of this song
 }
 
-export const SONGS: Record<SongName, Song> = {
+const SONGS: Record<SongName, Song> = {
   menu: {
-    bpm: 118,
+    bpm: 80, steps: 16, stepsPerBeat: 4,
     chords: [
-      { pad: [57, 60, 64, 67, 71], bass: 45 },  // Am9
-      { pad: [53, 57, 60, 64, 67], bass: 41 },  // Fmaj9
-      { pad: [55, 59, 62, 64, 67], bass: 48 },  // C6/9
-      { pad: [55, 59, 62, 64, 69], bass: 43 },  // G6/9
+      { notes: [50, 57, 62, 66], bass: 38 },   // D
+      { notes: [48, 55, 60, 64], bass: 36 },   // C
+      { notes: [47, 55, 59, 62], bass: 43 },   // G/B
+      { notes: [50, 57, 62, 66], bass: 38 },   // D
+      { notes: [47, 54, 59, 62], bass: 35 },   // Bm
+      { notes: [47, 55, 59, 62], bass: 43 },   // G
+      { notes: [45, 52, 57, 61], bass: 45 },   // A
+      { notes: [45, 50, 57, 62], bass: 45 },   // Asus4
     ],
-    kick: [0, 4, 8, 12],
-    clap: [4, 12],
-    openHat: [2, 6, 10, 14],
-    closedHat: [],
-    shaker: false,
-    bass: [[2, 0, 1.5], [6, 0, 1.5], [10, 0, 1.5], [13, 1, 0.8], [14, 0, 1.5]],
-    stabs: [[0, 2], [3, 1], [10, 1.5]],
-    arp: false,
-    padCutoff: 1400,
-    duck: 0.55,
-    kickLevel: 0.55,
+    melody: [
+      [0, 0, 74, 6], [0, 6, 76, 2], [0, 8, 78, 4], [0, 12, 81, 4],
+      [1, 0, 79, 8], [1, 8, 76, 4], [1, 12, 72, 4],
+      [2, 0, 74, 6], [2, 6, 71, 2], [2, 8, 74, 4], [2, 12, 79, 4],
+      [3, 0, 78, 12], [3, 12, 76, 2], [3, 14, 74, 2],
+      [4, 0, 74, 4], [4, 4, 78, 4], [4, 8, 83, 8],
+      [5, 0, 81, 4], [5, 4, 79, 4], [5, 8, 78, 4], [5, 12, 76, 4],
+      [6, 0, 78, 6], [6, 6, 76, 2], [6, 8, 73, 8],
+      [7, 0, 76, 12],
+    ],
+    ostinato: [[0, 0], [2, 1], [4, 2], [6, 3], [8, 4], [10, 3], [12, 2], [14, 1]],
+    ostinatoOctave: 12, ostinatoFrom: 1,
+    drone: true,
+    taiko: [0], taikoSmall: [10], frame: [8], snare: [],
+    whistleIn: [0, 2, 3], hornsIn: [1, 2], hornOctave: -12,
+    level: 0.95,
   },
   race: {
-    bpm: 122,
+    bpm: 76, steps: 12, stepsPerBeat: 3,
     chords: [
-      { pad: [57, 61, 64, 68], bass: 42 },      // F#m9
-      { pad: [54, 57, 61, 64], bass: 38 },      // Dmaj9
-      { pad: [57, 61, 62, 66], bass: 35 },      // Bm9
-      { pad: [56, 59, 61, 64], bass: 37 },      // C#m7
+      { notes: [52, 59, 64, 67], bass: 40 },   // Em
+      { notes: [52, 59, 64, 67], bass: 40 },   // Em
+      { notes: [48, 55, 60, 64], bass: 36 },   // C
+      { notes: [50, 57, 62, 66], bass: 38 },   // D
+      { notes: [52, 59, 64, 67], bass: 40 },   // Em
+      { notes: [50, 55, 59, 62], bass: 43 },   // G
+      { notes: [50, 57, 62, 66], bass: 38 },   // D
+      { notes: [51, 54, 59, 63], bass: 35 },   // B
     ],
-    kick: [0, 4, 8, 12],
-    clap: [4, 12],
-    openHat: [],
-    closedHat: [2, 6, 10, 14],
-    shaker: true,
-    bass: [[0, 0, 1], [2, 1, 1], [4, 0, 1], [6, 1, 1], [8, 0, 1], [10, 1, 1], [12, 0, 1], [14, 1, 1]],
-    stabs: [],
-    arp: true,
-    padCutoff: 900,
-    duck: 0.75,
-    kickLevel: 0.8,
+    melody: [
+      [0, 0, 64, 6], [0, 6, 67, 6],
+      [1, 0, 71, 9], [1, 9, 69, 3],
+      [2, 0, 67, 6], [2, 6, 64, 3], [2, 9, 67, 3],
+      [3, 0, 69, 12],
+      [4, 0, 71, 6], [4, 6, 74, 6],
+      [5, 0, 76, 6], [5, 6, 74, 3], [5, 9, 71, 3],
+      [6, 0, 74, 6], [6, 6, 69, 6],
+      [7, 0, 71, 6], [7, 6, 75, 6],
+    ],
+    // A jig figure: three eighths per beat, rising and turning.
+    ostinato: [[0, 0], [1, 2], [2, 1], [3, 3], [4, 2], [5, 1], [6, 0], [7, 2], [8, 1], [9, 3], [10, 2], [11, 4]],
+    ostinatoOctave: 12, ostinatoFrom: 0,
+    drone: true,
+    taiko: [0, 6], taikoSmall: [9, 10], frame: [0, 3, 6, 9], snare: [],
+    whistleIn: [2, 3], hornsIn: [0, 1, 2], hornOctave: 0,
+    level: 1,
   },
   sprint: {
-    bpm: 126,
+    bpm: 132, steps: 16, stepsPerBeat: 4,
     chords: [
-      { pad: [55, 59, 62, 66], bass: 40 },      // Em9
-      { pad: [55, 60, 64, 67], bass: 36 },      // Cmaj7
-      { pad: [57, 62, 66, 69], bass: 38 },      // D6
-      { pad: [54, 59, 62, 66], bass: 35 },      // Bm7
+      { notes: [45, 52, 57, 60], bass: 45 },   // Am
+      { notes: [41, 53, 57, 60], bass: 41 },   // F
+      { notes: [48, 55, 60, 64], bass: 36 },   // C
+      { notes: [43, 55, 59, 62], bass: 43 },   // G
+      { notes: [50, 53, 57, 62], bass: 38 },   // Dm
+      { notes: [41, 53, 57, 60], bass: 41 },   // F
+      { notes: [43, 55, 59, 62], bass: 43 },   // G
+      { notes: [40, 52, 56, 59], bass: 40 },   // E
     ],
-    kick: [0, 4, 8, 12],
-    clap: [4, 12],
-    openHat: [2, 6, 10, 14],
-    closedHat: [1, 3, 5, 7, 9, 11, 13, 15],
-    shaker: false,
-    bass: [[0, 0, 0.5], [1, 0, 0.5], [3, 1, 0.5], [4, 0, 0.5], [6, 0, 0.5], [7, 1, 0.5], [8, 0, 0.5], [10, 0, 0.5], [11, 1, 0.5], [12, 0, 0.5], [14, 1, 0.5]],
-    stabs: [[3, 0.5], [11, 0.5]],
-    arp: true,
-    padCutoff: 1200,
-    duck: 0.7,
-    kickLevel: 0.85,
+    melody: [
+      [0, 0, 69, 4], [0, 4, 72, 4], [0, 8, 76, 8],
+      [1, 0, 77, 6], [1, 6, 76, 2], [1, 8, 72, 8],
+      [2, 0, 74, 4], [2, 4, 76, 4], [2, 8, 79, 8],
+      [3, 0, 79, 6], [3, 6, 77, 2], [3, 8, 74, 8],
+      [4, 0, 74, 4], [4, 4, 77, 4], [4, 8, 81, 8],
+      [5, 0, 81, 4], [5, 4, 79, 4], [5, 8, 77, 4], [5, 12, 76, 4],
+      [6, 0, 74, 8], [6, 8, 79, 8],
+      [7, 0, 80, 8], [7, 8, 76, 8],
+    ],
+    // Spiccato 16ths: root, fifth, octave, fifth.
+    ostinato: Array.from({ length: 16 }, (_, k) => [k, [0, 1, 2, 1][k % 4]] as [number, number]),
+    ostinatoOctave: 0, ostinatoFrom: 0,
+    drone: false,
+    taiko: [0, 8], taikoSmall: [6, 14], frame: [], snare: [4, 12],
+    whistleIn: [2, 3], hornsIn: [0, 1, 2], hornOctave: -12,
+    level: 0.9,
   },
 };
 
 const LOOKAHEAD = 0.15;    // s of audio scheduled ahead of the clock
 const TICK_MS = 25;
-const MUSIC_LEVEL = 0.32;  // music under the sound effects
+const MUSIC_LEVEL = 0.34;  // music under the sound effects
+const CYCLE = 8;           // bars in a song's cycle
 
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 export class Music {
   private out: GainNode;         // fades between songs
   private muffle: BiquadFilterNode;
-  private padBus: GainNode;      // ducked by the kick (sidechain pump)
-  private reverb: ConvolverNode;
-  private delay: DelayNode;
+  private bus: GainNode;         // the orchestra, before the hall
+  private hall: ConvolverNode;
   private noise: AudioBuffer;
   private song: SongName | null = null;
-  private step = 0;              // 16th steps since the song started
+  private step = 0;              // steps since the song started
   private nextTime = 0;
   private timer: number | null = null;
 
@@ -113,33 +156,26 @@ export class Music {
     this.muffle.frequency.value = 20000;
     this.out.connect(this.muffle).connect(destination);
 
-    this.padBus = ctx.createGain();
-    this.padBus.connect(this.out);
+    this.bus = ctx.createGain();
+    this.bus.connect(this.out);
 
-    // Reverb: a convolver fed a 2.6 s decaying stereo noise burst.
-    this.reverb = ctx.createConvolver();
-    const len = Math.floor(ctx.sampleRate * 2.6);
+    // A large hall: a 3.6 s decaying stereo noise burst, darker as it fades.
+    this.hall = ctx.createConvolver();
+    const len = Math.floor(ctx.sampleRate * 3.6);
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       const d = ir.getChannelData(ch);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        lp += ((Math.random() * 2 - 1) - lp) * (0.6 - 0.45 * (i / len));
+        d[i] = lp * Math.pow(1 - i / len, 2.4);
+      }
     }
-    this.reverb.buffer = ir;
-    const revGain = ctx.createGain();
-    revGain.gain.value = 0.35;
-    this.reverb.connect(revGain).connect(this.out);
-
-    // Delay: dotted-eighth echoes with feedback, darkened a little each repeat.
-    this.delay = ctx.createDelay(2);
-    const fb = ctx.createGain();
-    fb.gain.value = 0.38;
-    const dark = ctx.createBiquadFilter();
-    dark.type = 'lowpass';
-    dark.frequency.value = 2500;
-    this.delay.connect(dark).connect(fb).connect(this.delay);
-    const delayOut = ctx.createGain();
-    delayOut.gain.value = 0.3;
-    dark.connect(delayOut).connect(this.out);
+    this.hall.buffer = ir;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.55;
+    this.bus.connect(this.hall);
+    this.hall.connect(wet).connect(this.out);
   }
 
   /** Switch songs (or stop with null), crossfading through a short dip. */
@@ -147,22 +183,20 @@ export class Music {
     if (name === this.song) return;
     const t = this.ctx.currentTime;
     this.out.gain.cancelScheduledValues(t);
-    this.out.gain.setTargetAtTime(0, t, 0.25);
+    this.out.gain.setTargetAtTime(0, t, 0.3);
     const start = () => {
       this.song = name;
       if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
       if (!name) return;
-      const s = SONGS[name];
-      this.delay.delayTime.value = (60 / s.bpm) * 0.75;  // dotted eighth
       this.step = 0;
       this.nextTime = this.ctx.currentTime + 0.05;
       const now = this.ctx.currentTime;
       this.out.gain.cancelScheduledValues(now);
       this.out.gain.setValueAtTime(0, now);
-      this.out.gain.linearRampToValueAtTime(MUSIC_LEVEL, now + 2);
+      this.out.gain.linearRampToValueAtTime(MUSIC_LEVEL * SONGS[name].level, now + 2.5);
       this.timer = window.setInterval(() => this.schedule(), TICK_MS);
     };
-    if (this.song) window.setTimeout(start, 700); else start();
+    if (this.song) window.setTimeout(start, 800); else start();
   }
 
   /** Pause menu: muffle the music as if heard through a door. */
@@ -173,7 +207,7 @@ export class Music {
   private schedule(): void {
     if (!this.song) return;
     const s = SONGS[this.song];
-    const stepLen = 60 / s.bpm / 4;
+    const stepLen = 60 / s.bpm / s.stepsPerBeat;
     // After a long stall (a hidden tab), skip ahead rather than playing a burst of old notes.
     if (this.nextTime < this.ctx.currentTime - 0.2) this.nextTime = this.ctx.currentTime + 0.05;
     while (this.nextTime < this.ctx.currentTime + LOOKAHEAD) {
@@ -184,216 +218,325 @@ export class Music {
   }
 
   private playStep(s: Song, step: number, t: number, stepLen: number): void {
-    const inBar = step % 16;
-    const bar = Math.floor(step / 16);
-    const chord = s.chords[bar % s.chords.length];
-    const phrase = bar % 16;                         // 16-bar arrangement cycle
-    const intro = bar < 2;                           // first two bars: no drums yet
-    const breakdown = phrase % 8 === 7 && inBar >= 8; // last half-bar of every 8: drop the kick
-    const swing = inBar % 2 === 1 ? stepLen * 0.08 : 0;
+    const inBar = step % s.steps;
+    const barAll = Math.floor(step / s.steps);
+    const bar = barAll % CYCLE;
+    const section = Math.floor(barAll / CYCLE) % 4;   // 0 opening, 1 build, 2 full, 3 breath
+    const chord = s.chords[bar];
+    const barLen = stepLen * s.steps;
+    const first = barAll === 0;
 
-    if (inBar === 0) this.pad(t, chord.pad, stepLen * 16, s.padCutoff);
-    if (!intro && !breakdown && s.kick.includes(inBar)) this.kick(t, s);
-    if (!intro && s.clap.includes(inBar)) this.clap(t);
-    if (!intro && s.openHat.includes(inBar)) this.hat(t + swing, true);
-    if (!intro && s.closedHat.includes(inBar)) this.hat(t + swing, false);
-    if (!intro && s.shaker) this.shaker(t + swing, inBar % 4 === 2 ? 1 : 0.55);
-    for (const [st, oct, len] of s.bass) {
-      if (st === inBar && !(intro && s.arp)) this.bass(t, chord.bass + oct * 12, len * stepLen);
+    // Strings hold the harmony; the drone sits under it.
+    if (inBar === 0) {
+      this.strings(t, chord.notes, barLen, section === 3 ? 0.035 : 0.05);
+      this.strings(t, [chord.bass, chord.bass + 12], barLen, 0.04);
+      if (s.drone) this.drone(t, s.chords[0].bass, barLen, section === 2 ? 0.03 : 0.022);
+      if (section === 2) this.choir(t, chord.notes.map((n) => n + 12), barLen);
+      if (section === 2 && bar === 0) this.cymbal(t, 2.8, false);
     }
-    for (const [st, len] of s.stabs) if (st === inBar) this.keys(t + swing, chord.pad, len * stepLen);
-    if (s.arp && phrase >= 4) {
-      // 16th arpeggio through the chord, two octaves up; the filter breathes over 8 bars.
-      const order = [0, 1, 2, 3, 2, 1, 3, 2];
-      const note = chord.pad[order[inBar % 8] % chord.pad.length] + 12 + (inBar >= 8 ? 12 : 0) * (phrase % 2);
-      const sweep = 0.5 - 0.5 * Math.cos(((step % 128) / 128) * Math.PI * 2);
-      this.arp(t + swing, note, 500 + sweep * 2600);
+    // The ostinato figure.
+    if (section >= s.ostinatoFrom && section !== 3 || (section === 3 && s !== SONGS.menu && bar < 4)) {
+      for (const [st, idx] of s.ostinato) {
+        if (st !== inBar) continue;
+        const n = chord.notes[idx % chord.notes.length] + Math.floor(idx / chord.notes.length) * 12 + s.ostinatoOctave;
+        this.bowed(t, n, stepLen * (s.steps === 12 ? 1 : 0.9), s.steps === 12 ? 0.05 : 0.035);
+      }
     }
-    if (phrase % 8 === 7 && inBar === 0) this.riser(t, stepLen * 16);
+    // The melody: whistle and/or horns, depending on the section.
+    for (const [b, st, midi, len] of s.melody) {
+      if (b !== bar || st !== inBar) continue;
+      const dur = len * stepLen;
+      if (s.whistleIn.includes(section)) {
+        // A Celtic flick: a quick upper grace note before some of the longer notes.
+        const grace = len >= 6 && (b + st) % 3 === 0;
+        if (grace) this.whistle(t, midi + 2, stepLen * 0.35, 0.8);
+        this.whistle(grace ? t + stepLen * 0.35 : t, midi, dur - (grace ? stepLen * 0.35 : 0), 1);
+      }
+      if (s.hornsIn.includes(section)) this.horn(t, midi + s.hornOctave, dur, section === 2 ? 1 : 0.8);
+    }
+    // Drums: lighter while the song opens and in the breath, full in the build and the peak.
+    const drums = first ? 0 : section === 0 ? (s === SONGS.menu ? 0 : 0.7) : section === 3 ? 0.55 : 1;
+    if (drums > 0) {
+      if (s.taiko.includes(inBar)) this.taiko(t, 1 * drums);
+      if (s.taikoSmall.includes(inBar)) this.taiko(t, 0.55 * drums, true);
+      if (s.frame.includes(inBar)) this.frame(t, (inBar % (s.stepsPerBeat * 2) === 0 ? 1 : 0.6) * drums);
+      if (s.snare.includes(inBar) && section !== 3) this.snare(t, 0.8 * drums);
+    }
+    // The end of the breath: a snare roll and a cymbal swell back into the top.
+    if (section === 3 && bar === CYCLE - 1 && inBar === 0) {
+      this.roll(t, barLen);
+      this.cymbal(t, barLen, true);
+    }
   }
 
   // --- instruments ----------------------------------------------------------------------------
 
-  private kick(t: number, s: Song): void {
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    osc.frequency.setValueAtTime(140, t);
-    osc.frequency.exponentialRampToValueAtTime(42, t + 0.13);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(s.kickLevel, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
-    osc.connect(g).connect(this.out);
-    osc.start(t);
-    osc.stop(t + 0.4);
-    // Sidechain pump: pads and bass duck under the kick and swell back.
-    this.padBus.gain.setValueAtTime(1 - s.duck, t);
-    this.padBus.gain.linearRampToValueAtTime(1, t + 0.24);
+  /** Envelope helper: attack, hold, release on a fresh gain node. */
+  private env(t: number, len: number, peak: number, attack: number, release: number): GainNode {
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + attack);
+    g.gain.setValueAtTime(peak, t + Math.max(attack, len));
+    g.gain.linearRampToValueAtTime(0.0001, t + Math.max(attack, len) + release);
+    return g;
   }
 
-  private clap(t: number): void {
-    const ctx = this.ctx;
-    const src = this.noiseAt(t, 0.25);
-    const band = ctx.createBiquadFilter();
-    band.type = 'bandpass';
-    band.frequency.value = 1500;
-    band.Q.value = 0.8;
-    const g = ctx.createGain();
-    // Three quick slaps, then a short tail.
+  /** A vibrato LFO wired into the detune of the given oscillators, starting after a delay. */
+  private vibrato(t: number, len: number, depth: number, rate: number, oscs: OscillatorNode[], delay = 0.18): void {
+    const lfo = this.ctx.createOscillator();
+    lfo.frequency.value = rate;
+    const g = this.ctx.createGain();
     g.gain.setValueAtTime(0, t);
-    for (const k of [0, 0.012, 0.024]) {
-      g.gain.setValueAtTime(0.22, t + k);
-      g.gain.exponentialRampToValueAtTime(0.04, t + k + 0.01);
+    g.gain.linearRampToValueAtTime(depth, t + delay + 0.25);
+    lfo.connect(g);
+    for (const o of oscs) g.connect(o.detune);
+    lfo.start(t);
+    lfo.stop(t + len + 1);
+  }
+
+  /** Sustained string section: three detuned saws per note, a gentle bow attack. */
+  private strings(t: number, notes: number[], len: number, level: number): void {
+    const ctx = this.ctx;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1700;
+    lp.Q.value = 0.5;
+    const g = this.env(t, len, level, 0.45, 0.7);
+    const oscs: OscillatorNode[] = [];
+    for (const n of notes) {
+      for (const detune of [-8, 0, 7]) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = midiHz(n);
+        o.detune.value = detune;
+        o.connect(lp);
+        o.start(t);
+        o.stop(t + len + 1);
+        oscs.push(o);
+      }
     }
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-    src.connect(band).connect(g);
-    g.connect(this.out);
-    g.connect(this.reverb);
+    this.vibrato(t, len, 6, 5, oscs, 0.3);
+    lp.connect(g).connect(this.bus);
   }
 
-  private hat(t: number, open: boolean): void {
+  /** A short bowed note (fiddle or spiccato strings). */
+  private bowed(t: number, midi: number, len: number, level: number): void {
     const ctx = this.ctx;
-    const len = open ? 0.18 : 0.045;
-    const src = this.noiseAt(t, len + 0.02);
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = open ? 7000 : 8500;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(open ? 0.09 : 0.07, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + len);
-    src.connect(hp).connect(g).connect(this.out);
-  }
-
-  private shaker(t: number, accent: number): void {
-    const ctx = this.ctx;
-    const src = this.noiseAt(t, 0.07);
-    const band = ctx.createBiquadFilter();
-    band.type = 'bandpass';
-    band.frequency.value = 6500;
-    band.Q.value = 1.5;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(3200, t);
+    lp.frequency.exponentialRampToValueAtTime(1400, t + len);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.05 * accent, t + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-    src.connect(band).connect(g).connect(this.out);
+    g.gain.linearRampToValueAtTime(level, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(level * 0.35, t + len * 0.9);
+    g.gain.linearRampToValueAtTime(0.0001, t + len + 0.06);
+    for (const detune of [-5, 6]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = midiHz(midi);
+      o.detune.value = detune;
+      o.connect(lp);
+      o.start(t);
+      o.stop(t + len + 0.1);
+    }
+    lp.connect(g).connect(this.bus);
   }
 
-  private bass(t: number, midi: number, len: number): void {
+  /** Tin whistle: a pure tone with a little breath and a singing vibrato. */
+  private whistle(t: number, midi: number, len: number, level: number): void {
     const ctx = this.ctx;
     const f = midiHz(midi);
+    const g = this.env(t, len, 0.055 * level, 0.025, 0.12);
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f;
+    const o2 = ctx.createOscillator();
+    o2.type = 'triangle';
+    o2.frequency.value = f * 2;
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.12;
+    o.connect(g);
+    o2.connect(g2).connect(g);
+    // Breath: noise around the second harmonic.
+    const breath = this.noiseAt(t, len + 0.15);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = f * 2;
+    bp.Q.value = 3;
+    const bg = ctx.createGain();
+    bg.gain.value = 0.18;
+    breath.connect(bp).connect(bg).connect(g);
+    for (const x of [o, o2]) { x.start(t); x.stop(t + len + 0.2); }
+    if (len > 0.3) this.vibrato(t, len, 18, 5.6, [o, o2]);
+    g.connect(this.bus);
+  }
+
+  /** French horns: a brassy swell, the filter opening as the note blooms, an octave below for weight. */
+  private horn(t: number, midi: number, len: number, level: number): void {
+    const ctx = this.ctx;
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 420;
-    lp.Q.value = 2;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.32, t + 0.01);
-    g.gain.setTargetAtTime(0.2, t + 0.03, 0.08);
-    g.gain.setTargetAtTime(0.0001, t + len * 0.9, 0.03);
-    for (const [type, mult, level] of [['sine', 1, 1], ['triangle', 2, 0.35]] as const) {
-      const osc = ctx.createOscillator();
-      osc.type = type;
-      osc.frequency.value = f * mult;
+    lp.Q.value = 1.2;
+    lp.frequency.setValueAtTime(500, t);
+    lp.frequency.linearRampToValueAtTime(1500, t + 0.16);
+    lp.frequency.setTargetAtTime(1100, t + 0.3, 0.4);
+    const g = this.env(t, len, 0.06 * level, 0.09, 0.25);
+    const oscs: OscillatorNode[] = [];
+    for (const [type, m, lvl] of [['sawtooth', 1, 1], ['square', 1, 0.4], ['sawtooth', 0.5, 0.5]] as const) {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = midiHz(midi) * m;
       const og = ctx.createGain();
-      og.gain.value = level;
-      osc.connect(og).connect(lp);
-      osc.start(t);
-      osc.stop(t + len + 0.2);
+      og.gain.value = lvl;
+      o.connect(og).connect(lp);
+      o.start(t);
+      o.stop(t + len + 0.4);
+      oscs.push(o);
     }
-    lp.connect(g).connect(this.padBus);
+    this.vibrato(t, len, 5, 4.8, oscs, 0.35);
+    lp.connect(g).connect(this.bus);
   }
 
-  private pad(t: number, notes: number[], len: number, cutoff: number): void {
+  /** A choir "aah": saws through two vowel formants. */
+  private choir(t: number, notes: number[], len: number): void {
     const ctx = this.ctx;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.Q.value = 0.7;
-    // The filter opens a touch through the bar, then settles.
-    lp.frequency.setValueAtTime(cutoff * 0.7, t);
-    lp.frequency.linearRampToValueAtTime(cutoff * 1.25, t + len * 0.5);
-    lp.frequency.linearRampToValueAtTime(cutoff, t + len);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.05, t + 0.45);
-    g.gain.setValueAtTime(0.05, t + len - 0.1);
-    g.gain.linearRampToValueAtTime(0.0001, t + len + 0.6);
+    const g = this.env(t, len, 0.03, 0.7, 0.9);
+    const mix = ctx.createGain();
+    for (const [f, q, lvl] of [[750, 5, 1], [1180, 6, 0.7], [2600, 8, 0.25]]) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = f;
+      bp.Q.value = q;
+      const bg = ctx.createGain();
+      bg.gain.value = lvl;
+      mix.connect(bp).connect(bg).connect(g);
+    }
+    const oscs: OscillatorNode[] = [];
     for (const n of notes) {
-      for (const detune of [-9, 8]) {
-        const osc = ctx.createOscillator();
-        osc.type = 'sawtooth';
-        osc.frequency.value = midiHz(n);
-        osc.detune.value = detune;
-        osc.connect(lp);
-        osc.start(t);
-        osc.stop(t + len + 0.7);
+      for (const detune of [-10, 9]) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = midiHz(n);
+        o.detune.value = detune;
+        o.connect(mix);
+        o.start(t);
+        o.stop(t + len + 1.2);
+        oscs.push(o);
       }
     }
-    lp.connect(g);
-    g.connect(this.padBus);
-    g.connect(this.reverb);
+    this.vibrato(t, len, 7, 5.2, oscs, 0.4);
+    g.connect(this.bus);
   }
 
-  /** Electric-piano-ish stab: sine with a bell-like overtone and a quick decay. */
-  private keys(t: number, notes: number[], len: number): void {
+  /** A pipes drone: root and fifth, low and a little nasal. */
+  private drone(t: number, root: number, len: number, level: number): void {
     const ctx = this.ctx;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.06, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.012, t + Math.max(0.25, len));
-    g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.25, len) + 0.4);
-    for (const n of notes.slice(0, 4)) {
-      for (const [mult, level] of [[1, 1], [3.01, 0.12]]) {
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = midiHz(n + 12) * mult;
-        const og = ctx.createGain();
-        og.gain.value = level;
-        osc.connect(og).connect(g);
-        osc.start(t);
-        osc.stop(t + len + 0.7);
-      }
-    }
-    g.connect(this.out);
-    g.connect(this.delay);
-    g.connect(this.reverb);
-  }
-
-  private arp(t: number, midi: number, cutoff: number): void {
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.value = midiHz(midi);
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.Q.value = 7;
-    lp.frequency.setValueAtTime(cutoff, t);
-    lp.frequency.exponentialRampToValueAtTime(Math.max(200, cutoff * 0.35), t + 0.12);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.045, t + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-    osc.connect(lp).connect(g);
-    g.connect(this.out);
-    g.connect(this.delay);
-    osc.start(t);
-    osc.stop(t + 0.18);
+    lp.frequency.value = 900;
+    const nasal = ctx.createBiquadFilter();
+    nasal.type = 'peaking';
+    nasal.frequency.value = 1300;
+    nasal.Q.value = 4;
+    nasal.gain.value = 8;
+    const g = this.env(t, len, level, 0.3, 0.5);
+    for (const n of [root - 12, root - 5]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = midiHz(n);
+      o.connect(lp);
+      o.start(t);
+      o.stop(t + len + 0.8);
+    }
+    lp.connect(nasal).connect(g).connect(this.bus);
   }
 
-  /** A filtered noise swell over a bar, leading into the next phrase. */
-  private riser(t: number, len: number): void {
+  /** Taiko: a deep pitched thump with a skin slap (small = a higher, lighter drum). */
+  private taiko(t: number, level: number, small = false): void {
     const ctx = this.ctx;
-    const src = this.noiseAt(t, len);
-    const band = ctx.createBiquadFilter();
-    band.type = 'bandpass';
-    band.Q.value = 2;
-    band.frequency.setValueAtTime(400, t);
-    band.frequency.exponentialRampToValueAtTime(6000, t + len);
+    const o = ctx.createOscillator();
+    o.frequency.setValueAtTime(small ? 150 : 95, t);
+    o.frequency.exponentialRampToValueAtTime(small ? 80 : 42, t + 0.35);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.07, t + len);
-    g.gain.linearRampToValueAtTime(0, t + len + 0.05);
-    src.connect(band).connect(g);
-    g.connect(this.out);
-    g.connect(this.reverb);
+    g.gain.linearRampToValueAtTime((small ? 0.28 : 0.55) * level, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (small ? 0.4 : 0.9));
+    o.connect(g).connect(this.bus);
+    o.start(t);
+    o.stop(t + 1);
+    const slap = this.noiseAt(t, 0.12);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = small ? 1200 : 600;
+    const sg = ctx.createGain();
+    sg.gain.setValueAtTime(0.25 * level, t);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    slap.connect(lp).connect(sg).connect(this.bus);
+  }
+
+  /** Bodhrán: a frame drum's soft, woody tap. */
+  private frame(t: number, level: number): void {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    o.frequency.setValueAtTime(190, t);
+    o.frequency.exponentialRampToValueAtTime(95, t + 0.12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.18 * level, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(g).connect(this.bus);
+    o.start(t);
+    o.stop(t + 0.2);
+    const n = this.noiseAt(t, 0.06);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 900;
+    bp.Q.value = 1.2;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.08 * level, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    n.connect(bp).connect(ng).connect(this.bus);
+  }
+
+  /** An orchestral snare: a crisp crack. */
+  private snare(t: number, level: number): void {
+    const ctx = this.ctx;
+    const n = this.noiseAt(t, 0.2);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1800;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.16 * level, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    n.connect(hp).connect(g).connect(this.bus);
+  }
+
+  /** A snare roll that builds over `len` seconds. */
+  private roll(t: number, len: number): void {
+    const hits = 28;
+    for (let k = 0; k < hits; k++) {
+      const f = k / hits;
+      this.snare(t + len * (1 - Math.pow(1 - f, 1.4)), 0.25 + 0.75 * f);
+    }
+  }
+
+  /** A suspended cymbal: a long crash, or a swell rising into the next bar. */
+  private cymbal(t: number, len: number, swell: boolean): void {
+    const ctx = this.ctx;
+    const n = this.noiseAt(t, len + 0.1);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 5000;
+    const g = ctx.createGain();
+    if (swell) {
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.09, t + len);
+      g.gain.linearRampToValueAtTime(0.0001, t + len + 0.05);
+    } else {
+      g.gain.setValueAtTime(0.11, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    }
+    n.connect(hp).connect(g).connect(this.bus);
   }
 
   private noiseAt(t: number, len: number): AudioBufferSourceNode {
