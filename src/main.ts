@@ -29,7 +29,10 @@ const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
 const AI_SKILL_MIN = 0.82;
 const AI_SKILL_MAX = 0.97;
 const RESULTS_DELAY = 2.5;    // seconds after the player finishes before the results screen
-const CATCH_UP_PER_PLACE = 0.01;  // +1% pace for every place behind the leader
+// Catch-up: +1% pace per place from 3rd back (the car right behind the leader gets nothing, so a
+// clean leader can defend), capped at +3%.
+const CATCH_UP_PER_PLACE = 0.01;
+const CATCH_UP_MAX = 0.03;
 // Turbo start: let go of the brake in this window around GO for a perfect launch; earlier is a jump start.
 const LAUNCH_EARLY = 0.3;     // s before GO a press still counts as perfect
 const LAUNCH_LATE = 0.15;     // s after GO a press still counts as perfect
@@ -843,7 +846,7 @@ function update(dt: number): void {
   // Rubber band: each place behind the leader is worth +1% pace (none before the start or once finished).
   const ranked = rankCars();
   ranked.forEach((car, place) => {
-    car.craft.catchUp = racing && !finishOrder.includes(car) ? place * CATCH_UP_PER_PLACE : 0;
+    car.craft.catchUp = racing && !finishOrder.includes(car) ? Math.min(CATCH_UP_MAX, Math.max(0, place - 1) * CATCH_UP_PER_PLACE) : 0;
   });
   updateDrs(ranked, racing);
 
