@@ -328,12 +328,17 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   const dist = [0];
   for (let i = 1; i <= m; i++) dist.push(dist[i - 1] + Math.hypot(pts[i % m].x - pts[i - 1].x, pts[i % m].y - pts[i - 1].y));
 
-  /** A strip along the track between two offsets from the centerline (left is +), at height y. */
-  const ribbon = (from: number, to: number, dA: number, dB: number, yA: number, yB: number, vLen: number): THREE.BufferGeometry => {
+  /**
+   * A strip along the track between two offsets from the centerline (left is +), at height y. An
+   * offset can vary along the track (a function of the sample), for the wider road at splits.
+   */
+  type Off = number | ((i: number) => number);
+  const ribbon = (from: number, to: number, dA: Off, dB: Off, yA: number, yB: number, vLen: number): THREE.BufferGeometry => {
     const pos: number[] = [], uv: number[] = [], idx: number[] = [];
     for (let i = from, k = 0; i <= to; i++, k++) {
       const p = pts[i % m];
-      pos.push(p.x + p.nx * dA, yA, p.y + p.ny * dA, p.x + p.nx * dB, yB, p.y + p.ny * dB);
+      const a = typeof dA === 'number' ? dA : dA(i % m), b2 = typeof dB === 'number' ? dB : dB(i % m);
+      pos.push(p.x + p.nx * a, yA, p.y + p.ny * a, p.x + p.nx * b2, yB, p.y + p.ny * b2);
       const v = (dist[i % (m + 1)] + (i > m ? dist[m] : 0)) / vLen;
       uv.push(0, v, 1, v);
       if (k) idx.push(2 * k - 2, 2 * k - 1, 2 * k, 2 * k - 1, 2 * k + 1, 2 * k);
@@ -391,24 +396,35 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
    * Jumps (sprints): road-level strips rise over each ramp to its lip, and are left out over the gap
    * after it. Ribbons built over the whole track have two vertices per sample (2i, 2i+1).
    */
-  const rampLift = (i: number, j: { from: number; lip: number; height: number }) =>
-    (j.height * (track.dist[i] - track.dist[j.from])) / (track.dist[j.lip] - track.dist[j.from]);
-  const jumpify = <G extends THREE.BufferGeometry>(g: G, base: number): G => {
-    if (!track.jumps.length) return g;
-    const pos = g.getAttribute('position') as THREE.BufferAttribute;
-    for (const j of track.jumps) for (let i = j.from; i <= j.lip; i++) {
-      pos.setY(2 * i, base + rampLift(i, j)); pos.setY(2 * i + 1, base + rampLift(i, j));
-    }
+  /** Offsets that follow the road's width and the island at splits. */
+  const OUT = (side: number, plus = 0) => (i: number) => side * (track.outer[i] + plus);
+  const ISL = (side: number, plus = 0) => (i: number) => side * (track.island[i] + plus);
+  /** Drop the triangles of a whole-track strip where `skip(sample)` (by the sample each segment starts at). */
+  const cut = <G extends THREE.BufferGeometry>(g: G, skip: (seg: number) => boolean): G => {
     const idx = g.getIndex()!, keep: number[] = [];
     for (let t = 0; t < idx.count; t += 3) {
-      const a = idx.getX(t), b = idx.getX(t + 1), c = idx.getX(t + 2);
-      const seg = Math.min(a, b, c) >> 1;
-      if (!track.jumps.some((j) => seg >= j.lip && seg < j.land)) keep.push(a, b, c);
+      const a = idx.getX(t), b2 = idx.getX(t + 1), c = idx.getX(t + 2);
+      if (!skip(Math.min(a, b2, c) >> 1)) keep.push(a, b2, c);
     }
     g.setIndex(keep);
     return g;
   };
-  add(jumpify(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0, 0, 128), 0), basic({ map: tex(road) }));
+  /** A whole-track strip with no road across the break of a point-to-point route. */
+  const whole = <G extends THREE.BufferGeometry>(g: G): G => (track.open ? cut(g, (seg) => track.isBreak(seg)) : g);
+  const rampLift = (i: number, j: { from: number; lip: number; height: number }) =>
+    (j.height * (track.dist[i] - track.dist[j.from])) / (track.dist[j.lip] - track.dist[j.from]);
+  /** One lane-side of a whole-track strip: it rises over that side's ramps and stops at their gaps. */
+  const jumpify = <G extends THREE.BufferGeometry>(g: G, base: number, side: number): G => {
+    const mine = track.jumps.filter((j) => j.side === side);
+    const pos = g.getAttribute('position') as THREE.BufferAttribute;
+    for (const j of mine) for (let i = j.from; i <= j.lip; i++) {
+      pos.setY(2 * i, base + rampLift(i, j)); pos.setY(2 * i + 1, base + rampLift(i, j));
+    }
+    return cut(g, (seg) => track.isBreak(seg) || mine.some((j) => seg >= j.lip && seg < j.land));
+  };
+  // The road in two halves (centre to edge), so a split's island sits between its two lanes.
+  const roadMat = basic({ map: tex(road) });
+  for (const side of [1, -1]) add(jumpify(ribbon(0, m, ISL(side), OUT(side), 0, 0, 128), 0, side), roadMat);
   if (track.jumps.length) {
     // Ramp sides and the face under the lip, glowing chevrons up the deck, and the gap: a dark drop
     // with an energy net across it.
@@ -423,27 +439,28 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       g.beginPath(); g.moveTo(10, 46); g.lineTo(32, 20); g.lineTo(54, 46); g.stroke();
     }));
     for (const j of track.jumps) {
-      for (const side of [1, -1]) {
-        const g = ribbon(j.from, j.lip, side * HALF_WIDTH, side * HALF_WIDTH, 0, 0, 1e9);
+      const sd = j.side;
+      for (const edge of [ISL(sd), OUT(sd)]) {
+        const g = ribbon(j.from, j.lip, edge, edge, 0, 0, 1e9);
         const pos = g.getAttribute('position') as THREE.BufferAttribute;
         for (let i = j.from, k = 0; i <= j.lip; i++, k++) pos.setY(2 * k, rampLift(i, j));
         add(g, sideMat);
       }
-      const p = pts[j.lip];
+      const p = pts[j.lip], li = sd * track.island[j.lip], lo = sd * track.outer[j.lip];
       const lipFace = new THREE.BufferGeometry();
       lipFace.setAttribute('position', new THREE.Float32BufferAttribute([
-        p.x + p.nx * HALF_WIDTH, 0, p.y + p.ny * HALF_WIDTH, p.x - p.nx * HALF_WIDTH, 0, p.y - p.ny * HALF_WIDTH,
-        p.x - p.nx * HALF_WIDTH, j.height, p.y - p.ny * HALF_WIDTH, p.x + p.nx * HALF_WIDTH, j.height, p.y + p.ny * HALF_WIDTH,
+        p.x + p.nx * li, 0, p.y + p.ny * li, p.x + p.nx * lo, 0, p.y + p.ny * lo,
+        p.x + p.nx * lo, j.height, p.y + p.ny * lo, p.x + p.nx * li, j.height, p.y + p.ny * li,
       ], 3));
       lipFace.setIndex([0, 1, 2, 0, 2, 3]);
       lipFace.computeVertexNormals();
       add(lipFace, sideMat);
-      const chev = ribbon(j.from, j.lip, HALF_WIDTH * 0.6, -HALF_WIDTH * 0.6, 0.6, 0.6, 70);
+      const chev = ribbon(j.from, j.lip, ISL(sd, 30), OUT(sd, -30), 0.6, 0.6, 70);
       const cp = chev.getAttribute('position') as THREE.BufferAttribute;
       for (let i = j.from, k = 0; i <= j.lip; i++, k++) { cp.setY(2 * k, rampLift(i, j) + 0.6); cp.setY(2 * k + 1, rampLift(i, j) + 0.6); }
       add(chev, additive({ map: rampChev, color: theme.wall }), 2);
-      add(ribbon(j.lip, j.land, WALL_DIST, -WALL_DIST, -0.6, -0.6, 1e9), basic({ color: 0x04070c, transparent: true, opacity: 0.9, depthWrite: false }), 1);
-      add(ribbon(j.lip, j.land, HALF_WIDTH, -HALF_WIDTH, -3, -3, 64), additive({ map: netTex, color: theme.wall, opacity: 0.55 }), 2);
+      add(ribbon(j.lip, j.land, ISL(sd), OUT(sd, WALL_THICKNESS), -0.6, -0.6, 1e9), basic({ color: 0x04070c, transparent: true, opacity: 0.9, depthWrite: false }), 1);
+      add(ribbon(j.lip, j.land, ISL(sd), OUT(sd), -3, -3, 64), additive({ map: netTex, color: theme.wall, opacity: 0.55 }), 2);
     }
   }
   {
@@ -455,13 +472,14 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       return g;
     };
     // Shadows of the cars, cast onto the road.
-    const catcher = add(jumpify(up(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0.15, 0.15, 128)), 0.15), new THREE.ShadowMaterial({ opacity: 0.38 }), 1);
-    catcher.receiveShadow = true;
+    const catchMat = new THREE.ShadowMaterial({ opacity: 0.38 });
+    for (const side of [1, -1]) add(jumpify(up(ribbon(0, m, ISL(side), OUT(side), 0.15, 0.15, 128)), 0.15, side), catchMat, 1).receiveShadow = true;
     // A glossy sheen: only the sun's specular highlight, added on top, so the deck reads polished.
-    add(jumpify(up(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0.3, 0.3, 128)), 0.3), new THREE.MeshPhongMaterial({
+    const sheenMat = new THREE.MeshPhongMaterial({
       color: 0x000000, specular: new THREE.Color(atmos.sun.color).multiplyScalar(0.55), shininess: 26,
       transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-    }), 1);
+    });
+    for (const side of [1, -1]) add(jumpify(up(ribbon(0, m, ISL(side), OUT(side), 0.3, 0.3, 128)), 0.3, side), sheenMat, 1);
   }
 
   // Kerbs through the corners: lit and dark blocks in turn, slightly raised.
@@ -473,8 +491,9 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       const c = Math.floor(i / 2) % 2 ? lit : dark;
       for (const side of [1, -1]) {
         const base = pos.length / 3;
-        for (const [j, d] of [[i, HALF_WIDTH - KERB_WIDTH], [i + 1, HALF_WIDTH - KERB_WIDTH], [i + 1, HALF_WIDTH], [i, HALF_WIDTH]] as const) {
-          const p = pts[j % m];
+        if (track.isBreak(i)) continue;
+        for (const [j, inset] of [[i, KERB_WIDTH], [i + 1, KERB_WIDTH], [i + 1, 0], [i, 0]] as const) {
+          const p = pts[j % m], d = track.outer[j % m] - inset;
           pos.push(p.x + p.nx * d * side, 0.8, p.y + p.ny * d * side);
           col.push(c.r, c.g, c.b);
         }
@@ -523,14 +542,24 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   });
   const lampMat = additive({ map: tex(lamp), color: `rgb(${theme.lights})` });
   for (const side of [1, -1]) {
-    const inner = side * HALF_WIDTH, outer = side * WALL_DIST, mid = side * (HALF_WIDTH + WALL_THICKNESS / 2);
-    add(ribbon(0, m, inner, inner, WALL_H, 0, 1e9), faceMat).geometry.setAttribute('uv', wallUv(m));
-    add(ribbon(0, m, inner, outer, WALL_H, WALL_H, 1e9), topMat);
-    add(ribbon(0, m, outer, outer, WALL_H, 0, 1e9), outerMat);
-    add(ribbon(0, m, outer, outer + side * 46, 0.4, 0.4, 1e9), glowMat, 1).geometry.setAttribute('uv', glowUv(m));
-    const railD = side * (HALF_WIDTH - 0.6);
-    add(ribbon(0, m, railD, railD, WALL_H - 1, WALL_H - 6, 376), pulseMat, 2);
-    add(ribbon(0, m, mid - side * 3, mid + side * 3, WALL_H + 0.3, WALL_H + 0.3, 110), lampMat, 2);
+    const inner = OUT(side), outer = OUT(side, WALL_THICKNESS);
+    const faceG = whole(ribbon(0, m, inner, inner, WALL_H, 0, 1e9)); faceG.setAttribute('uv', wallUv(m)); add(faceG, faceMat);
+    add(whole(ribbon(0, m, inner, outer, WALL_H, WALL_H, 1e9)), topMat);
+    add(whole(ribbon(0, m, outer, outer, WALL_H, 0, 1e9)), outerMat);
+    const glowG = whole(ribbon(0, m, outer, OUT(side, WALL_THICKNESS + 46), 0.4, 0.4, 1e9)); glowG.setAttribute('uv', glowUv(m)); add(glowG, glowMat, 1);
+    add(whole(ribbon(0, m, OUT(side, -0.6), OUT(side, -0.6), WALL_H - 1, WALL_H - 6, 376)), pulseMat, 2);
+    add(whole(ribbon(0, m, OUT(side, WALL_THICKNESS / 2 - 3), OUT(side, WALL_THICKNESS / 2 + 3), WALL_H + 0.3, WALL_H + 0.3, 110)), lampMat, 2);
+  }
+  if (track.island.some((v) => v > 1)) {
+    // Islands: a raised block between the two lanes of a split, its walls in the barrier style and
+    // its top in the track's colour, with a line of lights along each edge.
+    const ISLAND_H = 40;
+    const noIsland = (seg: number) => track.isBreak(seg) || (track.island[seg] < 1 && track.island[(seg + 1) % m] < 1);
+    for (const side of [1, -1]) {
+      const fg = cut(ribbon(0, m, ISL(side), ISL(side), ISLAND_H, 0, 1e9), noIsland); fg.setAttribute('uv', wallUv(m)); add(fg, faceMat);
+      add(cut(ribbon(0, m, ISL(side, -6), ISL(side, -2), ISLAND_H + 0.3, ISLAND_H + 0.3, 110), noIsland), lampMat, 2);
+    }
+    add(cut(ribbon(0, m, ISL(1), ISL(-1), ISLAND_H, ISLAND_H, 1e9), noIsland), basic({ color: new THREE.Color(atmos.wall[0]).lerp(new THREE.Color(theme.wall), 0.25) }));
   }
 
   // Cooling lane: a tinted band with chevrons flowing along it.
@@ -554,7 +583,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   for (const z of track.drsZones) {
     for (const [i, start] of [[z.from, true], [z.to, false]] as const) {
       const p = pts[i];
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(start ? 5 : 3, HALF_WIDTH * 2 - 12).rotateX(-Math.PI / 2),
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(start ? 5 : 3, track.outer[i] * 2 - 12).rotateX(-Math.PI / 2),
         basic({ map: tex(canvas2d(4, 64, (g) => { for (let k = 0; k < 64; k += 11) { g.fillStyle = '#4dff9a'; g.fillRect(0, k, 4, 6); } }), false),
           transparent: true, opacity: start ? 0.9 : 0.4, depthWrite: false }));
       line.position.set(p.x, 0.9, p.y);
@@ -570,9 +599,9 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     }
   }
 
-  // Start line: a checkered band and a lit gantry over the track.
-  {
-    const p = pts[0], dir = track.direction(0);
+  // Start line (and on a point-to-point route the finish line): a checkered band and a lit gantry.
+  const lineAt = (at: number, text: string) => {
+    const p = pts[at], dir = track.direction(at);
     const checker = canvas2d(32, 320, (g) => {
       for (let r = 0; r < 2; r++) for (let c = 0; c < 20; c++) { g.fillStyle = (r + c) % 2 ? '#0a0a12' : '#ffffff'; g.fillRect(r * 16, c * 16, 16, 16); }
     });
@@ -595,14 +624,16 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     const strip = new THREE.Mesh(new THREE.BoxGeometry(13, 3, span + 12), basic({ color: lightCol }));
     strip.position.y = 114;
     gantry.add(strip);
-    const sign = textPlane('THE APEX', '#ffffff', 150, 22, theme.wall);
+    const sign = textPlane(text, '#ffffff', 150, 22, theme.wall);
     sign.geometry.rotateX(Math.PI / 2).rotateY(Math.PI / 2);   // stand it up, facing the oncoming cars
     sign.position.set(-6.5, 120, 0);
     gantry.add(bothWays(sign));
     gantry.position.set(p.x, 0, p.y);
     gantry.rotation.y = -dir;
     group.add(gantry);
-  }
+  };
+  lineAt(0, track.open ? 'START' : 'THE APEX');
+  if (track.open) lineAt(track.finishIndex, 'FINISH');
 
   // Scenery props: built from simple shapes, then turned into voxels (all of them in two instanced
   // meshes for the whole map); moving parts, signs and see-through effects stay as they are.
@@ -622,8 +653,10 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     const gateMat = new THREE.MeshPhongMaterial({ color: 0xf4f7fc, emissive: 0x30343e, shininess: 60 });
     const lineMat = additive({ color: theme.wall, opacity: 0.85 });
     const span = WALL_DIST + 10;
-    for (let k = 1; k <= atmos.gates; k++) {
-      const i = Math.floor((k / (atmos.gates + 1)) * m);
+    const gates = track.open ? atmos.gates * 3 : atmos.gates;
+    for (let k = 1; k <= gates; k++) {
+      let i = Math.floor((k / (gates + 1)) * (track.open ? track.finishIndex : m));
+      while (track.island[i] > 0 && i < m - 1) i++;
       const p = pts[i], dir = track.direction(i);
       const gate = new THREE.Group();
       gate.add(new THREE.Mesh(new THREE.TorusGeometry(span, 6, 10, 48, Math.PI), gateMat));
@@ -635,7 +668,9 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   }
 
   // Sky: a smooth gradient dome (zenith to horizon), the sun low in it, and stars only where it's dark.
-  const cx = (b.minX + b.maxX) / 2, cz = (b.minY + b.maxY) / 2;
+  const follow = track.open;
+  const cx = follow ? 0 : (b.minX + b.maxX) / 2, cz = follow ? 0 : (b.minY + b.maxY) / 2;
+  const skyParts: THREE.Object3D[] = [];
   const skyTex = canvas2d(4, 256, (g) => {
     const v = g.createLinearGradient(0, 0, 0, 256);
     // The chase camera mostly sees the lowest part of the dome, so the middle colour sits low.
@@ -647,6 +682,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   dome.position.set(cx, -40, cz);
   dome.renderOrder = -2;
   group.add(dome);
+  skyParts.push(dome);
   {
     // The sun: a soft disc with a wide glow, sitting in the sky in the light's direction.
     const sunTex = canvas2d(128, 128, (g) => {
@@ -662,6 +698,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     sun.scale.setScalar(atmos.sun.size * 6);
     sun.renderOrder = -1;
     group.add(sun);
+    skyParts.push(sun);
   }
   if (atmos.stars) {
     const star: number[] = [];
@@ -671,9 +708,16 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(star, 3));
-    group.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xe6ecff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.8 })));
+    const stars = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xe6ecff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.8 }));
+    group.add(stars);
+    skyParts.push(stars);
   }
-  group.add(skyline(atmos, cx, cz, Math.max(b.maxX - b.minX, b.maxY - b.minY) / 2 + 4800));
+  const ring = skyline(atmos, cx, cz, follow ? 7600 : Math.max(b.maxX - b.minX, b.maxY - b.minY) / 2 + 4800);
+  group.add(ring);
+  skyParts.push(ring);
+  // On a point-to-point map the sky moves as one piece with the camera.
+  const skyGroup = new THREE.Group();
+  if (follow) { for (const part of skyParts) { group.remove(part); skyGroup.add(part); } group.add(skyGroup); }
   const aurora = atmos.aurora ? auroraCurtains(0, 0) : null;
   if (aurora) group.add(aurora.group);
   const storm = atmos.lightning ? lightningStorm(0, 0) : null;
@@ -682,7 +726,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   const water = groundMoves(track);
   return {
     track, group, atmos, flash: 0,
-    skyFollow: [aurora?.group, storm?.group].filter((o): o is THREE.Group => !!o),
+    skyFollow: [aurora?.group, storm?.group, follow ? skyGroup : null].filter((o): o is THREE.Group => !!o),
     animate(time: number) {
       aurora?.animate(time);
       if (storm) this.flash = storm.animate(time);
