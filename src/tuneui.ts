@@ -73,7 +73,7 @@ export class TuneUI {
         <div class="tn-sub">EVERY GAIN COSTS SOMETHING · THE MIDDLE IS THE STANDARD CAR</div>
         <div class="tn-cols">
           <div><img class="tn-car" src="${this.carUrl}" alt=""><div data-stats></div>
-            <div class="tn-tip">Fast, flowing tracks reward long gears and a low wing. Tight, twisty ones reward grip. Big radiators help if you hit walls.</div></div>
+            <div class="tn-tip">Fast, flowing tracks reward long gears and a low wing. Tight, twisty ones reward grip. Big radiators help if you hit walls. Sharp steering snaps through hairpins; lazy steering stays calm flat out.</div></div>
           <div><div class="tn-sub" style="margin-bottom:6px">HANDLING</div>
             <div class="tn-hand"><button data-assist="1">ASSISTED</button><button data-assist="0">PRO</button></div>
             <div class="tn-hand-tip" data-hand-tip></div>
