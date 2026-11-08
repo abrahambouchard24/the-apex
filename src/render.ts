@@ -47,7 +47,9 @@ export function loadSprite(url: string, height = 256): Sprite {
 }
 
 /** One racer: physics, race progress, art, minimap color and exhaust flame hue. */
-export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string }
+/** An unlockable colour scheme for a car's 3D model (overrides its livery colours). */
+export interface CarSkin { body: string; trim: string; accent: string; glow: string }
+export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string; skin?: CarSkin }
 
 export interface RaceHud {
   position: number; racers: number; laps: number; countdown: string | null; banner: string | null;
@@ -1037,7 +1039,7 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
-  const help = 'A / D or ← / →: steer   S / ↓ / Space: brake   W / ↑ / Shift: boost   V: view   Hold R: restart   Esc: pause';
+  const help = 'A / D or ← / →: steer   S / ↓ / Space: brake   W / ↑ / Shift: boost   Hold R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }
