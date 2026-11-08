@@ -13,6 +13,9 @@ const DEPLOY_KEYS = new Set<string>();
 /** How long R must be held to restart, so a stray tap doesn't wipe a race. */
 export const RESTART_HOLD = 0.8;
 
+/** The on-screen touch buttons (src/touch.ts). */
+export type TouchControl = 'left' | 'right' | 'brake' | 'boost';
+
 export class Input {
   /** Virtual cursor in canvas CSS pixels. */
   cursor = { x: 0, y: 0 };
@@ -33,6 +36,7 @@ export class Input {
   /** Called when pointer lock is lost (e.g. the browser's own Esc handling). */
   onUnlock: (() => void) | null = null;
   private held = new Set<string>();
+  private touch = new Set<TouchControl>();
 
   constructor(private canvas: HTMLCanvasElement) {
     this.setBindings(DEFAULT_KEYS);
@@ -97,9 +101,11 @@ export class Input {
 
   private refresh(): void {
     this.throttle = [...THROTTLE_KEYS].some((k) => this.held.has(k));
-    this.brake = [...BRAKE_KEYS].some((k) => this.held.has(k));
-    this.deploy = [...DEPLOY_KEYS].some((k) => this.held.has(k));
-    this.steer = ([...RIGHT_KEYS].some((k) => this.held.has(k)) ? 1 : 0) - ([...LEFT_KEYS].some((k) => this.held.has(k)) ? 1 : 0);
+    this.brake = this.touch.has('brake') || [...BRAKE_KEYS].some((k) => this.held.has(k));
+    this.deploy = this.touch.has('boost') || [...DEPLOY_KEYS].some((k) => this.held.has(k));
+    const right = this.touch.has('right') || [...RIGHT_KEYS].some((k) => this.held.has(k));
+    const left = this.touch.has('left') || [...LEFT_KEYS].some((k) => this.held.has(k));
+    this.steer = (right ? 1 : 0) - (left ? 1 : 0);
   }
 
   /** How far through the hold-R-to-restart the player is, 0..1 (0 when R isn't held). */
@@ -129,6 +135,13 @@ export class Input {
     this.held.clear();
     this.refresh();
   }
+  /** A touch button pressed or let go. */
+  setTouch(c: TouchControl, down: boolean): void {
+    if (down) this.touch.add(c); else this.touch.delete(c);
+    this.refresh();
+  }
+  /** The touch pause button. */
+  queuePause(): void { this.pauseQueued = true; }
   takePause(): boolean { const p = this.pauseQueued; this.pauseQueued = false; return p; }
   takeMute(): boolean { const m = this.muteQueued; this.muteQueued = false; return m; }
   takeView(): boolean { const v = this.viewQueued; this.viewQueued = false; return v; }

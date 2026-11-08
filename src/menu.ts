@@ -114,6 +114,7 @@ const CSS = `
 .hr-options { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; margin-bottom: 22px; }
 .hr-option { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .hr-option.hidden { visibility: hidden; }
+.hr-btn.hidden { display: none; }
 .hr-option label { color: #8a93c0; font-weight: 600; letter-spacing: 0.2em; font-size: 12px; }
 .hr-seg { display: flex; background: rgba(20,24,48,0.85); border: 2px solid #252b52; border-radius: 12px; padding: 3px; gap: 3px; }
 .hr-seg button {
@@ -224,6 +225,22 @@ const CSS = `
 .sc-online .wave:nth-child(3) { animation-delay: 0.6s; } .sc-online .wave:nth-child(4) { animation-delay: 1.2s; }
 @keyframes hr-wave { from { transform: scale(0.3); opacity: 1; } to { transform: scale(4); opacity: 0; } }
 .hr-back { position: absolute; top: 18px; left: 22px; min-width: 0; padding: 10px 18px; font-size: 14px; }
+/* Narrow screens stack the windows: keep the cars a sensible size instead of a share of a wide card. */
+@media (max-width: 760px) { .sc-story img, .sc-online img { width: auto !important; height: 72px !important; } .sc-quick img { width: auto !important; height: 96px !important; } }
+/* Phones held sideways: the four windows stay side by side, short, with just their titles. */
+@media (max-height: 500px) and (min-width: 600px) {
+  .hr-front { flex-direction: row; height: 58vh; margin-bottom: 10px; }
+  .hr-window { min-height: 0; border-radius: 14px; }
+  .hr-window .label { left: 12px; right: 12px; bottom: 10px; }
+  .hr-window .label b { font-size: 20px; }
+  .hr-window .label small { display: none; }
+  .sc-story img, .sc-online img { width: 46% !important; height: auto !important; }
+  .sc-quick img { width: 76% !important; height: auto !important; }
+  .hr-title { font-size: 34px; }
+  .hr-sub { margin: 2px 0 8px; }
+  .hr-keys { display: none; }
+  .hr-front-actions .hr-btn { min-width: 0; padding: 8px 14px; font-size: 12px; }
+}
 `;
 
 const TROPHY = `<svg class="cup" viewBox="0 0 120 130"><defs><linearGradient id="hrg" x1="0" x2="1"><stop offset="0" stop-color="#b8860b"/><stop offset=".45" stop-color="#ffe7a0"/><stop offset="1" stop-color="#c8961e"/></linearGradient></defs>
@@ -290,6 +307,7 @@ export class Menus {
           <button class="hr-btn secondary" data-act="trial">TIME TRIAL</button>
           <button class="hr-btn secondary" data-act="garage">GARAGE</button>
           <button class="hr-btn secondary" data-act="settings">SETTINGS</button>
+          <button class="hr-btn secondary hidden" data-act="install">INSTALL</button>
         </div>
         <p class="hr-keys">A / D or ← / →: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; S / ↓ / Space: brake &nbsp;·&nbsp; W / ↑ / Shift: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
       </div>`);

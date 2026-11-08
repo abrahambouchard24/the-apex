@@ -17,6 +17,7 @@ import { StoryUI } from './storyui';
 import { LobbyUI } from './lobbyui';
 import { addMods, loadSetup, sanitize, saveSetup, setupMods } from './setup';
 import { TuneUI } from './tuneui';
+import { TouchControls } from './touch';
 import { GhostLap, GhostRecorder, ghostPose, loadGhost, saveGhost } from './ghost';
 import { BoardRow, CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
@@ -72,6 +73,7 @@ function steerAim(c: Craft, brake: boolean): number {
 }
 
 const input = new Input(canvas);
+const touch = new TouchControls(input);
 const sound = new Sound();
 
 /** Settings (volume, graphics, keys): applied at once on every change and saved. */
@@ -436,6 +438,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
     else if (!online) { startRace(); play(); }
   },
   action(act) {
+    if (act === 'install') installApp();
     if (act === 'lobby') onlineToLobby();
     if (act === 'leave') leaveOnline();
     if (act === 'next' && season) {
@@ -478,6 +481,28 @@ const menus = new Menus(LIVERIES, trackChoices, {
   },
 });
 refreshRecords();
+
+// --- installable app ------------------------------------------------------------------------------
+// The service worker (public/sw.js) caches the game for offline play; production builds only.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => { /* no offline play */ }); });
+}
+/** The browser's install prompt, saved until the player presses INSTALL on the front menu. */
+let installPrompt: (Event & { prompt(): Promise<void> }) | null = null;
+const installBtn = () => document.querySelector<HTMLElement>('[data-act="install"]');
+addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e as Event & { prompt(): Promise<void> };
+  installBtn()?.classList.remove('hidden');
+});
+addEventListener('appinstalled', () => { installPrompt = null; installBtn()?.classList.add('hidden'); });
+function installApp(): void {
+  const p = installPrompt;
+  installPrompt = null;
+  installBtn()?.classList.add('hidden');
+  p?.prompt().catch(() => { /* dismissed */ });
+}
+
 menus.setNewPlayer(!settings.tutorialDone);
 
 /** Set a mission up: its track, laps and field. */
@@ -1765,6 +1790,7 @@ function frame(now: number): void {
   // Esc on the Settings screen closes it (rather than resuming the race underneath).
   if (settingsUI.isOpen && input.takePause()) settingsUI.close();
   if (input.takeView() && import.meta.env.DEV) toggleView();
+  touch.show((mode === 'racing' || (online?.role === 'guest' && online.inRace && !online.finishedAt)) && !menus.pauseOpen && !settingsUI.isOpen);
   if (online?.role === 'guest') {
     acc = 0;
     if (online.inRace) guestFrame(Math.min(0.1, (now - lastGuest) / 1000));
@@ -1788,7 +1814,7 @@ function frame(now: number): void {
   if (chaseOn) chase!.render({ time, cam, player, cars: ghostOn ? [...cars, ghostCar!] : cars, track, particles }, renderScale);
   drawFrame(ctx, innerWidth, innerHeight, {
     time, cam, player, cars, track, hud: raceHud(),
-    particles, cursor: input.cursor, toast, locked: input.locked, chase: chaseOn, steer: keySteer,
+    particles, cursor: input.cursor, toast, locked: input.locked, chase: chaseOn, steer: keySteer, touch: touch.visible,
   });
   restore?.();
   if (shift) { player.craft.pos.x -= pred.errX; player.craft.pos.y -= pred.errY; }

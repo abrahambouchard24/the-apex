@@ -75,6 +75,8 @@ export interface Scene {
   chase?: boolean;
   /** Steering (-1 full left .. 1 full right), shown on the steering bar. */
   steer?: number;
+  /** On-screen touch controls are showing (no keyboard help line). */
+  touch?: boolean;
 }
 
 /** Whether the chase view is on (changes the help line and the cursor). */
@@ -120,9 +122,14 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
 function drawHudLayers(ctx: CanvasRenderingContext2D, w: number, h: number, s: Scene): void {
   drawVignette(ctx, w, h);
   drawMinimap(ctx, w, h, s.track, s.cars, s.player);
+  // The lap and gap panels shrink with the dash on phone-sized screens (and never grow).
+  const small = Math.min(1, hudScale(w, h));
+  ctx.save();
+  ctx.scale(small, small);
   drawLapPanel(ctx, s.player.race, s.time, s.hud);
   drawGapPanel(ctx, s.hud);
-  drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud);
+  ctx.restore();
+  drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud, !!s.touch);
   drawRaceBanners(ctx, w, h, s.hud);
   if (s.hud.restart) drawRestartHold(ctx, w, h, s.hud.restart);
   drawSteerBar(ctx, w, h, s.steer ?? 0);
@@ -471,10 +478,11 @@ function drawStartLine(ctx: CanvasRenderingContext2D, track: Track, time: number
 
 /**
  * How much bigger the minimap and the dash draw, so they can be read at a glance at speed:
- * about 1.6x on a full-HD screen, 1.45x at 1280x720, and normal size on small windows.
+ * about 1.6x on a full-HD screen, 1.45x at 1280x720, normal size on small windows, and smaller on
+ * phones (under 560 px tall), so it leaves room for the road and the touch controls.
  */
 function hudScale(w: number, h: number): number {
-  return clamp(Math.min(w / 1280, h / 720) * 1.45, 1, 1.6);
+  return clamp(Math.min(w / 1280, h / 720) * 1.45, Math.min(1, h / 560), 1.6);
 }
 
 function drawMinimap(ctx: CanvasRenderingContext2D, w: number, h: number, track: Track, cars: Car[], player: Car): void {
@@ -929,7 +937,7 @@ function drawSprite(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
   ctx.drawImage(sprite.canvas!, -width / 2, -CRAFT_LENGTH / 2, width, CRAFT_LENGTH);
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean, hud: RaceHud): void {
+function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, toast: Toast | null, locked: boolean, hud: RaceHud, touch = false): void {
   ctx.save();
   // The dash is laid out at normal size, then scaled up from the bottom-right corner.
   ctx.save();
@@ -1051,7 +1059,7 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
   const help = 'A / D or ← / →: steer   S / ↓ / Space: brake   W / ↑ / Shift: boost   Hold R: restart   Esc: pause';
-  ctx.fillText(help, 16, h - 16);
+  if (!touch) ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }
 
