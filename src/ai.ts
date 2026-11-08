@@ -33,6 +33,8 @@ export class Driver {
   private lastTime = 0;
   /** What the driver is doing right now, for debugging and tests. */
   state: 'racing' | 'passing' | 'defending' | 'cooling' | 'mistake' = 'racing';
+  /** Sprints: the lane chosen for the split ahead (+1 / -1), or 0 when not in or near one. */
+  private lane = 0;
 
   /** skill 1 = near the grip limit with no mistakes; lower = slower corners, more weave, more errors. */
   constructor(public skill = 0.92, private seed = 1) {}
@@ -50,7 +52,7 @@ export class Driver {
     let maxCurve = 0, cornerCurve = 0;
     const zone = 12 + Math.round(speed / 22);
     for (let k = 4; k < zone; k++) {
-      const cv = track.pts[(i + k) % m].curve;
+      const cv = track.pts[track.shift(i, k)].curve;
       if (Math.abs(cv) > maxCurve) { maxCurve = Math.abs(cv); cornerCurve = cv; }
     }
     const insideSign = cornerCurve * this.insideBias > 0 ? 1 : -1;
@@ -59,7 +61,8 @@ export class Driver {
     // Base line: aim further ahead the faster we go, nudged toward the inside of the bend,
     // with a slow weave so the AI doesn't drive a robotic perfect line.
     const look = 10 + Math.round(speed / 45);
-    const ahead = track.pts[(i + look) % m];
+    const aheadIndex = track.shift(i, look);
+    const ahead = track.pts[aheadIndex];
     let off = clamp(ahead.curve * this.insideBias, -1, 1) * HALF_WIDTH * 0.45;
     off += Math.sin(time * 0.7 + this.seed * 2.1) * HALF_WIDTH * 0.25 * (1.05 - this.skill);
 
@@ -112,6 +115,23 @@ export class Driver {
     }
 
     off = clamp(off, -MAX_OFFSET, MAX_OFFSET);
+    // A split ahead (sprints): pick a lane once (the jump most of the time, the bypass now and
+    // then, more often for weaker drivers) and drive down the middle of it until the road rejoins.
+    const isl = Math.max(track.island[aheadIndex], track.island[i]);
+    if (isl > 1) {
+      if (this.lane === 0) {
+        const jump = track.jumps.find((j) => j.from >= i && j.from - i < 260);
+        const side = jump?.side ?? 1;
+        this.lane = Math.random() < 0.45 + 0.4 * this.skill ? side : -side;
+      }
+      // Once the island has started, stay in the lane we're actually in (never cut across its nose).
+      const myLat = lateral(track, c, i);
+      if (track.island[i] > 12 && Math.sign(myLat) !== this.lane && myLat !== 0) this.lane = Math.sign(myLat);
+      const islA = track.island[aheadIndex], outA = track.outer[aheadIndex];
+      off = this.lane * (islA > 1 ? (islA + outA) / 2 : Math.max(HALF_WIDTH * 0.3, Math.abs(off)));
+    } else {
+      this.lane = 0;
+    }
     // The lane hugs the wall, past the normal line limit: aim right along it.
     if (wantLane && this.state === 'cooling') off = COOL_LANE.side * (HALF_WIDTH - 16);
     // Steer for the chosen line at the look-ahead point.
@@ -131,6 +151,8 @@ export class Driver {
     const straight = maxCurve < 1 / 1500;
     const deploy = throttle && straight && c.energy > 0.05
       && (front !== null || rearGap < Infinity || c.energy > 0.6);
+    // Past the finish of a point-to-point sprint: ease to a stop before the end of the road.
+    if (track.open && this.race.lap > 0) return { aim, throttle: false, brake: true, deploy: false };
     return { aim, throttle, brake, deploy };
   }
 

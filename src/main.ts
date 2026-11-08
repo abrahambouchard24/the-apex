@@ -179,7 +179,7 @@ let raceLaps = 3;
 /** Laps in this race: a sprint is one run, start to finish, whatever the laps setting. */
 function laps(): number { return track.sprint ? 1 : raceLaps; }
 /** A sprint's length in km, as the speedo counts it (km/h = px/s / 4). */
-function sprintKm(t: Track): string { return (t.totalLength / 4 / 3600).toFixed(1); }
+function sprintKm(t: Track): string { return (t.routeLength / 4 / 3600).toFixed(1); }
 /** Seasons rotate through the lap circuits only (the sprints come after them in TRACKS). */
 const CIRCUITS = TRACKS.filter((t) => !t.sprint).length;
 /** Time Trial: alone on track, chasing the ghost of the best lap. */
@@ -834,15 +834,14 @@ function noContact(): boolean { return online?.lobby?.contact === false; }
 /** DRS opens from lap 2 on a circuit, and after the first 10% of the route on a sprint. */
 function drsAllowed(car: Car): boolean {
   if (!track.sprint) return car.race.lap >= DRS_FROM_LAP;
-  return car.race.lapStart >= 0 && car.race.lap === 0 && track.dist[car.race.index] > track.totalLength * 0.1;
+  return car.race.lapStart >= 0 && car.race.lap === 0 && track.fraction(car.race.index) > 0.1;
 }
 
 /** How far along a sprint each car is (0 before the start, 1 at the finish), for the HUD strip. */
 function sprintDone(car: Car): number {
   if (car.race.lap >= 1) return 1;
   if (car.race.lapStart < 0) return 0;
-  const d = track.dist[car.race.index] / track.totalLength;
-  return d > 0.97 && car.race.nextSector <= 1 ? 0 : d;   // still behind the line at the start
+  return track.fraction(car.race.index);   // 0 on the lead-in and at the start, 1 at the finish
 }
 function sprintHud(): NonNullable<RaceHud['sprint']> {
   return {
@@ -1306,7 +1305,8 @@ function celebrate(dt: number): void {
   const r = player.race;
   const finished = finishOrder.includes(player);
   // Distance raced, in laps (the grid counts as just before 0, not the end of a lap).
-  const lastStretch = r.progress(track) / track.length > laps() - 1 + FIREWORK_STRETCH;
+  const lastStretch = track.open ? r.lap === 0 && track.fraction(r.index) > 0.93
+    : r.progress(track) / track.length > laps() - 1 + FIREWORK_STRETCH;
   if (!(lastStretch || (finished && mode === 'racing'))) return;
   fireworkClock += dt;
   if (fireworkClock < 1 / FIREWORK_RATE) return;

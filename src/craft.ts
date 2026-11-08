@@ -26,7 +26,7 @@ const GRIP_KEEP = 0.9;        // share of sideways momentum grip turns into forw
 // away instead of redirecting it, so turning hard scrubs speed off by itself.
 const ASSIST_GRIP_FAST = 1.45;
 const ASSIST_BRAKE_GRIP_FAST = 1.2;
-const ASSIST_KEEP = 0.7;
+const ASSIST_KEEP = 0.5;          // ASSISTED: only half the sideways momentum is redirected, so turning hard brakes you
 const BRAKE_TURN_BONUS = 1.35;
 const DRAG = 0.12;            // forward air drag (1/s)
 const SCRAPE_FRICTION = 3.2;  // speed lost per second while grinding along a wall (1/s)
@@ -65,7 +65,7 @@ export const STALL_TIME = 0.8;    // seconds of no thrust after a jump start
 // ERS: drifting charges a battery; deploying it adds pull and a little top speed.
 const ERS_DRIFT = 0.55;           // energy per second in a deep, fast drift (under 2 s from empty to full)
 // Jumps (sprint tracks): ramps lift the craft, it flies when the road drops away, and lands again.
-const GRAVITY = 1000;             // px/s² pulling the craft back down (floaty, for hang time)
+const GRAVITY = 380;              // px/s² pulling the craft back down: low, so jumps are long glides
 const AIR_GRIP = 0.12;            // share of grip left in the air (it keeps its sideways momentum)
 const AIR_TURN = 0.5;             // share of steering left in the air
 const ERS_AIR = 0.32;             // energy per second of airtime at speed (airtime charges the boost)

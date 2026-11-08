@@ -5,7 +5,7 @@
 // Tall props fake height by leaning away from the middle of the screen (the further a roof is
 // from the camera, the more it leans), which reads as 2.5D as you drive past.
 
-import { Track, WALL_DIST } from './track';
+import { HALF_WIDTH, Track, WALL_DIST } from './track';
 
 type GroundKind = 'tarmac' | 'stadium' | 'city' | 'rock' | 'water' | 'canyon' | 'sand' | 'citylights' | 'snow' | 'marble' | 'garden' | 'scorched';
 
@@ -68,14 +68,15 @@ function build(track: Track): Scenery {
   const cy = track.pts.reduce((a, p) => a + p.y, 0) / m;
 
   // Distance from a point to the track's centerline (coarse scan, done once at load).
+  // (Measured as if the road were its normal width: where it widens at a split, it counts as closer.)
   const clearance = (x: number, y: number) => {
     let best = Infinity;
     for (let i = 0; i < m; i += 2) {
       const p = track.pts[i];
-      const d = (p.x - x) ** 2 + (p.y - y) ** 2;
+      const d = Math.hypot(p.x - x, p.y - y) - (track.outer[i] - HALF_WIDTH);
       if (d < best) best = d;
     }
-    return Math.sqrt(best);
+    return best;
   };
   /** Add a prop if it's clear of the walls and of other props. */
   const place = (p: Omit<Prop, 'seed'>, gap = 30): boolean => {
@@ -316,6 +317,26 @@ function build(track: Track): Scenery {
       scatter(40, (x, y) => ({ kind: 'cypress', x, y, r: 18, h: 100 }), 700);
       scatter(4, (x, y) => ({ kind: 'pool', x, y, r: 120, h: 3, w: 200, d: 110, rot: rand() * Math.PI, layer: 0 }), 500);
       break;
+    }
+  }
+  // Sprints: landmarks stand on the island at every split, between the jump lane and the bypass.
+  const ISLE_MARK: Record<string, (r: number) => Omit<Prop, 'seed' | 'x' | 'y'>> = {
+    'FAE FOREST': (r) => ({ kind: 'ancient-tree', r, h: 260 }),
+    'NOVA CAMELOT': (r) => ({ kind: 'castle-tower', r: r * 0.55, h: 300 }),
+    'ZOROPERSIA': (r) => ({ kind: 'fire-temple', r: r * 0.85, h: 170 }),
+    'BIFROST': (r) => ({ kind: 'gold-tower', r: r * 0.5, h: 460 }),
+    'EL DORADO': (r) => ({ kind: 'meso-temple', r: r * 0.75, h: 260 }),
+  };
+  const mark = ISLE_MARK[track.name];
+  if (mark) {
+    for (const j of track.jumps) {
+      const mid = Math.round((j.from + j.land) / 2);
+      for (const off of [-34, 0, 34]) {
+        const i = mid + off, isl = track.island[i] ?? 0;
+        if (isl < 120) continue;
+        const p = track.pts[i];
+        props.push({ ...mark(isl * 0.8), x: p.x, y: p.y, rot: track.direction(i), seed: rand() });
+      }
     }
   }
   // Flat ground pieces first; then from the top of the world down, so nearer props overlap farther ones.
