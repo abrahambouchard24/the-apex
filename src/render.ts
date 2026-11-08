@@ -49,7 +49,9 @@ export function loadSprite(url: string, height = 256): Sprite {
 /** One racer: physics, race progress, art, minimap color and exhaust flame hue. */
 /** An unlockable colour scheme for a car (overrides its livery colours; null = stock livery). */
 export interface CarSkin { body: string; trim: string; accent: string; glow: string }
-export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string; skin?: CarSkin | null }
+export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string; skin?: CarSkin | null;
+  /** A Time Trial ghost: drawn see-through, never raced against. */
+  ghost?: boolean }
 
 export interface RaceHud {
   position: number; racers: number; laps: number; countdown: string | null; banner: string | null;

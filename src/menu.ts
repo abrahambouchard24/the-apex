@@ -26,7 +26,7 @@ export interface ResultsView {
 }
 
 /** What the player set up on the start screen. races = 1 is a single race. */
-export interface RaceSetup { car: number; track: number; laps: number; races: number }
+export interface RaceSetup { car: number; track: number; laps: number; races: number; trial: boolean }
 
 export interface MenuHandlers {
   start(setup: RaceSetup): void;
@@ -246,6 +246,8 @@ export class Menus {
   /** 1 = single race; more = a season of that many races. */
   races = 1;
   private seasonRaces = 4;
+  /** Time Trial: alone on track against the ghost of your best lap. */
+  trial = false;
   private resultsHtml = '';
 
   constructor(cars: CarChoice[], tracks: TrackChoice[], private on: MenuHandlers) {
@@ -285,6 +287,7 @@ export class Menus {
         </div>
         <div class="hr-btns row hr-front-actions">
           <button class="hr-btn secondary" data-act="tutorial">HOW TO PLAY</button>
+          <button class="hr-btn secondary" data-act="trial">TIME TRIAL</button>
           <button class="hr-btn secondary" data-act="garage">GARAGE</button>
           <button class="hr-btn secondary" data-act="settings">SETTINGS</button>
         </div>
@@ -376,6 +379,7 @@ export class Menus {
         else if (act === 'garage') this.on.garage();
         else if (act === 'online') this.on.online();
         else if (act === 'quick') this.showSetup('single');
+        else if (act === 'trial') this.showSetup('trial');
         else if (act === 'season') this.showSetup('season');
         else if (act === 'front') this.showFront();
         else if (act === 'tune') this.on.tune(this.selected);
@@ -399,7 +403,7 @@ export class Menus {
     });
   }
 
-  setup(): RaceSetup { return { car: this.selected, track: this.selectedTrack, laps: this.laps, races: this.races }; }
+  setup(): RaceSetup { return { car: this.selected, track: this.selectedTrack, laps: this.laps, races: this.races, trial: this.trial }; }
 
   private refreshOptions(): void {
     const mark = (seg: string, v: string) => this.start.querySelectorAll(`[data-seg="${seg}"] button`)
@@ -409,8 +413,8 @@ export class Menus {
     mark('races', String(this.seasonRaces));
     this.start.querySelector('[data-opt="races"]')!.classList.toggle('hidden', this.races === 1);
     this.start.querySelector('[data-track-head]')!.textContent = this.races > 1 ? 'CHOOSE THE OPENING TRACK' : 'CHOOSE YOUR TRACK';
-    this.start.querySelector('[data-act="start"]')!.textContent = this.races > 1 ? 'START SEASON' : 'START RACE';
-    this.start.querySelector('[data-setup-title]')!.textContent = this.races > 1 ? 'SEASON' : 'QUICK RACE';
+    this.start.querySelector('[data-act="start"]')!.textContent = this.trial ? 'START TRIAL' : this.races > 1 ? 'START SEASON' : 'START RACE';
+    this.start.querySelector('[data-setup-title]')!.textContent = this.trial ? 'TIME TRIAL' : this.races > 1 ? 'SEASON' : 'QUICK RACE';
   }
 
   /** Show the player's best lap on each track card ('' where there isn't one yet). */
@@ -500,7 +504,8 @@ export class Menus {
   }
 
   /** The setup screen for a quick race or a season (the front menu chose which). */
-  showSetup(mode: 'single' | 'season'): void {
+  showSetup(mode: 'single' | 'season' | 'trial'): void {
+    this.trial = mode === 'trial';
     this.races = mode === 'season' ? this.seasonRaces : 1;
     this.refreshOptions();
     this.hide();

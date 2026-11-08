@@ -17,6 +17,7 @@ import { StoryUI } from './storyui';
 import { LobbyUI } from './lobbyui';
 import { addMods, loadSetup, sanitize, saveSetup, setupMods } from './setup';
 import { TuneUI } from './tuneui';
+import { GhostLap, GhostRecorder, ghostPose, loadGhost, saveGhost } from './ghost';
 import { BoardRow, CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
@@ -144,6 +145,13 @@ let mode: 'menu' | 'racing' | 'paused' | 'results' = 'menu';
 let playerLivery = 0;
 let pausedAt = 0;             // performance.now() when the pause menu opened
 let raceLaps = 3;
+/** Time Trial: alone on track, chasing the ghost of the best lap. */
+let trial = false;
+let ghostLap: GhostLap | null = null;     // the lap the ghost replays (Time Trial only)
+let ghostCar: Car | null = null;
+const ghostRec = new GhostRecorder();      // the player's lap in progress
+/** Lap time against the ghost for the lap just finished (null = no ghost to compare with). */
+let ghostDelta: number | null = null;
 
 /**
  * A season: a run of races rotating through the tracks from the opening one, scored by finishing
@@ -237,7 +245,7 @@ function raceConfig(): RaceConfig {
       playerName: lb.players[0].name, playerMods: setupMods(carSetup), grid: 'random', startHeat: 0,
     };
   }
-  if (tutorial) {
+  if (tutorial || trial) {
     return { field: [], playerName: LIVERIES[playerLivery].name, playerMods: setupMods(carSetup), grid: 'pole', startHeat: 0 };
   }
   if (mission !== null && save) {
@@ -337,6 +345,10 @@ function startRace(): void {
   cars = [...rivals.map((r) => r.car), ...humans, player];
   overheatedThisRace = false;
   raceBestLap = 0;
+  ghostRec.reset();
+  ghostDelta = null;
+  ghostLap = trial ? loadGhost(track.name) : null;
+  ghostCar = ghostLap ? makeGhostCar(ghostLap) : null;
 
   // Grid: shuffle the AI into the slots; the player goes on pole, at the back, or anywhere.
   const slots = cars.map((_, i) => i);
@@ -384,6 +396,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
   garage: openGarage,
   tutorial() {
     endTutorial();
+    trial = false;
     mission = null;
     season = null;
     menus.setSeason(false);
@@ -396,11 +409,13 @@ const menus = new Menus(LIVERIES, trackChoices, {
   },
   online() {
     endTutorial();
+    trial = false;
     menus.hide();
     lobbyUI.showMenu(playerName());
   },
   story() {
     endTutorial();
+    trial = false;
     menus.hide();
     storyUI.open(save);
   },
@@ -409,9 +424,11 @@ const menus = new Menus(LIVERIES, trackChoices, {
     mission = null;
     playerLivery = setup.car;
     raceLaps = setup.laps;
-    season = setup.races > 1 ? { races: setup.races, round: 0, openingTrack: setup.track, points: new Map() } : null;
+    trial = setup.trial;
+    season = !trial && setup.races > 1 ? { races: setup.races, round: 0, openingTrack: setup.track, points: new Map() } : null;
     menus.setSeason(!!season);
     startRound(setup.track);
+    if (trial) showToast(ghostLap ? `GHOST  ${formatTime(ghostLap.time)}` : 'SET A LAP TO RACE YOUR GHOST', '#e8c25a');
   },
   resume: play,
   restart() {
@@ -466,6 +483,7 @@ menus.setNewPlayer(!settings.tutorialDone);
 /** Set a mission up: its track, laps and field. */
 function loadMission(i: number): void {
   const m = MISSIONS[i];
+  trial = false;
   mission = i;
   season = null;
   raceLaps = m.laps;
@@ -657,6 +675,44 @@ if (import.meta.env.DEV) {
   };
 }
 
+function makeGhostCar(g: GhostLap): Car {
+  const car: Car = { craft: new Craft(), race: new RaceState(), ...livery(LIVERIES[g.livery] ? g.livery : 0), name: 'GHOST', ghost: true, skin: skinColors(g.skin) };
+  car.race.lapStart = 0;   // hovers like a car under way
+  return car;
+}
+
+/**
+ * Record the player's lap for the ghost. When a lap completes and beats the saved ghost (or there
+ * isn't one), it becomes the new ghost; in Time Trial the ghost replays it from the next lap.
+ */
+function ghostLapStep(lap: 'lap' | 'best' | null): void {
+  const pc = player.craft;
+  if (lap) {
+    const frames = ghostRec.take();
+    const t = player.race.lastLap;
+    const saved = loadGhost(track.name);
+    ghostDelta = ghostLap ? t - ghostLap.time : null;
+    // A standing-start first lap only becomes the ghost when there's nothing to chase yet.
+    if ((player.race.lap > 1 || !saved) && (!saved || t < saved.time - 1e-6) && frames.length >= 6) {
+      const g: GhostLap = { time: t, livery: carLivery.get(player) ?? 0, skin: achievements.equipped, frames };
+      saveGhost(track.name, g);
+      if (trial) { ghostLap = g; ghostCar = makeGhostCar(g); }
+    }
+  }
+  ghostRec.step(pc.pos.x, pc.pos.y, pc.heading, 1 / STEP);
+}
+
+/** Put the ghost where it was this far into its lap (false before the start or once its lap is over). */
+function placeGhost(drawTime: number): boolean {
+  if (!ghostCar || !ghostLap || player.race.lapStart < 0 || drawTime < goTime) return false;
+  const pose = ghostPose(ghostLap, drawTime - player.race.lapStart);
+  if (!pose) return false;
+  const c = ghostCar.craft;
+  c.pos.x = pose.x; c.pos.y = pose.y; c.heading = pose.heading;
+  c.vel.x = pose.vx; c.vel.y = pose.vy;
+  return true;
+}
+
 function showToast(text: string, color: string): void { toast = { text, color, t: 1.6 }; }
 
 function ordinal(n: number): string { return ['1ST', '2ND', '3RD'][n - 1] ?? `${n}TH`; }
@@ -742,14 +798,16 @@ function update(dt: number): void {
         resultsAt = time + RESULTS_DELAY;
       }
     }
+    if (car === player && racing && (!finishOrder.includes(player) || finishTimes.get(player) === time - goTime) && !online && mission === null && !tutorial) ghostLapStep(lap);
     if (lap && car === player && car.race.lap <= raceLaps && (raceBestLap === 0 || player.race.lastLap < raceBestLap)) {
       raceBestLap = player.race.lastLap;
     }
     if (car === player && !finishOrder.includes(player) && car.craft.overheated) overheatedThisRace = true;
     if (lap && car === player && !autopilot && car.race.lap < raceLaps) {
       sound.chime(lap === 'best');
-      if (lap === 'best') showToast(`BEST LAP  ${formatTime(player.race.lastLap)}`, '#c77dff');
-      else showToast(`LAP  ${formatTime(player.race.lastLap)}`, '#ffffff');
+      const vsGhost = ghostDelta === null ? '' : `   ${ghostDelta <= 0 ? '−' : '+'}${Math.abs(ghostDelta).toFixed(2)}`;
+      if (lap === 'best') showToast(`BEST LAP  ${formatTime(player.race.lastLap)}${vsGhost}`, '#c77dff');
+      else showToast(`LAP  ${formatTime(player.race.lastLap)}${vsGhost}`, '#ffffff');
     }
     const contact = collideWalls(track, car.craft, car.race, dt);
     if (contact) {
@@ -865,6 +923,13 @@ function resultsView(): ResultsView {
     return {
       title: 'RESULTS', subtitle, rows,
       buttons: [{ act: 'restart', label: 'RACE AGAIN', primary: true }, { act: 'lobby', label: 'BACK TO LOBBY' }],
+    };
+  }
+  if (trial) {
+    const g = loadGhost(track.name);
+    return {
+      title: 'TIME TRIAL', subtitle: `${subtitle}  ·  BEST ${formatTime(raceBestLap)}${g ? `  ·  GHOST ${formatTime(g.time)}` : ''}`, rows,
+      buttons: [{ act: 'restart', label: 'GO AGAIN', primary: true }, { act: 'change', label: 'CHANGE CAR' }],
     };
   }
   if (!season) {
@@ -1718,7 +1783,9 @@ function frame(now: number): void {
   const blended = online?.role !== 'guest' && (mode === 'racing' || mode === 'results');
   const restore = blended ? blendForDrawing(Math.min(1, acc / STEP)) : null;
   const chaseOn = view === 'chase' && chase !== null;
-  if (chaseOn) chase!.render({ time, cam, player, cars, track, particles }, renderScale);
+  const ghostOn = chaseOn && trial && (mode === 'racing' || mode === 'paused')
+    && placeGhost(time - (blended ? STEP * (1 - Math.min(1, acc / STEP)) : 0));
+  if (chaseOn) chase!.render({ time, cam, player, cars: ghostOn ? [...cars, ghostCar!] : cars, track, particles }, renderScale);
   drawFrame(ctx, innerWidth, innerHeight, {
     time, cam, player, cars, track, hud: raceHud(),
     particles, cursor: input.cursor, toast, locked: input.locked, chase: chaseOn, steer: keySteer,

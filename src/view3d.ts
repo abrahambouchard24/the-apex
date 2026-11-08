@@ -182,7 +182,12 @@ export class ChaseView {
     const seen = new Set<Car>();
     for (const car of s.cars) {
       let rig = this.rigs.get(car);
-      if (!rig) { rig = new CarRig(car); this.rigs.set(car, rig); this.scene.add(rig.root); }
+      if (!rig) {
+        rig = new CarRig(car);
+        if (car.ghost) ghostly(rig.root);
+        this.rigs.set(car, rig);
+        this.scene.add(rig.root);
+      }
       rig.update(car, s.time, dt);
       seen.add(car);
     }
@@ -190,7 +195,7 @@ export class ChaseView {
       if (!seen.has(car)) { this.scene.remove(rig.root); dispose(rig.root); this.rigs.delete(car); }
     }
     this.sparks.update(s.particles);
-    this.drafts.update(s.cars, s.time);
+    this.drafts.update(s.cars.filter((c) => !c.ghost), s.time);
     this.updateCamera(s, dt);
     const pc = s.player.craft;
     this.sun.target.position.set(pc.pos.x, 0, pc.pos.y);
@@ -1110,6 +1115,31 @@ function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>): THR
     out.push(inst);
   }
   return out;
+}
+
+/** Make a car a Time Trial ghost: a faint sea-teal hologram (its own copies of the materials), no shadow. */
+const GHOST_TINT = new THREE.Color(0x7fe6da);
+function ghostly(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.material) return;
+    m.castShadow = false;
+    m.receiveShadow = false;
+    const im = m as unknown as THREE.InstancedMesh;
+    if (im.isInstancedMesh) im.instanceColor = null;   // one colour for every cube
+    const fade = (mat: THREE.Material) => {
+      const c = mat.clone() as THREE.MeshBasicMaterial;
+      c.transparent = true;
+      c.opacity = Math.min(c.opacity, 0.3);
+      c.depthWrite = false;
+      c.blending = THREE.AdditiveBlending;
+      c.vertexColors = false;
+      if (c.color) c.color.copy(GHOST_TINT);
+      c.needsUpdate = true;
+      return c;
+    };
+    m.material = Array.isArray(m.material) ? m.material.map(fade) : fade(m.material);
+  });
 }
 
 class CarRig {
