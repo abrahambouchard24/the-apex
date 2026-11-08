@@ -193,10 +193,81 @@ const PAINTERS: Record<string, Painter> = {
     if (face === 'side' && Math.abs(y - 8) < 0.9 && x > -36 && x < 30) return [0xff2d55, true];
     return [kind === 'dark' ? 0x050506 : 0x101013, false];
   },
+
+  /** VALKYRIE: pearl-white plumage in swept feather rows, the tail feathers lit by the aurora. */
+  valkyrie(x, y, z, kind, face) {
+    if (kind === 'dark') return [0x8fa6bd, false];
+    if (kind === 'white') return [0xc9e6ff, false];
+    const w = face === 'side' ? y * 1.6 : Math.abs(z);
+    const row = Math.floor(w / 4), u = ((x + row * 3.5) % 8 + 8) % 8;
+    const edge = Math.abs(u - (4 - Math.abs((w % 4) - 2) * 1.6)) < 0.9;
+    if (x < -30 && edge) return [mix(0x9ff7e6, 0xc9b8ff, noise(x * 0.2, y * 0.2, z * 0.2)), true];
+    if (edge) return [0xb9cbe0, false];
+    return [mix(0xf6f9fc, 0xe2eaf3, noise(x * 0.15, y * 0.15, z * 0.15)), false];
+  },
+
+  /** MEDUSA: emerald serpent scales, a dark diamond chain down the spine, and eyes that glow. */
+  medusa(x, y, z, kind, face) {
+    if (kind === 'dark') return [0x0c241a, false];
+    if (kind === 'white') return [0xe3c26a, false];
+    if (face === 'side' && x > 26 && x < 31 && Math.abs(y - 11) < 1.6) return [0xd8ff6a, true];   // the eyes
+    if (face === 'top' && Math.abs(z) < 4) {
+      const d = Math.abs(((x % 8) + 8) % 8 - 4) + Math.abs(z);
+      if (d < 3.4) return [d < 2 ? 0x07140e : 0xd9b85a, false];
+    }
+    const w = face === 'side' ? y * 1.5 : z;
+    const u = (x + w) * 0.7071, v = (x - w) * 0.7071;
+    const fu = ((u % 4) + 4) % 4, fv = ((v % 4) + 4) % 4;
+    if (fu < 0.8 || fv < 0.8) return [0x123f2b, false];
+    return [mix(0x1f7a4f, 0x3fae6e, noise(x * 0.12, y * 0.12, z * 0.12)), false];
+  },
+
+  /** POSEIDON: ocean blue from the deep to the shallows, foam-capped waves along the flanks, a gold trident on the spine. */
+  poseidon(x, y, z, kind, face) {
+    if (kind === 'dark') return [0x071a33, false];
+    if (kind === 'white') return [GOLD, false];
+    if (face === 'top') {
+      const az = Math.abs(z);
+      if (az < 0.9 && x > -36 && x < 30) return [GOLD, false];                       // the shaft
+      if (x > 20 && x < 30 && Math.abs(az - 3) < 0.9) return [GOLD, false];           // the prongs
+      if (x > 19 && x < 21 && az < 4) return [GOLD, false];                           // the crossbar
+    }
+    if (face === 'side') {
+      const crest = 6.5 + Math.sin(x * 0.42) * 1.6 + Math.sin(x * 0.13) * 0.8;
+      if (Math.abs(y - crest) < 0.9) return [0xeef9ff, false];
+      if (y < crest) return [mix(0x0a2a55, 0x123f73, y / 8), false];
+    }
+    return [mix(0x123f73, 0x2a7fb8, Math.max(0, (y - 6) / 10) * 0.8 + noise(x * 0.1, y * 0.1, z * 0.1) * 0.2), false];
+  },
+
+  /** VESTA: the hearth that never goes out: deep crimson, flames licking up from the tail, embers rising. */
+  vesta(x, y, z, kind) {
+    if (kind === 'dark') return [0x2a060c, false];
+    if (kind === 'white') return [0xffd27a, false];
+    if (hash3(x * 2, y * 2, z * 2) > 0.975 && x > -30) return [mix(0xffb347, 0xffe7a0, hash3(x, z, y)), true];   // embers
+    const reach = -18 + (fbm(x * 0.05, z * 0.15 + y * 0.15, 3) - 0.5) * 30;   // how far forward the flames lick
+    if (x < reach) {
+      const t = Math.max(0, Math.min(1, (reach - x) / 18));
+      return [t > 0.6 ? 0xffd27a : t > 0.3 ? 0xff8a2a : 0xd2381e, false];
+    }
+    return [mix(0x5e0f1c, 0x8e1a2e, noise(x * 0.1, y * 0.1, z * 0.1)), false];
+  },
+
+  /** ANUBIS: night-black, banded down the flanks in gold and lapis like a royal headdress. */
+  anubis(x, y, z, kind, face) {
+    if (kind === 'dark') return [0x060608, false];
+    if (kind === 'white') return [GOLD, false];
+    if (face === 'side' && x > -34 && x < 22) {
+      const band = Math.floor((y - 2) / 2);
+      if (band >= 0 && band <= 5) return [band % 2 ? 0x2a4fbf : 0xd9b25b, false];
+    }
+    if (face === 'top' && Math.abs(Math.abs(z) - 4.5) < 0.8 && x > -36 && x < 26) return [GOLD, false];
+    return [mix(0x0d0d11, 0x1b1b22, noise(x * 0.15, y * 0.15, z * 0.15)), false];
+  },
 };
 
 /** Liveries whose trim metal isn't the usual gold (wing leading edges, intake rings, fairings). */
-const METAL: Record<string, number> = { platinum: 0xe9eef5, vanta: 0x2a2a31, circuit: 0x2a3a42, obsidian: 0xe3b85a };
+const METAL: Record<string, number> = { platinum: 0xe9eef5, vanta: 0x2a2a31, circuit: 0x2a3a42, obsidian: 0xe3b85a, valkyrie: 0xdfe8f2 };
 
 /** The trim metal for a skin's pattern (undefined = the usual gold). */
 export function liveryMetal(pattern?: string): number | undefined {

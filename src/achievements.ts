@@ -24,6 +24,11 @@ export const SKINS: Skin[] = [
   { id: 'royal', name: 'AUGUSTUS', colors: { body: '#3a1f6e', trim: '#140a2a', accent: '#e8c25a', glow: '#c9a6ff', pattern: 'imperial' } },
   { id: 'neonnet', name: 'DAEDALUS', colors: { body: '#16242a', trim: '#070d10', accent: '#3fffb0', glow: '#3fffd8', pattern: 'circuit' } },
   { id: 'carbon', name: 'NYX', colors: { body: '#1c1d22', trim: '#0a0a0d', accent: '#ff2d55', glow: '#ff6a85', pattern: 'vanta' } },
+  { id: 'valkyrie', name: 'VALKYRIE', colors: { body: '#eef3f8', trim: '#8fa6bd', accent: '#c9e6ff', glow: '#9ff7e6', pattern: 'valkyrie' } },
+  { id: 'medusa', name: 'MEDUSA', colors: { body: '#1f6b4a', trim: '#0c241a', accent: '#e3c26a', glow: '#7dffb8', pattern: 'medusa' } },
+  { id: 'poseidon', name: 'POSEIDON', colors: { body: '#123f73', trim: '#071a33', accent: '#e8c25a', glow: '#6fe8ff', pattern: 'poseidon' } },
+  { id: 'vesta', name: 'VESTA', colors: { body: '#7a1424', trim: '#2a060c', accent: '#ffd27a', glow: '#ffb347', pattern: 'vesta' } },
+  { id: 'anubis', name: 'ANUBIS', colors: { body: '#121216', trim: '#060608', accent: '#e3b85a', glow: '#4f7dff', pattern: 'anubis' } },
 ];
 
 export interface Achievement { id: string; name: string; desc: string; skin: string; goal?: number }
@@ -35,12 +40,17 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'perfect-launch', name: 'PERFECT LAUNCH', desc: 'Get a perfect turbo start', skin: 'lightning' },
   { id: 'clean-sheet', name: 'CLEAN SHEET', desc: 'Finish a race of 3 laps or more without touching a wall', skin: 'ghost' },
   { id: 'drift-king', name: 'DRIFT KING', desc: 'Charge a full battery by drifting within a single lap', skin: 'sunset' },
-  { id: 'grand-tour', name: 'GRAND TOUR', desc: 'Finish a race on every track', skin: 'prism', goal: 8 },
+  { id: 'grand-tour', name: 'GRAND TOUR', desc: 'Finish a race on 8 different tracks', skin: 'prism', goal: 8 },
   { id: 'grand-slam', name: 'GRAND SLAM', desc: 'Win on 4 different tracks', skin: 'chrome', goal: 4 },
   { id: 'record-breaker', name: 'RECORD BREAKER', desc: 'Set a lap record on 3 tracks', skin: 'ice', goal: 3 },
   { id: 'champion', name: 'CHAMPION', desc: 'Win a season', skin: 'royal' },
   { id: 'online-debut', name: 'ONLINE DEBUT', desc: 'Finish an online race', skin: 'neonnet' },
   { id: 'online-victor', name: 'ONLINE VICTOR', desc: 'Win an online race', skin: 'carbon' },
+  { id: 'sky-high', name: 'SKY HIGH', desc: 'Take every jump in a sprint', skin: 'valkyrie' },
+  { id: 'untouchable', name: 'UNTOUCHABLE', desc: 'Finish a sprint without touching a wall', skin: 'medusa' },
+  { id: 'five-realms', name: 'FIVE REALMS', desc: 'Win on all five sprints', skin: 'poseidon', goal: 5 },
+  { id: 'devoted', name: 'DEVOTED', desc: 'Meet the daily challenge 7 days in a row', skin: 'vesta', goal: 7 },
+  { id: 'phantom', name: 'PHANTOM', desc: 'Beat your Time Trial ghost by a full second', skin: 'anubis' },
 ];
 
 /** Online race history, from this player's own point of view. */
@@ -53,12 +63,15 @@ export interface Progress {
   tracksWon: string[];
   recordTracks: string[];
   online: OnlineRecord;
+  /** Sprints won (for FIVE REALMS) and the longest daily streak (for DEVOTED). */
+  sprintsWon: string[];
+  bestStreak: number;
 }
 
 const KEY = 'the-apex-progress';
 
 export function loadProgress(): Progress {
-  const blank: Progress = { unlocked: [], equipped: 'stock', tracksFinished: [], tracksWon: [], recordTracks: [], online: { races: 0, wins: 0, podiums: 0, best: 0 } };
+  const blank: Progress = { unlocked: [], equipped: 'stock', tracksFinished: [], tracksWon: [], recordTracks: [], online: { races: 0, wins: 0, podiums: 0, best: 0 }, sprintsWon: [], bestStreak: 0 };
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null');
     if (!raw || typeof raw !== 'object') return blank;
@@ -68,6 +81,7 @@ export function loadProgress(): Progress {
       unlocked: list(raw.unlocked), equipped: typeof raw.equipped === 'string' ? raw.equipped : 'stock',
       tracksFinished: list(raw.tracksFinished), tracksWon: list(raw.tracksWon), recordTracks: list(raw.recordTracks),
       online: { races: n(raw.online?.races), wins: n(raw.online?.wins), podiums: n(raw.online?.podiums), best: n(raw.online?.best) },
+      sprintsWon: list(raw.sprintsWon), bestStreak: n(raw.bestStreak),
     };
     if (!skinUnlocked(p, p.equipped)) p.equipped = 'stock';
     return p;
@@ -94,6 +108,8 @@ export function progressOf(p: Progress, a: Achievement): number {
   if (a.id === 'grand-tour') return p.tracksFinished.length;
   if (a.id === 'grand-slam') return p.tracksWon.length;
   if (a.id === 'record-breaker') return p.recordTracks.length;
+  if (a.id === 'five-realms') return p.sprintsWon.length;
+  if (a.id === 'devoted') return Math.min(7, p.bestStreak);
   return 0;
 }
 
@@ -109,6 +125,10 @@ export interface RaceOutcome {
   special: boolean;
   touchedWall: boolean;
   driftCharge: number;    // most battery charged by drifting in any one lap (0..1)
+  /** A sprint run, and how many of its jumps the player took (of how many). */
+  sprint?: boolean;
+  jumpsTaken?: number;
+  jumps?: number;
 }
 
 /**
@@ -142,6 +162,15 @@ export class Achievements {
     this.unlock('first-flag');
     if (o.place === 1 && o.racers > 1) this.unlock('winner');
     if (!o.touchedWall && o.laps >= 3) this.unlock('clean-sheet');
+    if (o.sprint) {
+      if (!o.touchedWall) this.unlock('untouchable');
+      if (o.jumps && (o.jumpsTaken ?? 0) >= o.jumps) this.unlock('sky-high');
+      if (!o.special && o.place === 1 && o.racers > 1 && !this.p.sprintsWon.includes(o.track)) {
+        this.p.sprintsWon.push(o.track);
+        saveProgress(this.p);
+        if (this.p.sprintsWon.length >= 5) this.unlock('five-realms');
+      }
+    }
     if (o.driftCharge >= 0.99) this.unlock('drift-king');
     if (!o.special) {
       if (!this.p.tracksFinished.includes(o.track)) this.p.tracksFinished.push(o.track);
@@ -154,6 +183,12 @@ export class Achievements {
       this.unlock('online-debut');
       if (o.place === 1 && o.racers > 1) this.unlock('online-victor');
     }
+  }
+
+  /** A daily challenge met: the streak of days in a row so far. */
+  dailyStreak(streak: number): void {
+    if (streak > this.p.bestStreak) { this.p.bestStreak = streak; saveProgress(this.p); }
+    if (streak >= 7) this.unlock('devoted');
   }
 
   /** The player's personal online record, updated after each online race. */

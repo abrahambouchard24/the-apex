@@ -104,6 +104,8 @@ achievements.onUnlock = (a) => { garageUI.notify(a); refreshSkinCards(); };
 /** Per race: did the player touch a wall, and how much battery did drifting charge. */
 let touchedWall = false;
 let driftCharge = 0;
+/** Jumps the player has landed this race (a sprint: SKY HIGH needs every one). */
+let jumpsTaken = 0;
 /** Each car's skin id (sent to guests in the start message). */
 const carSkin = new Map<Car, string>();
 /** Each skin painted on the craft, for the skin cards and the Garage (each rendered once, when first needed). */
@@ -415,6 +417,7 @@ function startRace(): void {
   carSkin.set(player, achievements.equipped);
   touchedWall = false;
   driftCharge = 0;
+  jumpsTaken = 0;
   names.set(player, cfg.playerName);
   carLivery.set(player, pl);
   player.race.bestLap = mission !== null || online ? 0 : bestLaps[trackIndex];
@@ -688,7 +691,7 @@ function startRound(index: number): void {
 function play(): void {
   mode = 'racing';
   sound.unlock();
-  sound.race();
+  sound.race(track.sprint ? 'sprint' : 'race');
   menus.hide();
   input.release();
   input.takePause();   // drop keys pressed while in a menu
@@ -806,6 +809,7 @@ function ghostLapStep(lap: 'lap' | 'best' | null): void {
     const t = player.race.lastLap;
     const saved = loadGhost(track.name, trackSig(track.pts));
     ghostDelta = ghostLap ? t - ghostLap.time : null;
+    if (trial && ghostDelta !== null && ghostDelta <= -1) achievements.unlock('phantom');
     // A standing-start first lap only becomes the ghost when there's nothing to chase yet.
     if ((player.race.lap > 1 || !saved) && (!saved || t < saved.time - 1e-6) && frames.length >= 6) {
       const g: GhostLap = { time: t, livery: carLivery.get(player) ?? 0, skin: achievements.equipped, frames, sig: trackSig(track.pts), stride: 4 };
@@ -856,8 +860,9 @@ function landing(car: Car): void {
   if (!hit) return;
   if (hit > 150) emitSparks(car.craft.pos.x, car.craft.pos.y, car.craft);
   if (car === player) {
+    jumpsTaken++;
     cam.shake = Math.max(cam.shake, clamp((hit - 200) / 40, 1, 9));   // a normal landing (about 390) is a firm bump
-    sound.thud(clamp(hit * 0.6, 90, 400));
+    sound.land(hit);
   }
 }
 
@@ -934,14 +939,17 @@ function update(dt: number): void {
       finishTimes.set(car, time - goTime);
       if (car === player) {
         showToast(`FINISHED ${ordinal(finishOrder.length)}`, '#ffd23f');
+        sound.crowd(finishOrder.length === 1);
         sound.chime(true);
         if (!online && !tutorial) {
           achievements.raceFinished({ track: track.name, place: finishOrder.length, racers: cars.length, laps: laps(),
-            online: false, tutorial: false, special: mission !== null || !!daily, touchedWall, driftCharge });
+            online: false, tutorial: false, special: mission !== null || !!daily, touchedWall, driftCharge,
+            sprint: track.sprint, jumpsTaken, jumps: track.jumps.length });
         }
         if (daily) {
           const met = finishOrder.length <= daily.top;
           dailyResult = { met, better: recordDaily(daily.date, met, time - goTime) };
+          if (met) achievements.dailyStreak(dailyStatus(daily.date).streak);
         }
         // Hand the car to an AI driver for the cool-down lap.
         autopilot = new Driver(0.6, 9);
@@ -974,6 +982,7 @@ function update(dt: number): void {
     }
   }
   sound.scrape(scraping);
+  sound.air(player.craft.airborne && !finishOrder.includes(player) ? player.craft.alt / 90 : 0);
   // A new track record (not in Story, online or the tutorial, where the car or the race differ).
   if (!online && mission === null && !tutorial && !daily && player.race.bestLap > 0
       && (bestLaps[trackIndex] === 0 || player.race.bestLap < bestLaps[trackIndex] - 1e-6)) {

@@ -1,9 +1,10 @@
 // Music: two loops synthesized live with Web Audio, scheduled a little ahead on a 16th-note grid.
 //   menu: chill house, 118 BPM in A minor (soft kick, offbeat hats, warm pads, Rhodes-ish stabs)
 //   race: deep / nu-disco house, 122 BPM in F# minor (pumping pads, octave bass, filtered arp)
+//   sprint: driving progressive house, 126 BPM in E minor (rolling bass, open hats, arp and stabs)
 // Everything goes through a shared reverb and delay, and a low-pass that muffles it on pause.
 
-export type SongName = 'menu' | 'race';
+export type SongName = 'menu' | 'race' | 'sprint';
 
 interface Song {
   bpm: number;
@@ -62,6 +63,26 @@ export const SONGS: Record<SongName, Song> = {
     padCutoff: 900,
     duck: 0.75,
     kickLevel: 0.8,
+  },
+  sprint: {
+    bpm: 126,
+    chords: [
+      { pad: [55, 59, 62, 66], bass: 40 },      // Em9
+      { pad: [55, 60, 64, 67], bass: 36 },      // Cmaj7
+      { pad: [57, 62, 66, 69], bass: 38 },      // D6
+      { pad: [54, 59, 62, 66], bass: 35 },      // Bm7
+    ],
+    kick: [0, 4, 8, 12],
+    clap: [4, 12],
+    openHat: [2, 6, 10, 14],
+    closedHat: [1, 3, 5, 7, 9, 11, 13, 15],
+    shaker: false,
+    bass: [[0, 0, 0.5], [1, 0, 0.5], [3, 1, 0.5], [4, 0, 0.5], [6, 0, 0.5], [7, 1, 0.5], [8, 0, 0.5], [10, 0, 0.5], [11, 1, 0.5], [12, 0, 0.5], [14, 1, 0.5]],
+    stabs: [[3, 0.5], [11, 0.5]],
+    arp: true,
+    padCutoff: 1200,
+    duck: 0.7,
+    kickLevel: 0.85,
   },
 };
 

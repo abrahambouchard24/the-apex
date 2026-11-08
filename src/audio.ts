@@ -22,6 +22,11 @@ export class Sound {
   private engineFilter!: BiquadFilterNode;
   private engineOscs: OscillatorNode[] = [];
   private scrapeGain!: GainNode;
+  /** Wind while airborne off a jump: its level and a band-pass that rises with height. */
+  private airGain!: GainNode;
+  private airBand!: BiquadFilterNode;
+  /** Which race loop to play: the circuit groove or the sprint one. */
+  private raceSong: 'race' | 'sprint' = 'race';
   private noise!: AudioBuffer;
   muted = false;
 
@@ -35,8 +40,8 @@ export class Sound {
   /** Start screen / results: chill house, no engine. */
   menu(): void { this.scene = 'menu'; this.apply(); }
 
-  /** Racing: race music and effects on. */
-  race(): void { this.scene = 'race'; this.apply(); }
+  /** Racing: race music (the sprint loop on a sprint) and effects on. */
+  race(song: 'race' | 'sprint' = 'race'): void { this.scene = 'race'; this.raceSong = song; this.apply(); }
 
   /** Pause menu: effects off, race music muffled. */
   pause(): void { this.scene = 'paused'; this.apply(); }
@@ -45,7 +50,7 @@ export class Sound {
     if (!this.ctx || !this.music) return;
     const t = this.ctx.currentTime;
     this.sfx.gain.setTargetAtTime(this.scene === 'race' ? 1 : 0, t, 0.05);
-    this.music.play(this.scene === 'menu' ? 'menu' : 'race');
+    this.music.play(this.scene === 'menu' ? 'menu' : this.raceSong);
     this.music.setMuffled(this.scene === 'paused');
   }
 
@@ -161,6 +166,93 @@ export class Sound {
     osc.stop(t + 0.32);
   }
 
+  /**
+   * Touching down after a jump: a deep body thump, a crunch of the skirt hitting the deck and a
+   * short metallic ring from the hull. impact is the vertical speed (px/s), about 330 normally.
+   */
+  land(impact: number): void {
+    const ctx = this.live();
+    if (!ctx) return;
+    const t = ctx.currentTime, k = Math.min(1, impact / 450);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(95, t);
+    osc.frequency.exponentialRampToValueAtTime(32, t + 0.32);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.55 * k, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+    osc.connect(g).connect(this.sfx);
+    osc.start(t); osc.stop(t + 0.4);
+    const src = this.noiseSource();
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowpass';
+    low.frequency.setValueAtTime(1600, t);
+    low.frequency.exponentialRampToValueAtTime(240, t + 0.25);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.32 * k, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    src.connect(low).connect(ng).connect(this.sfx);
+    src.start(t); src.stop(t + 0.3);
+    for (const [f, v] of [[310, 0.05], [467, 0.035]] as const) {
+      const ring = ctx.createOscillator();
+      ring.type = 'triangle';
+      ring.frequency.value = f;
+      const rg = ctx.createGain();
+      rg.gain.setValueAtTime(v * k, t + 0.01);
+      rg.gain.exponentialRampToValueAtTime(0.0005, t + 0.5);
+      ring.connect(rg).connect(this.sfx);
+      ring.start(t); ring.stop(t + 0.52);
+    }
+  }
+
+  /** Wind while airborne: 0 = on the ground, 1 = at the top of a big jump. Set every step. */
+  air(level: number): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.airGain.gain.setTargetAtTime(Math.min(1, level) * 0.2, t, level > 0 ? 0.08 : 0.12);
+    this.airBand.frequency.setTargetAtTime(500 + Math.min(1, level) * 900, t, 0.1);
+  }
+
+  /** The crowd at the finish: a swell of cheering that fades over a few seconds (bigger for a win). */
+  crowd(win: boolean): void {
+    const ctx = this.live();
+    if (!ctx) return;
+    const t = ctx.currentTime, peak = win ? 0.22 : 0.13, len = win ? 4.5 : 3;
+    for (const [f, q] of [[700, 0.7], [1500, 1.1], [3200, 1.6]] as const) {
+      const src = this.noiseSource();
+      const band = ctx.createBiquadFilter();
+      band.type = 'bandpass';
+      band.frequency.value = f;
+      band.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak / (f > 2000 ? 2.5 : 1), t + 0.6);
+      g.gain.setTargetAtTime(0.0001, t + 1.2, len / 4);
+      // A slow wobble, so it sounds like many voices rather than steady hiss.
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 3 + f / 1000;
+      const lg = ctx.createGain();
+      lg.gain.value = peak * 0.35;
+      lfo.connect(lg).connect(g.gain);
+      src.connect(band).connect(g).connect(this.sfx);
+      src.start(t); src.stop(t + len);
+      lfo.start(t); lfo.stop(t + len);
+    }
+    // A few whistles over the top.
+    if (win) [0.5, 1.1, 1.7].forEach((d) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(1900, t + d);
+      o.frequency.linearRampToValueAtTime(2500, t + d + 0.25);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0, t + d);
+      og.gain.linearRampToValueAtTime(0.035, t + d + 0.05);
+      og.gain.linearRampToValueAtTime(0, t + d + 0.35);
+      o.connect(og).connect(this.sfx);
+      o.start(t + d); o.stop(t + d + 0.4);
+    });
+  }
+
   /** A firework bursting: a soft thump, then a crackle tailing off. */
   pop(): void {
     const ctx = this.live();
@@ -269,6 +361,17 @@ export class Sound {
     const scrapeSrc = this.noiseSource();
     scrapeSrc.connect(scrapeBand).connect(this.scrapeGain).connect(this.sfx);
     scrapeSrc.start();
+
+    // Airtime wind: looping noise through a soft band-pass, silent until air() raises it.
+    this.airBand = ctx.createBiquadFilter();
+    this.airBand.type = 'bandpass';
+    this.airBand.frequency.value = 600;
+    this.airBand.Q.value = 0.6;
+    this.airGain = ctx.createGain();
+    this.airGain.gain.value = 0;
+    const airSrc = this.noiseSource();
+    airSrc.connect(this.airBand).connect(this.airGain).connect(this.sfx);
+    airSrc.start();
 
     this.music = new Music(ctx, this.musicVol, this.noise);
   }
