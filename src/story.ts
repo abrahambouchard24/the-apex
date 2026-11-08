@@ -115,7 +115,7 @@ export const CHAPTER_TAGLINES = [
 export const MISSIONS: Mission[] = [
   // ---- Chapter 1: County Cup ------------------------------------------------------------------
   {
-    id: 'prove-it', chapter: 0, title: 'PROVE IT', track: 'VELOCITY RING', laps: 2, grid: 'random', aiBuff: 0,
+    id: 'prove-it', chapter: 0, title: 'PROVE IT', track: 'VELOCITY COLOSSEUM', laps: 2, grid: 'random', aiBuff: 0,
     rivals: [CHARLIE(0.74)],
     goal: { kind: 'win' }, points: 150, bonusPoints: 0,
     intro: [
@@ -134,7 +134,7 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
-    id: 'county-cup', chapter: 0, title: 'COUNTY CUP', track: 'VELOCITY RING', laps: 3, grid: 'back', aiBuff: 0,
+    id: 'county-cup', chapter: 0, title: 'COUNTY CUP', track: 'VELOCITY COLOSSEUM', laps: 3, grid: 'back', aiBuff: 0,
     rivals: fillers(5, 0.72, 0.84, [0]),
     goal: { kind: 'top', n: 3 }, bonus: { kind: 'win' }, points: 200, bonusPoints: 100,
     intro: [
@@ -146,14 +146,14 @@ export const MISSIONS: Mission[] = [
       { who: 'announcer', text: 'A rookie on the County Cup podium! Somebody find out who that red car belongs to!', if: { kind: 'not', cond: { kind: 'win' } } },
       { who: 'lupis', text: 'Excuse me. Lupis. Team Secretary, Leopard GP. Perhaps you\'ve heard of us.' },
       { who: 'charlie', text: 'Leopard GP. Now there\'s a name I haven\'t heard in a while.' },
-      { who: 'lupis', text: 'We have a seat open in the Apex Series. A tryout, tomorrow, at the Grand Prix circuit. Bring Charlie if you like.' },
+      { who: 'lupis', text: 'We have a seat open in the Apex Series. A tryout, tomorrow, at the Apex Arena. Bring Charlie if you like.' },
     ],
     lose: [
       { who: 'charlie', text: 'Off the podium. It happens. Shake it off and line up again.' },
     ],
   },
   {
-    id: 'tryout', chapter: 0, title: 'THE TRYOUT', track: 'APEX GRAND PRIX', laps: 3, grid: 'pole', aiBuff: 0,
+    id: 'tryout', chapter: 0, title: 'THE TRYOUT', track: 'APEX ARENA', laps: 3, grid: 'pole', aiBuff: 0,
     rivals: [],
     goal: { kind: 'lap', seconds: 32.0 }, bonus: { kind: 'lap', seconds: 29.5 }, points: 250, bonusPoints: 100,
     unlocks: 'GARAGE UNLOCKED: spend team points on upgrades from the story menu.',
@@ -174,11 +174,11 @@ export const MISSIONS: Mission[] = [
 
   // ---- Chapter 2: Leopard GP ------------------------------------------------------------------
   {
-    id: 'shakedown', chapter: 1, title: 'SHAKEDOWN', track: 'HARBOR LIGHTS', laps: 3, grid: 'random', aiBuff: 0.01,
+    id: 'shakedown', chapter: 1, title: 'SHAKEDOWN', track: 'NEW ATLANTIS', laps: 3, grid: 'random', aiBuff: 0.01,
     rivals: fillers(3, 0.8, 0.88, [0]),
     goal: { kind: 'and', goals: [{ kind: 'top', n: 3 }, { kind: 'cool' }] }, bonus: { kind: 'win' }, points: 250, bonusPoints: 100,
     intro: [
-      { who: 'sophi', text: 'First proper race in the Apex Series. Harbor Lights. Four cars.' },
+      { who: 'sophi', text: 'First proper race in the Apex Series. New Atlantis. Four cars.' },
       { who: 'sophi', text: 'I rebuilt the cooling last night and I want to know it works. Top three, and do NOT overheat my car.' },
       { who: 'sophi', text: 'If it gets hot, there\'s a cooling lane on the outside of the main straight. Use it.' },
     ],
@@ -192,7 +192,7 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
-    id: 'enter-judah', chapter: 1, title: 'ENTER JUDAH', track: 'NEON STREETS', laps: 3, grid: 'random', aiBuff: 0.015,
+    id: 'enter-judah', chapter: 1, title: 'ENTER JUDAH', track: 'NEW YORK', laps: 3, grid: 'random', aiBuff: 0.015,
     // Judah's debut: he matches whatever you've bought in the garage, so only driving beats him.
     rivals: [JUDAH(0.99, 0.06, true), ROOK(0.88), ...fillers(3, 0.8, 0.88, [0, 4, 5])],
     goal: { kind: 'top', n: 3 }, bonus: { kind: 'beat', who: 'judah' }, points: 300, bonusPoints: 150,
@@ -218,16 +218,16 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
-    id: 'penalty', chapter: 1, title: 'BACK OF THE GRID', track: 'CRYSTAL CANYON', laps: 3, grid: 'back', aiBuff: 0.02,
+    id: 'penalty', chapter: 1, title: 'BACK OF THE GRID', track: 'CRYSTAL FRONT', laps: 3, grid: 'back', aiBuff: 0.02,
     rivals: [ROOK(0.9), ...fillers(4, 0.82, 0.9, [0, 5])],
     goal: { kind: 'top', n: 3 }, bonus: { kind: 'beat', who: 'rook' }, points: 300, bonusPoints: 150,
     intro: [
       { who: 'lupis', text: 'Vanta filed a protest about our "unsafe driving" in the streets. The stewards agreed with them.' },
       { who: 'lupis', text: 'You start from the back. Judah, of course, sits this one out to "rest".' },
-      { who: 'sophi', text: 'Crystal Canyon is all switchbacks. Drift the long corners: it charges the boost. Then spend it on the way out.' },
+      { who: 'sophi', text: 'Crystal Front is all switchbacks, through the old war zone. Drift the long corners: it charges the boost. Then spend it on the way out.' },
     ],
     win: [
-      { who: 'sophi', text: 'Last to the podium. On the canyon.' },
+      { who: 'sophi', text: 'Last to the podium. On the front.' },
       { who: 'sophi', text: 'And you took Rook. He\'s going to hear about that from Judah.', if: { kind: 'beat', who: 'rook' } },
       { who: 'rook', text: '...Fine driving, Leopard. Don\'t tell him I said that.', if: { kind: 'beat', who: 'rook' } },
       { who: 'rook', text: 'Nice recovery, Leopard. Still behind me, though.', if: { kind: 'not', cond: { kind: 'beat', who: 'rook' } } },
@@ -239,11 +239,11 @@ export const MISSIONS: Mission[] = [
 
   // ---- Chapter 3: The Climb -------------------------------------------------------------------
   {
-    id: 'last-ride', chapter: 2, title: 'CHARLIE\'S LAST RIDE', track: 'SUMMIT PASS', laps: 3, grid: 'random', aiBuff: 0.015,
+    id: 'last-ride', chapter: 2, title: 'CHARLIE\'S LAST RIDE', track: 'LAPPLAND', laps: 3, grid: 'random', aiBuff: 0.015,
     rivals: [CHARLIE(0.93), ...fillers(4, 0.84, 0.92, [0, 3])],
     goal: { kind: 'beat', who: 'charlie' }, bonus: { kind: 'win' }, points: 350, bonusPoints: 150,
     intro: [
-      { who: 'charlie', text: 'Leopard GP let me have one more go. Summit Pass. My favorite road in the world.' },
+      { who: 'charlie', text: 'Leopard GP let me have one more go. Lappland. My favorite road in the world.' },
       { who: 'charlie', text: 'I\'m not here to make friends, {name}. I want to see what they\'ve taught you. Don\'t you dare lift for me.' },
     ],
     win: [
@@ -255,7 +255,7 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
-    id: 'mirage', chapter: 2, title: 'MIRAGE', track: 'DESERT MIRAGE', laps: 3, grid: 'random', aiBuff: 0.015,
+    id: 'mirage', chapter: 2, title: 'MIRAGE', track: 'HIEROPOLIS', laps: 3, grid: 'random', aiBuff: 0.015,
     rivals: [ROOK(0.95), JUDAH(0.96, 0.05), ...fillers(3, 0.86, 0.93, [0, 4, 5])],
     goal: { kind: 'beat', who: 'rook' }, bonus: { kind: 'beat', who: 'judah' }, points: 350, bonusPoints: 200,
     intro: [
@@ -272,7 +272,7 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
-    id: 'sabotage', chapter: 2, title: 'SABOTAGE', track: 'SKYLINE CAROUSEL', laps: 3, grid: 'random', aiBuff: 0.015,
+    id: 'sabotage', chapter: 2, title: 'SABOTAGE', track: 'HANGING GARDENS', laps: 3, grid: 'random', aiBuff: 0.015,
     rivals: [JUDAH(0.97, 0.05), ROOK(0.95), ...fillers(3, 0.88, 0.95, [0, 4, 5])],
     startHeat: 0.55,
     goal: { kind: 'top', n: 3 }, bonus: { kind: 'beat', who: 'judah' }, points: 400, bonusPoints: 200,
@@ -296,7 +296,7 @@ export const MISSIONS: Mission[] = [
 
   // ---- Chapter 4: The Apex --------------------------------------------------------------------
   {
-    id: 'rivals', chapter: 3, title: 'RIVALS', track: 'HARBOR LIGHTS', laps: 4, grid: 'random', aiBuff: 0.015,
+    id: 'rivals', chapter: 3, title: 'RIVALS', track: 'NEW ATLANTIS', laps: 4, grid: 'random', aiBuff: 0.015,
     rivals: [JUDAH(0.95, 0.02), ROOK(0.95), ...fillers(3, 0.9, 0.95, [0, 4, 5])],
     goal: { kind: 'beat', who: 'judah' }, bonus: { kind: 'win' }, points: 450, bonusPoints: 200,
     intro: [
@@ -317,12 +317,12 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
-    id: 'final', chapter: 3, title: 'THE APEX', track: 'APEX GRAND PRIX', laps: 5, grid: 'back', aiBuff: 0.01,
+    id: 'final', chapter: 3, title: 'THE APEX', track: 'APEX ARENA', laps: 5, grid: 'back', aiBuff: 0.01,
     rivals: [JUDAH(0.96, 0.025), ROOK(0.93), CHARLIE(0.92), ...fillers(2, 0.88, 0.93, [0, 3, 4, 5])],
     goal: { kind: 'win' }, bonus: { kind: 'cool' }, points: 600, bonusPoints: 250,
     unlocks: 'ROOKIE SEASON COMPLETE. Every mission can be replayed from the story menu.',
     intro: [
-      { who: 'announcer', text: 'The season final at the Apex Grand Prix. Win it and the title goes to Leopard GP. Lose it and it\'s Judah\'s third.' },
+      { who: 'announcer', text: 'The season final at the Apex Arena. Win it and the title goes to Leopard GP. Lose it and it\'s Judah\'s third.' },
       { who: 'lupis', text: 'Vanta protested again. You start from the back. Of course you do.' },
       { who: 'charlie', text: 'I talked my way onto the grid. If Judah gets stuck behind me for a lap or two, well. Accidents happen.' },
       { who: 'sophi', text: 'The car\'s everything I\'ve got. Five laps. Go get it, {name}.' },

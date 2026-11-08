@@ -24,8 +24,8 @@ const NEON: TrackTheme = { wall: '#4fe3ff', wallFace: '#bff6ff', lights: '255, 7
 
 export const TRACKS: TrackDef[] = [
   {
-    name: 'APEX GRAND PRIX',
-    blurb: 'Balanced F1 circuit: chicane, hairpin, esses',
+    name: 'APEX ARENA',
+    blurb: 'Futurist arena: chicane, hairpin, esses',
     scale: 1.27,
     theme: NEON,
     control: [
@@ -55,8 +55,8 @@ export const TRACKS: TrackDef[] = [
     ],
   },
   {
-    name: 'VELOCITY RING',
-    blurb: 'Fast oval: flat out, slipstream battles',
+    name: 'VELOCITY COLOSSEUM',
+    blurb: 'Marble colosseum oval: flat out, slipstream battles',
     theme: { wall: '#ffd23f', wallFace: '#fff3c4', lights: '255, 140, 40', kerb: '#ff8a1f', surface: '#26252f' },
     control: [
       [0, 1400],
@@ -77,8 +77,8 @@ export const TRACKS: TrackDef[] = [
     ],
   },
   {
-    name: 'NEON STREETS',
-    blurb: 'Tight street circuit: square corners, short straights',
+    name: 'NEW YORK',
+    blurb: 'Deco skyline streets: square corners, short straights',
     scale: 1.51,
     theme: { wall: '#ff4fd8', wallFace: '#ffd1f4', lights: '79, 227, 255', kerb: '#4fe3ff', surface: '#211f33' },
     control: [
@@ -110,8 +110,8 @@ export const TRACKS: TrackDef[] = [
     ],
   },
   {
-    name: 'SUMMIT PASS',
-    blurb: 'Mountain road: long sweepers, flowing esses',
+    name: 'LAPPLAND',
+    blurb: 'Arctic night under the aurora: long sweepers',
     theme: { wall: '#cfd8e3', wallFace: '#f2f5f8', lights: '220, 235, 255', kerb: '#8a919c', surface: '#232427' },
     control: [
       [0, 1500],
@@ -135,8 +135,8 @@ export const TRACKS: TrackDef[] = [
     ],
   },
   {
-    name: 'HARBOR LIGHTS',
-    blurb: 'Waterfront speedway: fast sweepers, one big hairpin',
+    name: 'NEW ATLANTIS',
+    blurb: 'Marble city on the sea: fast sweepers, one big hairpin',
     theme: { wall: '#3fd0ff', wallFace: '#c9f3ff', lights: '255, 210, 90', kerb: '#2f8cff', surface: '#1d2536' },
     control: [
       [0, 1400],      // start/finish on the quay
@@ -163,8 +163,8 @@ export const TRACKS: TrackDef[] = [
     ],
   },
   {
-    name: 'CRYSTAL CANYON',
-    blurb: 'Technical canyon run: tight switchbacks, few straights',
+    name: 'CRYSTAL FRONT',
+    blurb: 'Crystal war zone: tight switchbacks, few straights',
     theme: { wall: '#b98cff', wallFace: '#eadcff', lights: '120, 220, 255', kerb: '#8f5cff', surface: '#221f35' },
     control: [
       [0, 1200],
@@ -195,8 +195,8 @@ export const TRACKS: TrackDef[] = [
     ],
   },
   {
-    name: 'DESERT MIRAGE',
-    blurb: 'Long straights into heavy-braking hairpins',
+    name: 'HIEROPOLIS',
+    blurb: 'Sacred city of the sun: long straights, heavy braking',
     scale: 1.49,
     theme: { wall: '#ffb347', wallFace: '#ffe6c2', lights: '255, 120, 60', kerb: '#ff6a2b', surface: '#2a2420' },
     control: [
@@ -226,8 +226,8 @@ export const TRACKS: TrackDef[] = [
     ],
   },
   {
-    name: 'SKYLINE CAROUSEL',
-    blurb: 'Rooftop circuit with a long, banked carousel',
+    name: 'HANGING GARDENS',
+    blurb: 'Terraced sky gardens with a long, sweeping carousel',
     scale: 1.44,
     theme: { wall: '#ff5e8a', wallFace: '#ffd3e0', lights: '255, 240, 120', kerb: '#ff3060', surface: '#251c2a' },
     control: [

@@ -33,51 +33,53 @@ interface Atmos {
   skylineColor: string;
   windows: string;                 // the one colour building windows glow
   gates: number;                   // light gates arching over the track
+  aurora?: boolean;                // northern lights rippling across the sky
+  lightning?: boolean;             // a storm: bolts in the distance and flashes of light
 }
 
 const ATMOS: Record<string, Atmos> = {
-  'APEX GRAND PRIX': {   // clear blue dusk, white circuit architecture
-    sky: ['#14244f', '#3f6fb4', '#f2c9a4'], sun: { color: '#ffd9b0', elev: 0.12, azim: 2.4, size: 260, light: 1.6 }, stars: 0,
-    fog: '#a9b9d6', fogNear: 2200, fogFar: 9500, hemi: ['#d8e4ff', '#3a3550', 1.7], ground: '#8a94b0',
-    road: '#30374a', wall: ['#eef3fa', '#b7c3d8'], skyline: 'towers', skylineColor: '#7d90b8', windows: '#dbe9ff', gates: 3,
+  'APEX ARENA': {          // a teal and gold dusk over the marble arena
+    sky: ['#0e2a44', '#2f7f8f', '#ffd9a0'], sun: { color: '#ffd9a0', elev: 0.1, azim: 2.4, size: 300, light: 1.7 }, stars: 0,
+    fog: '#8fb7bd', fogNear: 2200, fogFar: 9500, hemi: ['#e8f4f0', '#3a3a48', 1.7], ground: '#d8d0c0',
+    road: '#2c3440', wall: ['#f4efe4', '#cdbf9f'], skyline: 'towers', skylineColor: '#6f9aa4', windows: '#ffe2a6', gates: 3,
   },
-  'VELOCITY RING': {     // golden hour over the stadium
+  'VELOCITY COLOSSEUM': {  // golden hour over the colosseum
     sky: ['#2c2a62', '#c8686a', '#ffd79a'], sun: { color: '#ffc27a', elev: 0.07, azim: 0.9, size: 420, light: 1.8 }, stars: 0,
-    fog: '#e3a77e', fogNear: 2000, fogFar: 9000, hemi: ['#ffe2c4', '#4a3040', 1.6], ground: '#b89a86',
+    fog: '#e3a77e', fogNear: 2000, fogFar: 9000, hemi: ['#ffe2c4', '#4a3040', 1.6], ground: '#e0d2b8',
     road: '#36323c', wall: ['#fbf4ea', '#d6c2a8'], skyline: 'towers', skylineColor: '#a8768a', windows: '#ffe7c4', gates: 2,
   },
-  'NEON STREETS': {      // the night track: a clean city under a magenta haze
-    sky: ['#05040e', '#1b0d38', '#b02f7c'], sun: { color: '#ff9fd6', elev: 0.32, azim: 4.2, size: 120, light: 0.7 }, stars: 0,
-    fog: '#2a1240', fogNear: 1400, fogFar: 7000, hemi: ['#9a8cff', '#1a1028', 1.25], ground: '#9aa0c8',
-    road: '#1d1b2c', wall: ['#2a2442', '#14111f'], skyline: 'city', skylineColor: '#1a1030', windows: '#9fe9ff', gates: 4,
+  'NEW YORK': {            // twilight on the deco skyline, every window gold
+    sky: ['#060d1e', '#1d3b6a', '#f0a868'], sun: { color: '#ffb070', elev: 0.04, azim: 4.2, size: 360, light: 1.2 }, stars: 40,
+    fog: '#3a4a6a', fogNear: 1600, fogFar: 8000, hemi: ['#b8c8ff', '#1a1a28', 1.4], ground: '#5a6478',
+    road: '#22262f', wall: ['#e8e2d4', '#a89a80'], skyline: 'city', skylineColor: '#1c2a44', windows: '#ffd88a', gates: 4,
   },
-  'SUMMIT PASS': {       // bright alpine day
-    sky: ['#2f6fcf', '#86b9ee', '#eef6ff'], sun: { color: '#ffffff', elev: 0.6, azim: 3.6, size: 160, light: 2.3 }, stars: 0,
-    fog: '#d6e4f3', fogNear: 2600, fogFar: 11000, hemi: ['#e6f0ff', '#5a6070', 1.9], ground: '#c4ccd8',
-    road: '#40444f', wall: ['#f7f9fc', '#c8d2de'], skyline: 'peaks', skylineColor: '#9fb2cc', windows: '#e8f2ff', gates: 2,
+  'LAPPLAND': {            // polar night, moonlight on snow, the aurora overhead
+    sky: ['#02040c', '#08203a', '#1f5a5a'], sun: { color: '#bfe8ff', elev: 0.02, azim: 3.6, size: 140, light: 0.95 }, stars: 600,
+    fog: '#13283a', fogNear: 1800, fogFar: 9000, hemi: ['#a8c8ff', '#1a2030', 1.6], ground: '#8fa3be',
+    road: '#2a3240', wall: ['#eef4fb', '#b8c8da'], skyline: 'peaks', skylineColor: '#1a3044', windows: '#ffd9a0', gates: 2, aurora: true,
   },
-  'HARBOR LIGHTS': {     // blue hour, the sun going down over the sea
-    sky: ['#0d1d44', '#355f9e', '#ffb07a'], sun: { color: '#ffb27a', elev: 0.05, azim: 5.5, size: 360, light: 1.4 }, stars: 30,
-    fog: '#5c7aa6', fogNear: 2000, fogFar: 9000, hemi: ['#c4d6ff', '#202a40', 1.6], ground: '#2f5590',
-    road: '#2c3446', wall: ['#eef4fb', '#b6c6da'], skyline: 'city', skylineColor: '#3a4d78', windows: '#ffe1b8', gates: 2,
+  'NEW ATLANTIS': {        // dusk on the sea, marble and sea glass
+    sky: ['#082636', '#2f8f9a', '#ffd9a0'], sun: { color: '#ffcf8a', elev: 0.05, azim: 5.5, size: 380, light: 1.5 }, stars: 40,
+    fog: '#4f8f98', fogNear: 2000, fogFar: 9000, hemi: ['#d4f0f0', '#1a3038', 1.6], ground: '#1f6a78',
+    road: '#283a44', wall: ['#f6f1e6', '#cdbf9f'], skyline: 'towers', skylineColor: '#3a7a84', windows: '#9ff0ff', gates: 3,
   },
-  'CRYSTAL CANYON': {    // violet twilight between the mesas
-    sky: ['#0f0a2a', '#4a2b8a', '#f2a6d4'], sun: { color: '#ffc2e6', elev: 0.04, azim: 1.6, size: 300, light: 1.2 }, stars: 300,
-    fog: '#5a3a86', fogNear: 1800, fogFar: 8000, hemi: ['#d8c4ff', '#24183a', 1.55], ground: '#b8a8d8',
-    road: '#28233c', wall: ['#f1ebff', '#bcaee0'], skyline: 'mesas', skylineColor: '#4a3478', windows: '#e6d6ff', gates: 3,
+  'CRYSTAL FRONT': {       // a violet storm over the crystal war zone
+    sky: ['#05030c', '#21143a', '#5a3a6a'], sun: { color: '#d8b8ff', elev: 0.1, azim: 1.6, size: 160, light: 0.95 }, stars: 0,
+    fog: '#2a1a3a', fogNear: 2000, fogFar: 9000, hemi: ['#c8b4ff', '#120c1c', 1.35], ground: '#4a4058',
+    road: '#221e2c', wall: ['#d8d0ec', '#8a7aa8'], skyline: 'mesas', skylineColor: '#1a1028', windows: '#c8a8ff', gates: 2, lightning: true,
   },
-  'DESERT MIRAGE': {     // hot, bright afternoon
-    sky: ['#2a68c8', '#7fb3ea', '#fde7bf'], sun: { color: '#fff4dc', elev: 0.45, azim: 0.4, size: 220, light: 2.4 }, stars: 0,
-    fog: '#f0d8b0', fogNear: 2600, fogFar: 11000, hemi: ['#fff1dc', '#6a5038', 1.8], ground: '#f2dcb8',
-    road: '#463e38', wall: ['#fff8ec', '#e2c9a2'], skyline: 'dunes', skylineColor: '#d8b483', windows: '#fff0d4', gates: 2,
+  'HIEROPOLIS': {          // the golden afternoon of the sacred city
+    sky: ['#1f4f9a', '#e2a35c', '#ffe2a8'], sun: { color: '#fff0cc', elev: 0.22, azim: 0.4, size: 300, light: 2.2 }, stars: 0,
+    fog: '#f0d2a0', fogNear: 3600, fogFar: 14000, hemi: ['#fff1dc', '#6a5038', 1.8], ground: '#ead2a4',
+    road: '#463e38', wall: ['#fff8ec', '#e2c9a2'], skyline: 'dunes', skylineColor: '#d8b483', windows: '#9ff0ff', gates: 3,
   },
-  'SKYLINE CAROUSEL': {  // sunset above the clouds
-    sky: ['#1a1440', '#c64f86', '#ffcf8a'], sun: { color: '#ffb48a', elev: 0.08, azim: 3.1, size: 460, light: 1.6 }, stars: 0,
-    fog: '#d48aa0', fogNear: 2000, fogFar: 9500, hemi: ['#ffd8e6', '#3a2440', 1.6], ground: '#c8a8c0',
-    road: '#2e2838', wall: ['#fff6f8', '#dcc4d2'], skyline: 'clouds', skylineColor: '#f2c2cc', windows: '#ffd6e4', gates: 3,
+  'HANGING GARDENS': {     // morning in the sky gardens, above the clouds
+    sky: ['#2a6fc0', '#9fd0f0', '#fff2d8'], sun: { color: '#fff4e0', elev: 0.3, azim: 3.1, size: 260, light: 2.0 }, stars: 0,
+    fog: '#e6eef4', fogNear: 2200, fogFar: 10000, hemi: ['#f4f8ff', '#4a6a48', 1.8], ground: '#7faa6a',
+    road: '#34383f', wall: ['#fffaf0', '#d8ccb0'], skyline: 'clouds', skylineColor: '#ffffff', windows: '#fff0c8', gates: 3,
   },
 };
-const DEFAULT_ATMOS = ATMOS['APEX GRAND PRIX'];
+const DEFAULT_ATMOS = ATMOS['APEX ARENA'];
 
 export interface ChaseScene {
   time: number; cam: Camera; player: Car; cars: Car[]; track: Track; particles: Particle[];
@@ -177,6 +179,8 @@ export class ChaseView {
       this.sunDir.set(Math.cos(a.sun.azim) * Math.cos(a.sun.elev), Math.max(0.45, Math.sin(a.sun.elev)), Math.sin(a.sun.azim) * Math.cos(a.sun.elev)).normalize();
     }
     this.world.animate(s.time);
+    // A lightning flash lights everything up for a moment.
+    this.hemi.intensity = this.world.atmos.hemi[2] * (1 + this.world.flash * 1.6);
 
     // Car rigs: one per car, built the first time it's seen.
     const seen = new Set<Car>();
@@ -197,6 +201,7 @@ export class ChaseView {
     this.sparks.update(s.particles);
     this.drafts.update(s.cars.filter((c) => !c.ghost), s.time);
     this.updateCamera(s, dt);
+    for (const o of this.world.skyFollow) o.position.set(this.camera.position.x, 0, this.camera.position.z);
     const pc = s.player.craft;
     this.sun.target.position.set(pc.pos.x, 0, pc.pos.y);
     this.sun.position.set(pc.pos.x + this.sunDir.x * 1200, this.sunDir.y * 1200, pc.pos.y + this.sunDir.z * 1200);
@@ -282,7 +287,11 @@ class SpeedLines {
 
 // --- the circuit ---------------------------------------------------------------------------------
 
-interface TrackWorld { track: Track; group: THREE.Group; atmos: Atmos; animate(time: number): void }
+interface TrackWorld {
+  track: Track; group: THREE.Group; atmos: Atmos; animate(time: number): void; flash: number;
+  /** Sky effects that travel with the camera (always at the same distance, like the sky itself). */
+  skyFollow: THREE.Object3D[];
+}
 
 function buildWorld(track: Track, aniso: number): TrackWorld {
   const group = new THREE.Group();
@@ -581,16 +590,122 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     group.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xe6ecff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.8 })));
   }
   group.add(skyline(atmos, cx, cz, Math.max(b.maxX - b.minX, b.maxY - b.minY) / 2 + 4800));
+  const aurora = atmos.aurora ? auroraCurtains(0, 0) : null;
+  if (aurora) group.add(aurora.group);
+  const storm = atmos.lightning ? lightningStorm(0, 0) : null;
+  if (storm) group.add(storm.group);
 
   const water = groundMoves(track);
   return {
-    track, group, atmos,
+    track, group, atmos, flash: 0,
+    skyFollow: [aurora?.group, storm?.group].filter((o): o is THREE.Group => !!o),
     animate(time: number) {
+      aurora?.animate(time);
+      if (storm) this.flash = storm.animate(time);
       pulseTex.offset.y = -(time * 1100) / 376;
       lampMat.opacity = 0.55 + 0.45 * Math.sin(time * 4);
       chevTex.offset.y = -time * 0.35 * 9;
       if (water) groundTex.offset.set(-(time * 18) / 512, (time * 7) / 512);
       for (const s of spinners) s.obj.rotation[s.axis] = time * s.rate;
+    },
+  };
+}
+
+/**
+ * Northern lights: three tall curtains in green, teal and violet, rippling slowly across the sky.
+ * Each is a strip along an arc whose vertices sway every frame; the texture gives the rays.
+ */
+function auroraCurtains(cx: number, cz: number): { group: THREE.Group; animate(time: number): void } {
+  const group = new THREE.Group();
+  // Rays: broad vertical bands of varying strength over a glow that is brightest near the bottom edge.
+  const rays = canvas2d(64, 128, (g) => {
+    const v = g.createLinearGradient(0, 0, 0, 128);
+    v.addColorStop(0, 'rgba(255,255,255,0)'); v.addColorStop(0.35, 'rgba(255,255,255,0.3)'); v.addColorStop(0.82, 'rgba(255,255,255,1)'); v.addColorStop(1, 'rgba(255,255,255,0.35)');
+    g.fillStyle = v;
+    for (let x = 0; x < 64; x += 4) { g.globalAlpha = 0.2 + Math.random() * 0.8; g.fillRect(x, 0, 4, 128); }
+  });
+  const tex = new THREE.CanvasTexture(rays);
+  tex.wrapS = THREE.RepeatWrapping;
+  const curtains: { geo: THREE.BufferGeometry; R: number; a0: number; k: number }[] = [];
+  const N = 90;
+  [['#5dffb0', 0, 4300], ['#4fe3ff', 1, 4900], ['#b98cff', 2, 5500]].forEach(([color, k, R]) => {
+    const pos = new Float32Array((N + 1) * 2 * 3), uv = new Float32Array((N + 1) * 2 * 2), idx: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      uv.set([i / N * 6, 0, i / N * 6, 1], i * 4);
+      if (i) idx.push(2 * i - 2, 2 * i - 1, 2 * i, 2 * i - 1, 2 * i + 1, 2 * i);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    // (Colour pushed past 1 so the additive glow reads strongly against the night sky.)
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(color as string).multiplyScalar(2.4), transparent: true, opacity: 1, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -1;
+    group.add(mesh);
+    curtains.push({ geo, R: R as number, a0: 0.4 + (k as number) * 2.1, k: k as number });
+  });
+  return {
+    group,
+    animate(time: number) {
+      tex.offset.x = time * 0.015;
+      for (const c of curtains) {
+        const pos = c.geo.getAttribute('position') as THREE.BufferAttribute;
+        for (let i = 0; i <= N; i++) {
+          const a = c.a0 + (i / N) * 1.9;
+          const r = c.R + Math.sin(i * 0.17 + time * 0.35 + c.k * 2) * 420 + Math.sin(i * 0.05 - time * 0.2) * 300;
+          const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+          const lift = Math.sin(i * 0.11 + time * 0.25 + c.k) * 220;
+          pos.setXYZ(2 * i, x, 1200 + lift, z);
+          pos.setXYZ(2 * i + 1, x, 3600 + lift * 1.6, z);
+        }
+        pos.needsUpdate = true;
+      }
+    },
+  };
+}
+
+/**
+ * A storm: every few seconds a jagged bolt strikes somewhere on the horizon with a double flicker;
+ * animate() returns the flash strength (0..1) so the scene's light can jump with it.
+ */
+function lightningStorm(cx: number, cz: number): { group: THREE.Group; animate(time: number): number } {
+  const group = new THREE.Group();
+  const SEG = 14;
+  const pos = new Float32Array(SEG * 2 * 3 * 2);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xe8dcff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  const bolt = new THREE.LineSegments(geo, mat);
+  bolt.frustumCulled = false;
+  group.add(bolt);
+  let next = 2, struck = -10;
+  const strike = () => {
+    const a = Math.random() * Math.PI * 2, r = 5200 + Math.random() * 2000;
+    let x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r, y = 3600;
+    let n = 0;
+    const push = (x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) => { pos.set([x1, y1, z1, x2, y2, z2], n * 6); n++; };
+    for (let k = 0; k < SEG; k++) {
+      const nx = x + (Math.random() - 0.5) * 380, ny = y - 3600 / SEG, nz = z + (Math.random() - 0.5) * 380;
+      push(x, y, z, nx, ny, nz);
+      if (k % 4 === 2) push(nx, ny, nz, nx + (Math.random() - 0.5) * 600, ny - 300, nz + (Math.random() - 0.5) * 600);
+      else push(nx, ny, nz, nx, ny, nz);
+      x = nx; y = ny; z = nz;
+    }
+    geo.getAttribute('position').needsUpdate = true;
+  };
+  return {
+    group,
+    animate(time: number) {
+      if (time < struck) { struck = -10; next = time + 2; }   // a new race restarted the clock
+      if (time >= next) { strike(); struck = time; next = time + 2.5 + Math.random() * 5; }
+      const t = time - struck;
+      // Two quick pulses, then a fade.
+      const flash = t < 0 || t > 1 ? 0 : Math.exp(-t * 7) * (t < 0.08 || (t > 0.16 && t < 0.3) ? 1 : 0.35);
+      mat.opacity = Math.min(1, flash * 1.4);
+      return flash;
     },
   };
 }
@@ -647,6 +762,8 @@ function glowUv(m: number): THREE.Float32BufferAttribute {
 
 // --- scenery ---------------------------------------------------------------------------------------
 
+const MARBLE = 0xefe8da, MARBLE_SH = 0xd8cfbd, GOLD_C = 0xd9b25b, SEA_GLASS = 0x2a8f9a, SANDSTONE = 0xd8b07a, SANDSTONE_LT = 0xe6c690, PATINA = 0x5fa89a;
+
 function propObject(p: Prop, spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 'z'; rate: number }[], atmos: Atmos, accent: string): THREE.Object3D | null {
   const g = new THREE.Group();
   g.position.set(p.x, 0, p.y);
@@ -671,7 +788,7 @@ function propObject(p: Prop, spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 
       put(new THREE.DodecahedronGeometry(p.r * 0.7, 0), phong(p.color ?? 0x5a5c6e), 0, p.r * 0.2).scale.set(1, 0.55, 1);
       break;
     case 'peak': {
-      const col = p.color === 'violet' ? 0x5b3b8c : 0x4a4f66;
+      const col = p.color === 'violet' ? 0x5b3b8c : p.color === 'snow' ? 0xc8d6e6 : 0x4a4f66;
       put(new THREE.ConeGeometry(p.r, h * 2.2, 7), phong(col), 0, h * 1.1);
       put(new THREE.ConeGeometry(p.r * 0.34, h * 0.75, 7), phong(p.color === 'violet' ? 0xd7b8ff : 0xf2f6ff), 0, h * 1.85);
       break;
@@ -783,6 +900,300 @@ function propObject(p: Prop, spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 
       put(new THREE.BoxGeometry(110, 14, 34), phong(0xe9edf6), 0, 6);
       put(new THREE.BoxGeometry(40, 12, 24), phong(p.accent ?? 0x3fd0ff), -10, 19);
       break;
+    // --- arenas -------------------------------------------------------------------------------------
+    case 'arena-stand': {
+      // Marble tiers rising away from the track, a gold canopy on gold pillars, a neon edge.
+      for (let k = 0; k < 4; k++) {
+        const dd = d * (1 - k * 0.22);
+        put(new THREE.BoxGeometry(w, h * 0.24, dd), phong(k % 2 ? MARBLE_SH : MARBLE), 0, h * 0.12 + k * h * 0.24, d / 2 - dd / 2);
+      }
+      for (const x of [-w * 0.42, w * 0.42]) put(new THREE.BoxGeometry(14, h * 1.25, 14), phong(GOLD_C), x, h * 0.62, d * 0.42);
+      put(new THREE.BoxGeometry(w * 1.02, 8, d * 0.62), phong(GOLD_C), 0, h * 1.25, d * 0.18);
+      put(new THREE.BoxGeometry(w, 6, 6), glowing(accent), 0, h * 0.24, -d / 2 - 2);
+      break;
+    }
+    case 'pylon':
+      put(new THREE.CylinderGeometry(8, 11, h, 6), phong(MARBLE), 0, h / 2);
+      put(new THREE.CylinderGeometry(15, 15, 12, 6), glowing('#dff8ff'), 0, h + 6);
+      put(new THREE.ConeGeometry(14, 30, 6), phong(GOLD_C), 0, h + 27);
+      break;
+    case 'pit-palace': {
+      put(new THREE.BoxGeometry(w, h * 0.7, d), phong(MARBLE), 0, h * 0.35);
+      for (let x = -w / 2 + 20; x <= w / 2 - 20; x += 40) put(new THREE.CylinderGeometry(9, 10, h * 0.62, 8), phong(MARBLE_SH), x, h * 0.31, -d / 2 - 14);
+      put(new THREE.BoxGeometry(w + 20, 12, d + 36), phong(GOLD_C), 0, h * 0.7 + 6, -9);
+      put(new THREE.SphereGeometry(d * 0.42, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), phong(SEA_GLASS, 0x0c3a40), 0, h * 0.7 + 12);
+      put(new THREE.ConeGeometry(10, 34, 8), phong(GOLD_C), 0, h * 0.7 + 12 + d * 0.42 + 14);
+      put(new THREE.BoxGeometry(w, 6, 6), glowing(accent), 0, h * 0.68, -d / 2 - 22);
+      break;
+    }
+    case 'holo': {
+      const pw = p.w ?? 220, ph = 64;
+      for (const sx of [-1, 1]) put(new THREE.BoxGeometry(12, h, 12), phong(GOLD_C), sx * pw * 0.42, h / 2);
+      put(new THREE.BoxGeometry(pw + 16, ph + 16, 8), glowing(SEA_GLASS), 0, h + ph / 2);
+      const sign = textPlane(p.text ?? '', '#ffffff', pw, ph, accent);
+      sign.geometry.rotateX(Math.PI / 2);
+      sign.position.set(0, h + ph / 2, 0);
+      g.add(bothWays(sign));
+      break;
+    }
+    case 'monument': {
+      put(new THREE.BoxGeometry(150, 30, 150), phong(MARBLE_SH), 0, 15);
+      put(new THREE.BoxGeometry(110, 30, 110), phong(MARBLE), 0, 45);
+      put(new THREE.CylinderGeometry(20, 24, h * 0.62, 8), phong(MARBLE), 0, 60 + h * 0.31);
+      put(new THREE.SphereGeometry(40, 16, 12), phong(GOLD_C, 0x3a2a08), 0, 60 + h * 0.62 + 34);
+      for (const [x, z] of [[-48, -48], [48, -48], [-48, 48], [48, 48]]) {
+        put(new THREE.CylinderGeometry(10, 12, h * 0.4, 8), phong(MARBLE), x, 60 + h * 0.2, z);
+        put(new THREE.ConeGeometry(14, 24, 8), phong(GOLD_C), x, 60 + h * 0.4 + 12, z);
+      }
+      break;
+    }
+    case 'cypress':
+      put(new THREE.CylinderGeometry(4, 5, 14, 6), phong(0x4a3424), 0, 7);
+      put(new THREE.ConeGeometry(p.r * 0.9, h, 7), phong(0x2a5a38), 0, 12 + h / 2);
+      break;
+    case 'colosseum': {
+      // An arcade three storeys high: chunky piers, arch lintels, a gold cornice on top.
+      const tier = h / 3, depth = d;
+      for (let t = 0; t < 3; t++) {
+        const y0 = t * tier;
+        for (let k = 0; k <= 4; k++) put(new THREE.BoxGeometry(20, tier - 12, depth), phong(t % 2 ? MARBLE_SH : MARBLE), -w / 2 + 10 + k * (w - 20) / 4, y0 + (tier - 12) / 2, 0);
+        put(new THREE.BoxGeometry(w, 12, depth), phong(MARBLE), 0, y0 + tier - 6, 0);
+      }
+      put(new THREE.BoxGeometry(w + 6, 10, depth + 6), phong(GOLD_C), 0, h + 5, 0);
+      break;
+    }
+    case 'obelisk': {
+      const r = p.r;
+      put(new THREE.BoxGeometry(r * 2.4, h * 0.05, r * 2.4), phong(MARBLE_SH), 0, h * 0.025);
+      put(new THREE.CylinderGeometry(r * 0.62, r, h * 0.86, 4), phong(SANDSTONE), 0, h * 0.05 + h * 0.43).rotation.y = Math.PI / 4;
+      put(new THREE.ConeGeometry(r * 0.88, h * 0.1, 4), phong(GOLD_C, 0x3a2a08), 0, h * 0.91 + h * 0.05).rotation.y = Math.PI / 4;
+      for (const f of [0.3, 0.55]) {
+        const rr = r * (1 - f * 0.38) + 1;
+        put(new THREE.CylinderGeometry(rr, rr, h * 0.05, 4), glowing(p.accent ?? accent), 0, h * 0.05 + h * 0.86 * f).rotation.y = Math.PI / 4;
+      }
+      break;
+    }
+    case 'statue': {
+      // A guardian on a pedestal: robed body, head under a gold headdress, a gold staff.
+      put(new THREE.BoxGeometry(p.r * 1.8, h * 0.22, p.r * 1.8), phong(MARBLE_SH), 0, h * 0.11);
+      put(new THREE.CylinderGeometry(p.r * 0.45, p.r * 0.75, h * 0.48, 8), phong(MARBLE), 0, h * 0.22 + h * 0.24);
+      put(new THREE.SphereGeometry(p.r * 0.32, 10, 8), phong(MARBLE), 0, h * 0.7 + p.r * 0.28);
+      put(new THREE.ConeGeometry(p.r * 0.46, h * 0.18, 6), phong(GOLD_C), 0, h * 0.7 + p.r * 0.55);
+      put(new THREE.CylinderGeometry(5, 5, h * 0.7, 6), phong(GOLD_C), p.r * 0.6, h * 0.22 + h * 0.35);
+      break;
+    }
+    // --- New York ----------------------------------------------------------------------------------
+    case 'colossus': {
+      const r = p.r;
+      put(new THREE.BoxGeometry(r * 1.7, h * 0.22, r * 1.7), phong(MARBLE_SH), 0, h * 0.11);
+      put(new THREE.BoxGeometry(r * 1.3, h * 0.06, r * 1.3), phong(GOLD_C), 0, h * 0.25);
+      put(new THREE.ConeGeometry(r * 0.62, h * 0.5, 8), phong(PATINA), 0, h * 0.28 + h * 0.25);
+      put(new THREE.SphereGeometry(r * 0.2, 12, 8), phong(PATINA), 0, h * 0.78 + r * 0.1);
+      for (let k = 0; k < 5; k++) {
+        const a = -0.9 + k * 0.45;
+        put(new THREE.ConeGeometry(r * 0.07, r * 0.32, 4), phong(GOLD_C), Math.sin(a) * r * 0.22, h * 0.78 + r * 0.42, Math.cos(a) * r * 0.05).rotation.z = -a * 0.6;
+      }
+      const arm = put(new THREE.CylinderGeometry(r * 0.08, r * 0.1, h * 0.26, 6), phong(PATINA), r * 0.32, h * 0.82, 0);
+      arm.rotation.z = -0.35;
+      put(new THREE.CylinderGeometry(r * 0.12, r * 0.08, h * 0.06, 8), phong(GOLD_C), r * 0.4, h * 0.97, 0);
+      put(new THREE.SphereGeometry(r * 0.14, 10, 8), glowing('#ffcf6a'), r * 0.4, h * 1.03, 0);
+      break;
+    }
+    case 'deco-tower': {
+      // Setback tiers lit in rows of gold windows, a gold crown and spire.
+      const base = p.color ?? '#1c2a44';
+      put(new THREE.BoxGeometry(w, h * 0.55, d), windowsMaterial(base, atmos.windows, w, h * 0.55), 0, h * 0.275);
+      put(new THREE.BoxGeometry(w * 0.74, h * 0.24, d * 0.74), windowsMaterial(base, atmos.windows, w * 0.74, h * 0.24), 0, h * 0.55 + h * 0.12);
+      put(new THREE.BoxGeometry(w * 0.5, h * 0.11, d * 0.5), windowsMaterial(base, atmos.windows, w * 0.5, h * 0.11), 0, h * 0.79 + h * 0.055);
+      put(new THREE.ConeGeometry(w * 0.3, h * 0.1, 8), phong(GOLD_C, 0x3a2a08), 0, h * 0.9 + h * 0.05);
+      put(new THREE.CylinderGeometry(6, 9, h * 0.12, 6), phong(GOLD_C), 0, h * 1.0 + h * 0.06);
+      break;
+    }
+    case 'park': {
+      put(new THREE.BoxGeometry(w, 8, d), phong(0x4f8a4a), 0, 4);
+      put(new THREE.BoxGeometry(w + 10, 4, d + 10), phong(MARBLE_SH), 0, 2);
+      for (let k = 0; k < 6; k++) {
+        const x = (k % 3 - 1) * w * 0.3, z = (k < 3 ? -1 : 1) * d * 0.22;
+        put(new THREE.ConeGeometry(22, 60, 7), phong(0x2f6a3c), x, 8 + 30, z);
+      }
+      break;
+    }
+    case 'rail': {
+      const pw = p.w ?? 150;
+      for (const sx of [-1, 1]) put(new THREE.BoxGeometry(18, h, 18), phong(MARBLE_SH), sx * pw * 0.32, h / 2);
+      put(new THREE.BoxGeometry(pw, 18, 34), phong(0x3a3f4e), 0, h + 9);
+      put(new THREE.BoxGeometry(pw, 5, 36), glowing(accent), 0, h + 1);
+      break;
+    }
+    case 'steam':
+      put(new THREE.CylinderGeometry(p.r * 1.6, p.r, h, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false }), 0, h / 2);
+      break;
+    // --- Lappland ----------------------------------------------------------------------------------
+    case 'birch':
+      put(new THREE.CylinderGeometry(5, 6, h * 0.9, 6), phong(0xf2f0ea), 0, h * 0.45);
+      put(new THREE.SphereGeometry(p.r * 0.8, 8, 6), phong(0xdde8e6), 0, h * 0.85);
+      break;
+    case 'ice':
+      put(new THREE.OctahedronGeometry(p.r, 0), new THREE.MeshPhongMaterial({ color: 0xbfe8ff, emissive: 0x2a6a8a, transparent: true, opacity: 0.85, flatShading: true }), 0, h * 0.5)
+        .scale.set(1, h / p.r * 0.55, 1);
+      break;
+    case 'lavvu': {
+      put(new THREE.ConeGeometry(p.r, h, 8), phong(0xe8dcc6), 0, h / 2);
+      put(new THREE.CylinderGeometry(p.r * 0.18, p.r * 0.24, h * 0.1, 8), phong(GOLD_C), 0, h * 0.9);
+      put(new THREE.BoxGeometry(p.r * 0.5, h * 0.36, 10), glowing('#ffc070'), 0, h * 0.18, p.r * 0.6);
+      break;
+    }
+    case 'reindeer': {
+      const fur = phong(0x6b5240), pale = phong(0xd8c8a8);
+      put(new THREE.BoxGeometry(36, 16, 14), fur, 0, 26);
+      for (const [x, z] of [[-13, -5], [13, -5], [-13, 5], [13, 5]]) put(new THREE.BoxGeometry(6, 18, 6), fur, x, 9, z);
+      put(new THREE.BoxGeometry(10, 18, 9), fur, 18, 38).rotation.z = -0.4;
+      put(new THREE.BoxGeometry(16, 9, 9), pale, 26, 46);
+      for (const z of [-6, 6]) put(new THREE.BoxGeometry(6, 16, 4), pale, 22, 58, z);
+      break;
+    }
+    // --- New Atlantis --------------------------------------------------------------------------------
+    case 'isle':
+      put(new THREE.CylinderGeometry(p.r, p.r * 1.06, 12, 16), phong(MARBLE), 0, 6);
+      put(new THREE.CylinderGeometry(p.r * 1.08, p.r * 1.12, 4, 16), phong(GOLD_C), 0, 2);
+      break;
+    case 'dome-temple': {
+      const r = p.r;
+      put(new THREE.CylinderGeometry(r, r * 1.05, 26, 12), phong(MARBLE_SH), 0, 12 + 13);
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        put(new THREE.CylinderGeometry(r * 0.09, r * 0.1, 70, 8), phong(MARBLE), Math.cos(a) * r * 0.78, 38 + 35, Math.sin(a) * r * 0.78);
+      }
+      put(new THREE.CylinderGeometry(r * 0.92, r * 0.92, 14, 12), phong(MARBLE), 0, 108 + 7);
+      put(new THREE.SphereGeometry(r * 0.78, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), phong(SEA_GLASS, 0x0c3a40), 0, 122);
+      put(new THREE.ConeGeometry(r * 0.12, 40, 8), phong(GOLD_C), 0, 122 + r * 0.78 + 14);
+      break;
+    }
+    case 'sea-tower': {
+      const r = p.r;
+      put(new THREE.CylinderGeometry(r * 0.66, r, h, 8), phong(SEA_GLASS, 0x0a3a40), 0, 12 + h / 2);
+      for (const f of [0.3, 0.6, 0.9]) put(new THREE.CylinderGeometry(r * (1 - f * 0.34) + 4, r * (1 - f * 0.34) + 4, h * 0.035, 8), phong(GOLD_C), 0, 12 + h * f);
+      put(new THREE.ConeGeometry(r * 0.7, h * 0.16, 8), phong(GOLD_C, 0x3a2a08), 0, 12 + h + h * 0.08);
+      put(new THREE.SphereGeometry(r * 0.22, 10, 8), glowing('#9ff0ff'), 0, 12 + h + h * 0.18);
+      break;
+    }
+    case 'colonnade': {
+      const cw = p.w ?? 240, depth = 46;
+      put(new THREE.BoxGeometry(cw, 12, depth + 20), phong(MARBLE_SH), 0, 12 + 6);
+      for (let x = -cw / 2 + 16; x <= cw / 2 - 16; x += (cw - 32) / 6) put(new THREE.CylinderGeometry(9, 10, h, 8), phong(MARBLE), x, 24 + h / 2, 0);
+      put(new THREE.BoxGeometry(cw, 14, depth), phong(MARBLE), 0, 24 + h + 7);
+      put(new THREE.BoxGeometry(cw + 4, 6, depth + 4), phong(GOLD_C), 0, 24 + h + 17);
+      break;
+    }
+    case 'sea-glow':
+      put(new THREE.SphereGeometry(p.r, 8, 6), glowing(p.seed % 1 < 0.5 ? '#5ff0e0' : '#7fb4ff'), 0, 2);
+      break;
+    case 'arch': {
+      const aw = p.w ?? 150;
+      for (const sx of [-1, 1]) put(new THREE.BoxGeometry(aw * 0.2, h, aw * 0.2), phong(MARBLE), sx * aw * 0.4, h / 2);
+      put(new THREE.BoxGeometry(aw * 1.04, h * 0.18, aw * 0.22), phong(MARBLE_SH), 0, h + h * 0.09);
+      put(new THREE.BoxGeometry(aw * 0.18, h * 0.12, aw * 0.24), phong(GOLD_C), 0, h - h * 0.02);
+      break;
+    }
+    case 'spire': {
+      // The lighthouse of New Atlantis: a slender ivory spire, gold bands, a crown of gold spikes.
+      const r = p.r;
+      put(new THREE.CylinderGeometry(r * 0.32, r * 0.42, h * 0.08, 12), phong(MARBLE_SH), 0, h * 0.04);
+      put(new THREE.CylinderGeometry(r * 0.12, r * 0.24, h * 0.56, 10), phong(MARBLE), 0, h * 0.08 + h * 0.28);
+      for (const f of [0.25, 0.45]) put(new THREE.CylinderGeometry(r * 0.24 - f * 0.12 * r + 3, r * 0.24 - f * 0.12 * r + 3, h * 0.025, 10), phong(GOLD_C), 0, h * 0.08 + h * 0.56 * f);
+      put(new THREE.CylinderGeometry(r * 0.2, r * 0.13, h * 0.04, 10), phong(GOLD_C), 0, h * 0.62);
+      put(new THREE.SphereGeometry(r * 0.13, 12, 8), glowing('#fff3b0'), 0, h * 0.67);
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        put(new THREE.ConeGeometry(r * 0.04, h * 0.1, 4), phong(GOLD_C), Math.cos(a) * r * 0.17, h * 0.69, Math.sin(a) * r * 0.17);
+      }
+      break;
+    }
+    // --- Crystal Front -------------------------------------------------------------------------------
+    case 'mech-wreck': {
+      const metal = phong(0x4a4e5a), dark = phong(0x2a2c34), burn = glowing('#ff7a3a');
+      const torso = put(new THREE.BoxGeometry(90, 70, 64), metal, 0, 34);
+      torso.rotation.z = 0.45;
+      put(new THREE.BoxGeometry(34, 30, 34), dark, 44, 70).rotation.z = 0.7;
+      put(new THREE.BoxGeometry(120, 22, 22), metal, -50, 14, 46).rotation.y = 0.5;
+      put(new THREE.BoxGeometry(26, 90, 26), dark, -30, 20, -50).rotation.z = 1.2;
+      put(new THREE.BoxGeometry(14, 14, 66), burn, 6, 58);
+      put(new THREE.BoxGeometry(10, 10, 10), burn, 40, 74, 18);
+      break;
+    }
+    case 'dropship': {
+      const hull = phong(0x5a6070), dark = phong(0x2c303c);
+      const ship = new THREE.Group();
+      const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => { const mm = new THREE.Mesh(geo, mat); mm.position.set(x, y, z); ship.add(mm); return mm; };
+      add(new THREE.BoxGeometry(240, 56, 100), hull, 0, 0, 0);
+      add(new THREE.ConeGeometry(52, 100, 4), hull, 168, 0, 0).rotation.z = -Math.PI / 2;
+      add(new THREE.BoxGeometry(110, 12, 300), dark, -30, -6, 0);
+      for (const z of [-34, 34]) add(new THREE.CylinderGeometry(20, 24, 40, 8), dark, -134, 0, z).rotation.z = Math.PI / 2;
+      for (const z of [-34, 34]) add(new THREE.CylinderGeometry(14, 14, 6, 8), glowing('#4fe3ff'), -156, 0, z).rotation.z = Math.PI / 2;
+      add(new THREE.BoxGeometry(60, 10, 40), glowing('#b98cff'), 60, 30, 0);
+      ship.rotation.z = -0.22;
+      ship.position.y = 30;
+      g.add(ship);
+      break;
+    }
+    case 'shield-dome': {
+      put(new THREE.CylinderGeometry(p.r, p.r * 1.04, 10, 20), phong(0x3a3f4e), 0, 5);
+      put(new THREE.SphereGeometry(p.r * 0.96, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0x4fe3ff, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }), 0, 10);
+      put(new THREE.BoxGeometry(24, 60, 24), phong(0x2c303c), 0, 40);
+      put(new THREE.SphereGeometry(14, 10, 8), glowing('#4fe3ff'), 0, 78);
+      break;
+    }
+    case 'crater':
+      put(new THREE.CylinderGeometry(p.r * 1.15, p.r * 1.2, 4, 14), phong(0x2a2432), 0, 2);
+      put(new THREE.CylinderGeometry(p.r * 0.8, p.r * 0.8, 6, 14), phong(0x0a080e), 0, 3);
+      break;
+    // --- Hieropolis ----------------------------------------------------------------------------------
+    case 'ziggurat': {
+      // A terraced pyramid arcology in sandstone and gold, a sea-glass apex glowing on top.
+      const r = p.r, tiers = 5;
+      for (let k = 0; k < tiers; k++) {
+        const s2 = r * 2 * (1 - k * 0.17), th = h * 0.8 / tiers;
+        put(new THREE.BoxGeometry(s2, th, s2), phong(k % 2 ? SANDSTONE : SANDSTONE_LT), 0, k * th + th / 2);
+      }
+      put(new THREE.BoxGeometry(r * 0.34, h * 0.8, r * 2 * 0.98), phong(GOLD_C), 0, h * 0.36);
+      put(new THREE.OctahedronGeometry(r * 0.3, 0), phong(SEA_GLASS, 0x1a6a74), 0, h * 0.8 + r * 0.22);
+      break;
+    }
+    case 'palm': {
+      put(new THREE.CylinderGeometry(6, 9, h, 6), phong(0x8a6a44), 0, h / 2);
+      for (let k = 0; k < 6; k++) {
+        const frond = put(new THREE.BoxGeometry(56, 6, 16).translate(28, 0, 0), phong(0x3f8a4a), 0, h, 0);
+        frond.rotation.set(0, (k / 6) * Math.PI * 2, -0.45);
+      }
+      break;
+    }
+    case 'pool':
+      put(new THREE.BoxGeometry(w + 16, 3, d + 16), phong(GOLD_C), 0, 1.5);
+      put(new THREE.BoxGeometry(w, 4, d), phong(0x3fb8c4, 0x0f4a52), 0, 2.5);
+      break;
+    // --- Hanging Gardens -----------------------------------------------------------------------------
+    case 'terrace': {
+      // Stepped ivory terraces, each topped and wrapped with green, a waterfall down the front.
+      const tiers = 3;
+      for (let k = 0; k < tiers; k++) {
+        const tw = w * (1 - k * 0.26), td = d * (1 - k * 0.26), th = h / tiers, y0 = k * th;
+        put(new THREE.BoxGeometry(tw, th * 0.62, td), phong(MARBLE), 0, y0 + th * 0.31);
+        put(new THREE.BoxGeometry(tw * 1.02, th * 0.38, td * 1.02), phong(k % 2 ? 0x4f8a4a : 0x5f9a52), 0, y0 + th * 0.62 + th * 0.19);
+        put(new THREE.BoxGeometry(tw * 0.16, th, 12), glowing('#8fe8ff'), 0, y0 + th * 0.5, td / 2 + 6);
+      }
+      put(new THREE.ConeGeometry(w * 0.1, h * 0.2, 7), phong(0x2a5a38), 0, h + h * 0.1);
+      break;
+    }
+    case 'gold-tower': {
+      const r = p.r;
+      put(new THREE.CylinderGeometry(r * 0.6, r * 0.8, h * 0.82, 8), phong(MARBLE), 0, h * 0.41);
+      for (const f of [0.3, 0.6]) put(new THREE.CylinderGeometry(r * 0.74 - f * 0.2 * r + 2, r * 0.74 - f * 0.2 * r + 2, h * 0.04, 8), phong(GOLD_C), 0, h * 0.82 * f);
+      put(new THREE.SphereGeometry(r * 0.66, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), phong(GOLD_C, 0x3a2a08), 0, h * 0.82);
+      put(new THREE.ConeGeometry(r * 0.14, h * 0.12, 6), phong(GOLD_C), 0, h * 0.82 + r * 0.66 + h * 0.05);
+      break;
+    }
     default:
       if (p.layer === 0 && p.h === 0) return null;
       put(new THREE.BoxGeometry(w, h, d), phong(p.color ?? 0x2a2f48), 0, h / 2);
