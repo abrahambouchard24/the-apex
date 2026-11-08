@@ -1,6 +1,16 @@
 // Start screen (car, track, laps and season setup), pause menu and race results: plain DOM
 // overlays on top of the canvas.
 
+/** An unlocked skin, offered as a card beside the cars. */
+export interface SkinChoice { id: string; name: string; card: string }
+
+/** The row of unlocked skins under the car cards (shared by the setup screen and the lobby). */
+export function skinCards(skins: SkinChoice[], equipped: string): string {
+  if (!skins.length) return '<p class="hr-skin-hint">Earn skins with achievements (see the Garage); they show up here to pick.</p>';
+  return skins.map((s) => `<button class="hr-car hr-skincard ${equipped === s.id ? 'selected' : ''}" style="--c:#e8c25a" data-skin="${s.id}">
+    ${cardFace({ name: `◆ ${s.name}`, card: s.card, url: '', color: '#e8c25a' })}</button>`).join('');
+}
+
 export interface CarChoice {
   /** A picture of the car's 3D model for the selection card (else the sprite at url). */
   card?: string; name: string; url: string; color: string }
@@ -31,6 +41,8 @@ export interface RaceSetup { car: number; track: number; laps: number; races: nu
 
 export interface MenuHandlers {
   start(setup: RaceSetup): void;
+  /** Wear a skin ('stock' = each car in its own colours). */
+  equip(skin: string): void;
   /** The Story window on the front menu. */
   story(): void;
   /** The Online window on the front menu. */
@@ -67,6 +79,9 @@ const CSS = `
   background: linear-gradient(90deg, #4fe3ff, #ff4fd8); -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .hr-sub { margin: 6px 0 14px; color: #8a93c0; font-weight: 600; letter-spacing: 0.2em; font-size: 13px; }
+.hr-skins-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin: -8px 0 22px; }
+@media (max-width: 760px) { .hr-skins-row { grid-template-columns: repeat(3, 1fr); } }
+.hr-skin-hint { grid-column: 1 / -1; margin: 0; color: #93aba8; font-size: 12px; letter-spacing: 0.06em; }
 .hr-cars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 22px; }
 @media (max-width: 760px) { .hr-cars { grid-template-columns: repeat(3, 1fr); } }
 .hr-car {
@@ -325,6 +340,8 @@ export class Menus {
         <h1 class="hr-title" data-setup-title>QUICK RACE</h1>
         <p class="hr-sub">CHOOSE YOUR CAR</p>
         <div class="hr-cars"></div>
+        <p class="hr-sub">YOUR SKINS</p>
+        <div class="hr-skins-row"></div>
         <p class="hr-sub" data-track-head>CHOOSE YOUR TRACK</p>
         <div class="hr-tracks"></div>
         <p class="hr-sub" data-sprint-head>SPRINTS · ONE RUN, NO LAPS, BIG JUMPS</p>
@@ -347,7 +364,7 @@ export class Menus {
       b.className = 'hr-car';
       b.style.setProperty('--c', car.color);
       b.innerHTML = cardFace(car);
-      b.addEventListener('click', () => this.select(i));
+      b.addEventListener('click', () => { this.select(i); this.equipped = 'stock'; this.on.equip('stock'); this.markSkins(); });
       b.addEventListener('dblclick', () => this.on.start(this.setup()));
       grid.append(b);
       this.cards.push(b);
@@ -539,7 +556,27 @@ export class Menus {
 
   select(i: number): void {
     this.selected = i;
-    this.cards.forEach((c, k) => c.classList.toggle('selected', k === i));
+    this.markSkins();
+  }
+
+  /** The unlocked skins to offer as cards, and the one being worn ('stock' = none). */
+  private equipped = 'stock';
+  setSkins(skins: SkinChoice[], equipped: string): void {
+    this.equipped = equipped;
+    const row = this.start.querySelector<HTMLElement>('.hr-skins-row')!;
+    row.innerHTML = skinCards(skins, equipped);
+    row.querySelectorAll<HTMLElement>('[data-skin]').forEach((b) => {
+      b.addEventListener('click', () => { this.equipped = b.dataset.skin!; this.on.equip(this.equipped); this.markSkins(); });
+      b.addEventListener('dblclick', () => this.on.start(this.setup()));
+    });
+    this.markSkins();
+  }
+
+  /** Highlight the skin being worn, or (in stock colours) the chosen car. */
+  private markSkins(): void {
+    const stock = this.equipped === 'stock';
+    this.cards.forEach((c, k) => c.classList.toggle('selected', stock && k === this.selected));
+    this.start?.querySelectorAll<HTMLElement>('[data-skin]').forEach((b) => b.classList.toggle('selected', b.dataset.skin === this.equipped));
   }
 
   /** The setup screen for a quick race or a season (the front menu chose which). */

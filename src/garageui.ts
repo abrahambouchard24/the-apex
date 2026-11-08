@@ -11,13 +11,13 @@ const CSS = `
 .gr-skins { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
 .gr-skin { padding: 10px; border-radius: 4px; border: 1px solid rgba(201,162,74,0.3); background: rgba(8,20,26,0.8); color: #ece5d4; cursor: pointer;
   font: inherit; text-align: left; transition: transform 120ms, border-color 120ms; }
-.gr-skin:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(201,162,74,0.8); }
 .gr-skin.on { border-color: #e8c25a; box-shadow: 0 0 0 1px #e8c25a inset, 0 0 22px -6px #e8c25a; }
-.gr-skin:disabled { cursor: default; opacity: 0.85; }
+.gr-skin { cursor: default; }
+.gr-skin.locked { opacity: 0.85; }
 .gr-sw { display: flex; height: 26px; border-radius: 2px; overflow: hidden; margin-bottom: 8px; box-shadow: 0 0 0 1px rgba(201,162,74,0.35); }
 .gr-sw i { flex: 1; }
 .gr-pic { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: contain; margin: -4px 0 4px; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.5)); }
-.gr-skin:disabled .gr-pic { filter: saturate(0.85) brightness(0.8) drop-shadow(0 6px 8px rgba(0,0,0,0.5)); }
+.gr-skin.locked .gr-pic { filter: saturate(0.85) brightness(0.8) drop-shadow(0 6px 8px rgba(0,0,0,0.5)); }
 .gr-skin b { display: block; font-size: 12px; letter-spacing: 0.08em; }
 .gr-skin small { display: block; color: #93aba8; font-size: 11px; margin-top: 3px; line-height: 1.3; }
 .gr-ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
@@ -59,16 +59,19 @@ export class GarageUI {
 
   get isOpen(): boolean { return !this.el.classList.contains('hidden'); }
 
-  /** pictures: each skin's 3D picture by skin id (colour swatches are shown where there isn't one). */
-  open(p: Progress, equip: (skin: string) => void, onClose: () => void, pictures: Record<string, string> = {}): void {
+  /**
+   * The collection: every skin and how to earn it (they're picked on the car selection screens).
+   * pictures: each skin's 3D picture by skin id (colour swatches are shown where there isn't one).
+   */
+  open(p: Progress, onClose: () => void, pictures: Record<string, string> = {}): void {
     const render = () => {
-      const skins = SKINS.map((s) => {
+      const skins = SKINS.filter((s) => s.colors).map((s) => {
         const owned = skinUnlocked(p, s.id);
         const how = ACHIEVEMENTS.find((a) => a.skin === s.id);
         const sw = s.colors ? [s.colors.body, s.colors.trim, s.colors.accent, s.colors.glow] : ['#ff3d6e', '#3ff0ff', '#2fd16b', '#ff8a1f'];
-        return `<button class="gr-skin ${p.equipped === s.id ? 'on' : ''}" data-skin="${s.id}" ${owned ? '' : 'disabled'}>
+        return `<div class="gr-skin ${p.equipped === s.id ? 'on' : ''} ${owned ? '' : 'locked'}">
           ${pictures[s.id] ? `<img class="gr-pic" src="${pictures[s.id]}" alt="">` : `<div class="gr-sw">${sw.map((c) => `<i style="background:${c}"></i>`).join('')}</div>`}
-          <b>${s.name}</b><small>${owned ? (p.equipped === s.id ? 'EQUIPPED' : s.colors ? 'CLICK TO EQUIP' : 'Each car in its own colours') : `🔒 ${how ? how.name : ''}`}</small></button>`;
+          <b>${s.name}</b><small>${owned ? (p.equipped === s.id ? 'WEARING' : 'UNLOCKED') : `🔒 ${how ? how.name : ''}`}</small></div>`;
       }).join('');
       const got = ACHIEVEMENTS.filter((a) => p.unlocked.includes(a.id)).length;
       const achs = ACHIEVEMENTS.map((a) => {
@@ -82,7 +85,7 @@ export class GarageUI {
         <div class="gr-card deco-panel">
           <h2 class="deco-title">GARAGE</h2>
           <div class="deco-rule"></div>
-          <div class="gr-sub deco-label">SKINS · EARN THEM WITH ACHIEVEMENTS</div>
+          <div class="gr-sub deco-label">SKIN COLLECTION · EARN THEM WITH ACHIEVEMENTS, PICK THEM WITH YOUR CAR</div>
           <div class="gr-skins">${skins}</div>
           <div class="gr-sub deco-label">ACHIEVEMENTS · ${got} / ${ACHIEVEMENTS.length}</div>
           <div class="gr-ach">${achs}</div>
@@ -93,10 +96,6 @@ export class GarageUI {
           </div>
           <div class="hr-btns row" style="margin-top:20px"><button class="hr-btn" data-done>DONE</button></div>
         </div>`;
-      this.el.querySelectorAll<HTMLButtonElement>('[data-skin]').forEach((b) => b.addEventListener('click', () => {
-        equip(b.dataset.skin!);
-        render();
-      }));
       this.el.querySelector('[data-done]')!.addEventListener('click', () => { this.el.classList.add('hidden'); onClose(); });
     };
     render();

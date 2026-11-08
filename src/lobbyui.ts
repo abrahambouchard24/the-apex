@@ -1,7 +1,7 @@
 // Online screens: pick a name and host or join, then the lobby (the race code, who's in, car
 // picks, and for the host the track, laps and AI cars). Plain DOM, using menu.ts's styles.
 
-import { LAP_CHOICES, SEASON_CHOICES, CarChoice, TrackChoice, cardFace } from './menu';
+import { LAP_CHOICES, SEASON_CHOICES, CarChoice, SkinChoice, TrackChoice, cardFace, skinCards } from './menu';
 import { LobbyState } from './net';
 
 export interface LobbyHandlers {
@@ -19,6 +19,8 @@ export interface LobbyHandlers {
   leave(): void;
   /** Open the TUNE CAR screen for my car. */
   tune(): void;
+  /** Wear a skin ('stock' = the car's own colours). */
+  equip(skin: string): void;
   /** Open the Garage (skins and achievements). */
   garage(): void;
 }
@@ -47,6 +49,7 @@ const CSS = `
 .ol-cars .hr-car img { max-width: 96px; margin-bottom: 2px; }
 .ol-cars .hr-car b { font-size: 15px; }
 .ol-cars .hr-car span { font-size: 9px; }
+.ol-skins .hr-skin-hint { font-size: 11px; }
 .ol-cars .hr-car:disabled { opacity: 0.3; cursor: default; transform: none; }
 .ol-tracks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .ol-tracks button { padding: 8px 6px; border-radius: 10px; border: 2px solid #252b52; background: rgba(20,24,48,0.85); color: #c8d2ff;
@@ -65,6 +68,11 @@ const CSS = `
 
 export class LobbyUI {
   private el: HTMLDivElement;
+
+  private skins: SkinChoice[] = [];
+  private equipped = 'stock';
+  /** The unlocked skins offered under the cars, and the one being worn. */
+  setSkins(skins: SkinChoice[], equipped: string): void { this.skins = skins; this.equipped = equipped; }
 
   constructor(private cars: CarChoice[], private tracks: TrackChoice[], private on: LobbyHandlers) {
     const style = document.createElement('style');
@@ -124,7 +132,7 @@ export class LobbyUI {
     const players = lobby.players.map((p) => `<li><span style="color:${this.cars[p.car].color}">${esc(p.name)}${p.id === me ? ' (YOU)' : ''}</span>
       <small>${this.cars[p.car].name}${p === lobby.players[0] ? ' · HOST' : ''} · ${p.setup?.assist === 0 ? 'PRO' : 'ASSISTED'}</small></li>`).join('')
       + (lobby.ai ? `<li><span style="color:#8a93c0">AI × ${Math.min(lobby.ai, maxAi)}</span><small>COMPUTER</small></li>` : '');
-    const cars = this.cars.map((c, i) => `<button class="hr-car ${mine?.car === i ? 'selected' : ''}" style="--c:${c.color}" data-car="${i}"
+    const cars = this.cars.map((c, i) => `<button class="hr-car ${mine?.car === i && this.equipped === 'stock' ? 'selected' : ''}" style="--c:${c.color}" data-car="${i}"
       ${taken.has(i) ? 'disabled' : ''}>${cardFace(c)}</button>`).join('');
     // The session leaderboard: everyone's tally across the races played together in this lobby.
     const meName = mine?.name;
@@ -151,6 +159,8 @@ export class LobbyUI {
           <div>
             <div class="ol-label">YOUR CAR</div>
             <div class="ol-cars">${cars}</div>
+            <div class="ol-label" style="margin-top:8px">YOUR SKINS</div>
+            <div class="ol-cars ol-skins">${skinCards(this.skins, this.equipped)}</div>
             <div class="ol-row" style="margin:0 0 4px;gap:22px">
               <div><div class="ol-label">MODE</div><div class="hr-seg" data-seg="mode">
                 <button data-v="1" class="${lobby.races === 1 ? 'on' : ''}" ${isHost ? '' : 'disabled'}>SINGLE RACE</button>
@@ -180,7 +190,14 @@ export class LobbyUI {
       </div>`);
     this.el.querySelector('[data-tune]')!.addEventListener('click', () => this.on.tune());
     this.el.querySelector('[data-garage]')!.addEventListener('click', () => this.on.garage());
-    this.el.querySelectorAll<HTMLElement>('[data-car]').forEach((b) => b.addEventListener('click', () => this.on.pickCar(Number(b.dataset.car))));
+    this.el.querySelectorAll<HTMLElement>('[data-car]').forEach((b) => b.addEventListener('click', () => { this.equipped = 'stock'; this.on.equip('stock'); this.on.pickCar(Number(b.dataset.car)); }));
+    this.el.querySelectorAll<HTMLElement>('[data-skin]').forEach((b) => b.addEventListener('click', () => {
+      this.equipped = b.dataset.skin!;
+      this.on.equip(this.equipped);
+      if (!b.isConnected) return;   // the host re-rendered the lobby already
+      this.el.querySelectorAll<HTMLElement>('[data-skin]').forEach((o) => o.classList.toggle('selected', o === b));
+      this.el.querySelectorAll<HTMLElement>('[data-car]').forEach((o) => o.classList.remove('selected'));
+    }));
     this.el.querySelectorAll<HTMLElement>('[data-track]').forEach((b) => b.addEventListener('click', () => this.on.setTrack(Number(b.dataset.track))));
     this.el.querySelectorAll<HTMLElement>('[data-seg]').forEach((seg) => seg.addEventListener('click', (e) => {
       const v = (e.target as HTMLElement).closest('button')?.getAttribute('data-v');

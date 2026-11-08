@@ -8,7 +8,7 @@ import { ChaseView, renderCarCards } from './view3d';
 import { loadRecords, loadSettings, saveRecords, saveSettings, type Settings } from './settings';
 import { SettingsUI } from './settingsui';
 import { Tutorial } from './tutorial';
-import { Achievements, SKINS, skinColors } from './achievements';
+import { ACHIEVEMENTS, Achievements, SKINS, skinColors } from './achievements';
 import { GarageUI } from './garageui';
 import {
   MISSIONS, REPLAY_SHARE, Save, Speaker, loadSave, met, playerMods, rivalMods, writeSave,
@@ -100,32 +100,45 @@ function openSettings(): void {
 /** Achievements and the skins they unlock; the Garage to equip them. */
 const achievements = new Achievements();
 const garageUI = new GarageUI();
-achievements.onUnlock = (a) => garageUI.notify(a);
+achievements.onUnlock = (a) => { garageUI.notify(a); refreshSkinCards(); };
 /** Per race: did the player touch a wall, and how much battery did drifting charge. */
 let touchedWall = false;
 let driftCharge = 0;
 /** Each car's skin id (sent to guests in the start message). */
 const carSkin = new Map<Car, string>();
-/** Each skin painted on the player's car, for the Garage (rendered the first time it opens). */
-let skinPics: Record<string, string> | null = null;
-function skinPictures(): Record<string, string> {
-  if (skinPics || !chase) return skinPics ?? {};
+/** Each skin painted on the craft, for the skin cards and the Garage (each rendered once, when first needed). */
+const skinPics: Record<string, string> = {};
+function skinPictures(ids = SKINS.map((s) => s.id)): Record<string, string> {
+  const missing = SKINS.filter((s) => ids.includes(s.id) && !(s.id in skinPics));
+  if (!missing.length || !chase) return skinPics;
   try {
-    const l = LIVERIES[playerLivery];
-    const urls = renderCarCards(SKINS.map((s) => ({ color: l.color, name: l.name, hue: l.hue, skin: s.colors })), 300, 200);
-    skinPics = Object.fromEntries(SKINS.map((s, i) => [s.id, urls[i]]));
-  } catch { skinPics = {}; }
+    const l = LIVERIES[0];
+    const urls = renderCarCards(missing.map((s) => ({ color: l.color, name: l.name, hue: l.hue, skin: s.colors })), 300, 200);
+    missing.forEach((s, k) => { skinPics[s.id] = urls[k]; });
+  } catch { /* swatches then */ }
   return skinPics;
 }
 
 function openGarage(): void {
   input.release();
-  garageUI.open(achievements.p, (skin) => {
-    achievements.equip(skin);
-    if (player) player.skin = skinColors(achievements.equipped);
-    if (online?.role === 'guest') online.guest.send({ t: 'skin', skin: achievements.equipped });
-    if (online?.role === 'host') broadcastLobby();
-  }, () => input.release(), skinPictures());
+  garageUI.open(achievements.p, () => input.release(), skinPictures());
+}
+
+/** Wear a skin, picked on a car selection screen ('stock' = the car's own colours). */
+function equipSkin(skin: string): void {
+  achievements.equip(skin);
+  if (player) player.skin = skinColors(achievements.equipped);
+  if (online?.role === 'guest') online.guest.send({ t: 'skin', skin: achievements.equipped });
+  if (online?.role === 'host') broadcastLobby();
+}
+
+/** The unlocked skins as cards beside the cars, on the setup screen and in the lobby. */
+function refreshSkinCards(): void {
+  const owned = SKINS.filter((s) => s.colors && achievements.p.unlocked.some((a) => ACHIEVEMENTS.find((x) => x.id === a)?.skin === s.id));
+  const pics = skinPictures(owned.map((s) => s.id));
+  const list = owned.map((s) => ({ id: s.id, name: s.name, card: pics[s.id] ?? '' }));
+  menus.setSkins(list, achievements.equipped);
+  lobbyUI.setSkins(list, achievements.equipped);
 }
 
 /** The tutorial lap, while it's running. */
@@ -457,6 +470,7 @@ const trackChoices: TrackChoice[] = tracks.map((t, i) => {
 const menus = new Menus(LIVERIES, trackChoices, {
   settings: openSettings,
   garage: openGarage,
+  equip: equipSkin,
   tutorial() {
     endTutorial();
     trial = false;
@@ -1367,6 +1381,7 @@ function playerName(): string {
 
 const lobbyUI = new LobbyUI(LIVERIES, trackChoices, {
   garage: openGarage,
+  equip: equipSkin,
   host: startHosting,
   join: startJoining,
   pickCar(car) {
@@ -1949,4 +1964,5 @@ function frame(now: number): void {
   if (shift) { player.craft.pos.x -= pred.errX; player.craft.pos.y -= pred.errY; }
   requestAnimationFrame(frame);
 }
+refreshSkinCards();   // the unlocked skins as cards on the car screens (after the lobby UI exists)
 requestAnimationFrame(frame);
