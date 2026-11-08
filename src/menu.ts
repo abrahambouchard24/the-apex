@@ -69,13 +69,24 @@ const CSS = `
 .hr-cars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 22px; }
 @media (max-width: 760px) { .hr-cars { grid-template-columns: repeat(3, 1fr); } }
 .hr-car {
-  background: rgba(20,24,48,0.85); border: 2px solid #252b52; border-radius: 14px; padding: 14px 8px 10px;
-  cursor: pointer; color: inherit; font: inherit; transition: transform 120ms, border-color 120ms, box-shadow 120ms;
+  position: relative; overflow: hidden; cursor: pointer; color: inherit; font: inherit; padding: 16px 6px 14px;
+  border: 2px solid rgba(217,178,91,0.6); border-radius: 64px 64px 8px 8px;
+  background:
+    repeating-conic-gradient(from 0deg at 50% 46%, rgba(217,178,91,0.13) 0deg 3deg, transparent 3deg 15deg),
+    radial-gradient(ellipse 85% 70% at 50% 44%, #1d6670, #0c3540 55%, #04141a);
+  box-shadow: inset 0 0 0 4px rgba(4,20,26,0.85), inset 0 0 0 5px rgba(217,178,91,0.35);
+  transition: transform 140ms, border-color 140ms, box-shadow 140ms;
 }
-.hr-car:hover { transform: translateY(-3px); border-color: #4a5590; }
-.hr-car.selected { border-color: var(--c); box-shadow: 0 0 22px -4px var(--c); transform: translateY(-3px); }
-.hr-car img { height: 80px; display: block; margin: 0 auto 8px; }
-.hr-car span { font-weight: 800; font-size: 14px; letter-spacing: 0.08em; }
+.hr-car::after { content: ''; position: absolute; left: 20%; right: 20%; bottom: 7px; height: 2px; border-radius: 1px;
+  background: var(--c); box-shadow: 0 0 8px var(--c); opacity: 0.7; }
+.hr-car:hover { transform: translateY(-4px); border-color: #f6e3a1; }
+.hr-car.selected { transform: translateY(-4px); border-color: #f6e3a1;
+  box-shadow: inset 0 0 0 4px rgba(4,20,26,0.85), inset 0 0 0 5px var(--c), 0 0 28px -4px var(--c); }
+.hr-car.selected::after { opacity: 1; }
+.hr-car img { display: block; width: 100%; max-width: 150px; height: auto; margin: 0 auto 4px; filter: drop-shadow(0 8px 8px rgba(0,0,0,0.45)); }
+.hr-car b { display: block; font: 800 20px 'Cinzel', 'Trajan Pro', Georgia, serif; color: #f0d58a; letter-spacing: 0.06em;
+  text-shadow: 0 1px 0 #6b5220; line-height: 1; }
+.hr-car span { display: block; margin-top: 3px; font: 600 11px 'Cinzel', 'Trajan Pro', Georgia, serif; letter-spacing: 0.22em; }
 .hr-btns { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .hr-btn {
   min-width: 240px; padding: 14px 28px; border-radius: 12px; border: 0; cursor: pointer;
@@ -304,7 +315,7 @@ export class Menus {
       const b = document.createElement('button');
       b.className = 'hr-car';
       b.style.setProperty('--c', car.color);
-      b.innerHTML = `<img src="${car.card ?? car.url}" alt=""><span style="color:${car.color}">${car.name}</span>`;
+      b.innerHTML = cardFace(car);
       b.addEventListener('click', () => this.select(i));
       b.addEventListener('dblclick', () => this.on.start(this.setup()));
       grid.append(b);
@@ -507,4 +518,10 @@ function overlay(html: string): HTMLDivElement {
   el.className = 'hr-overlay';
   el.innerHTML = html;
   return el;
+}
+
+/** The inside of a car selection card: number, the car's 3D model and its name. */
+export function cardFace(car: CarChoice): string {
+  const [num, ...rest] = car.name.split(' ');
+  return `<b>${num}</b><img src="${car.card ?? car.url}" alt=""><span style="color:${car.color}">${rest.join(' ') || num}</span>`;
 }

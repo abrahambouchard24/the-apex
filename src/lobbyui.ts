@@ -1,7 +1,7 @@
 // Online screens: pick a name and host or join, then the lobby (the race code, who's in, car
 // picks, and for the host the track, laps and AI cars). Plain DOM, using menu.ts's styles.
 
-import { LAP_CHOICES, SEASON_CHOICES, CarChoice, TrackChoice } from './menu';
+import { LAP_CHOICES, SEASON_CHOICES, CarChoice, TrackChoice, cardFace } from './menu';
 import { LobbyState } from './net';
 
 export interface LobbyHandlers {
@@ -41,9 +41,10 @@ const CSS = `
 .ol-players li small { color: #8a93c0; font-weight: 700; }
 .ol-label { color: #8a93c0; font-weight: 700; letter-spacing: 0.2em; font-size: 11px; margin: 10px 0 6px; }
 .ol-cars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.ol-cars .hr-car { padding: 8px 4px 6px; }
-.ol-cars .hr-car img { height: 54px; margin-bottom: 4px; }
-.ol-cars .hr-car span { font-size: 11px; }
+.ol-cars .hr-car { padding: 10px 4px 12px; border-radius: 40px 40px 6px 6px; }
+.ol-cars .hr-car img { max-width: 96px; margin-bottom: 2px; }
+.ol-cars .hr-car b { font-size: 15px; }
+.ol-cars .hr-car span { font-size: 9px; }
 .ol-cars .hr-car:disabled { opacity: 0.3; cursor: default; transform: none; }
 .ol-tracks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .ol-tracks button { padding: 8px 6px; border-radius: 10px; border: 2px solid #252b52; background: rgba(20,24,48,0.85); color: #c8d2ff;
@@ -122,7 +123,7 @@ export class LobbyUI {
       <small>${this.cars[p.car].name}${p === lobby.players[0] ? ' · HOST' : ''} · ${p.setup?.assist === 0 ? 'PRO' : 'ASSISTED'}</small></li>`).join('')
       + (lobby.ai ? `<li><span style="color:#8a93c0">AI × ${Math.min(lobby.ai, maxAi)}</span><small>COMPUTER</small></li>` : '');
     const cars = this.cars.map((c, i) => `<button class="hr-car ${mine?.car === i ? 'selected' : ''}" style="--c:${c.color}" data-car="${i}"
-      ${taken.has(i) ? 'disabled' : ''}><img src="${c.card ?? c.url}" alt=""><span style="color:${c.color}">${c.name}</span></button>`).join('');
+      ${taken.has(i) ? 'disabled' : ''}>${cardFace(c)}</button>`).join('');
     // The session leaderboard: everyone's tally across the races played together in this lobby.
     const meName = mine?.name;
     const rows = [...(lobby.board ?? [])].sort((a, b) => b.points - a.points || b.wins - a.wins || a.best - b.best);

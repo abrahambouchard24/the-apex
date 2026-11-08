@@ -1,6 +1,7 @@
 // Story mode screens: the name prompt, the chapter map, mission briefings, dialogue, the garage
 // and the mission result. Plain DOM overlays, styled to match menu.ts.
 
+import { portraitSrc, preloadPortraits } from './portraits';
 import {
   CHAPTERS, CHAPTER_TAGLINES, CHARACTERS, Goal, Line, MAX_LEVEL, MISSIONS, Outcome, REPLAY_SHARE, Save, Speaker,
   UPGRADES, UpgradeId, describe, linesFor, say, upgradeCost,
@@ -76,19 +77,27 @@ const CSS = `
 .st-up .hr-btn { grid-row: 1 / span 3; grid-column: 2; min-width: 120px; padding: 10px 14px; font-size: 14px; }
 .st-up .hr-btn:disabled { filter: grayscale(1) brightness(0.6); cursor: default; }
 
-/* Dialogue: a bar across the bottom of the screen with the speaker's portrait. */
+/* Dialogue: a bar across the bottom of the screen with the speaker's portrait, in deep-sea glass
+   with a gold double frame, deco corners and an arched portrait frame lit in the speaker's colour. */
 .st-talk { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center;
-  background: linear-gradient(transparent 40%, rgba(7,8,15,0.85)); font-family: system-ui, sans-serif; color: #e8ecff; cursor: pointer; }
+  background: linear-gradient(transparent 40%, rgba(4,16,20,0.88)); font-family: system-ui, sans-serif; color: #efe6d2; cursor: pointer; }
 .st-talk.hidden { display: none; }
-.st-box { position: relative; display: flex; gap: 20px; align-items: flex-start; width: min(940px, calc(100% - 32px)); margin-bottom: 28px;
-  padding: 20px 24px 22px; border-radius: 18px; background: rgba(12,15,32,0.95); border: 2px solid var(--c); box-shadow: 0 0 40px -12px var(--c); }
-.st-face { flex: none; width: 112px; height: 112px; border-radius: 16px; overflow: hidden; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(circle at 35% 30%, var(--c), #10132a 75%); font: 900 44px system-ui, sans-serif; color: #fff; }
-.st-face img { width: 100%; height: 100%; object-fit: cover; }
-.st-speaker { font-weight: 900; letter-spacing: 0.12em; font-size: 18px; color: var(--c); }
-.st-role { color: #8a93c0; font-size: 12px; letter-spacing: 0.14em; font-weight: 700; margin: 2px 0 10px; }
-.st-text { font-size: 19px; line-height: 1.45; min-height: 56px; }
-.st-next { position: absolute; right: 18px; bottom: 10px; color: #8a93c0; font-size: 11px; letter-spacing: 0.18em; font-weight: 700; }
+.st-box { position: relative; display: flex; gap: 22px; align-items: flex-start; width: min(960px, calc(100% - 32px)); margin-bottom: 28px;
+  padding: 22px 28px 24px; border-radius: 6px;
+  background: linear-gradient(160deg, rgba(16,58,66,0.96), rgba(6,22,28,0.97) 60%);
+  border: 2px solid #d9b25b; outline: 1px solid rgba(217,178,91,0.45); outline-offset: 4px;
+  box-shadow: 0 0 46px -14px var(--c), inset 0 0 0 1px rgba(246,227,161,0.15); }
+.st-box::before, .st-box::after { content: ''; position: absolute; width: 22px; height: 22px; border: 2px solid #f6e3a1; pointer-events: none; }
+.st-box::before { top: 7px; left: 7px; border-right: 0; border-bottom: 0; }
+.st-box::after { bottom: 7px; right: 7px; border-left: 0; border-top: 0; }
+.st-face { flex: none; width: 128px; height: 128px; border-radius: 64px 64px 4px 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  background: #0c3540; border: 3px solid #d9b25b; box-shadow: 0 0 0 2px var(--c), 0 0 22px -2px var(--c);
+  font: 900 44px system-ui, sans-serif; color: #fff; }
+.st-face img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.st-speaker { font: 700 20px 'Cinzel', 'Trajan Pro', Georgia, serif; letter-spacing: 0.16em; color: var(--c); text-shadow: 0 0 12px var(--c); }
+.st-role { color: #d9b25b; font-size: 11px; letter-spacing: 0.22em; font-weight: 700; margin: 3px 0 10px; text-transform: uppercase; }
+.st-text { font-size: 19px; line-height: 1.5; min-height: 56px; color: #f3ecdc; }
+.st-next { position: absolute; right: 22px; bottom: 10px; color: #d9b25b; font-size: 11px; letter-spacing: 0.22em; font-weight: 700; }
 .st-skip { position: fixed; top: 18px; right: 22px; z-index: 21; }
 
 /* The way forward: one big card for the next mission. Nothing past it is shown. */
@@ -136,6 +145,7 @@ export class StoryUI {
   private cardTimer: number | null = null;
 
   constructor(private on: StoryHandlers) {
+    preloadPortraits();
     const style = document.createElement('style');
     style.textContent = CSS;
     document.head.append(style);
@@ -454,14 +464,9 @@ export class StoryUI {
 }
 
 /**
- * A character's portrait: /portraits/<who>.png once the art exists, and until then a badge with
- * their initials in their colour.
+ * A character's portrait, drawn in code (src/portraits.ts) as pixel art. The old pictures in
+ * public/portraits/ are no longer used but kept.
  */
-const missingPortraits = new Set<Speaker>();
-(window as unknown as { __apexNoPortrait: (who: Speaker) => void }).__apexNoPortrait = (who) => missingPortraits.add(who);
-
-function portrait(who: Speaker, name: string): string {
-  const initials = name.split(/\s+/).filter((w) => w !== 'MR.').map((w) => w[0]).join('').slice(0, 2).replace(/'/g, '');
-  if (missingPortraits.has(who)) return initials;
-  return `<img src="portraits/${who}.png" alt="" onerror="__apexNoPortrait('${who}');this.replaceWith(document.createTextNode('${initials}'))">`;
+function portrait(who: Speaker, _name: string): string {
+  return `<img src="${portraitSrc(who)}" alt="">`;
 }

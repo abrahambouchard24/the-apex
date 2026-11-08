@@ -1132,8 +1132,9 @@ class CarRig {
     const livery = new THREE.Color(sk?.body ?? car.color);
     const colors: Record<VoxKind, THREE.Color> = {
       paint: livery, dark: sk ? new THREE.Color(sk.trim) : livery.clone().multiplyScalar(0.5), carbon: new THREE.Color(0x1a1d2e),
-      metal: new THREE.Color(0x9aa3b8), glass: new THREE.Color(0x10204a), shine: new THREE.Color(0x8fc0ff),
-      white: new THREE.Color(sk?.accent ?? 0xf2f4ff), intake: new THREE.Color(0xdff6ff), nozzle: new THREE.Color(0xbff4ff),
+      // Gold rims and ivory stripes, for the deco look; a skin's accent replaces the ivory.
+      metal: new THREE.Color(0xd9b25b), glass: new THREE.Color(0x0e3a44), shine: new THREE.Color(0x9ff0ff),
+      white: new THREE.Color(sk?.accent ?? 0xf3ead2), intake: new THREE.Color(0xdff6ff), nozzle: new THREE.Color(0xbff4ff),
       neon: sk ? new THREE.Color(sk.glow) : livery.clone().lerp(new THREE.Color(0xffffff), 0.35),
     };
     const vox = carVoxels();
@@ -1396,7 +1397,7 @@ export function renderCarCards(cars: { color: string; name: string; hue: number 
   rim.position.set(-1.2, 0.6, -1);
   scene.add(rim);
   const camera = new THREE.PerspectiveCamera(30, w / h, 1, 2000);
-  camera.position.set(150, 95, 185);
+  camera.position.set(88, 56, 108);
   camera.lookAt(-4, 10, 0);
   const out: string[] = [];
   for (const c of cars) {
