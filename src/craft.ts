@@ -46,8 +46,8 @@ const WAKE_SPREAD = 0.1;         // the wake widens by this many px per px behin
 const WAKE_MIN_SPEED = 300;      // px/s: slower cars leave no usable wake
 const WAKE_ALIGN = 0.85;         // both cars must be moving within ~30° of the same direction
 // Heat: hitting walls and other cars heats the craft; a hot craft loses top speed until it cools.
-const HEAT_PER_IMPACT = 1 / 560;  // heat per px/s of into-the-wall speed
-const HEAT_PER_SCRAPE = 0.55;     // heat per second of grinding along a wall
+const HEAT_PER_IMPACT = 1 / 350;  // heat per px/s of into-the-wall speed (a 10° hit at 200 km/h: about 0.44)
+const HEAT_PER_SCRAPE = 0.85;     // heat per second of grinding along a wall
 const HEAT_COOL = 0.05;           // heat shed per second (a full bar takes 20 s to clear)
 const LANE_COOL = 0.35;           // heat shed per second on the cooling lane (7x faster)
 // Boost pads (sprint fork lanes): a burst of pace while on them and for a moment after.
