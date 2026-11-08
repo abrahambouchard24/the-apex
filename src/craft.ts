@@ -15,18 +15,14 @@ export const GEARS: Gear[] = [
 
 const TURN_RATE = 3.6;        // rad/s at low speed
 const TURN_RATE_FAST = 2.4;   // rad/s at top speed
-// Grip: how fast sideways velocity bleeds off (1/s); low = floaty. It fades with speed, so
-// a fast craft slides wide unless the driver scrubs speed off first: braking matters.
+// Grip: how fast sideways velocity bleeds off (1/s). It stays strong at speed and throws part of the
+// sideways momentum away instead of redirecting it forward, so turning hard scrubs speed off by
+// itself: the craft slows into a corner and holds the road. One handling model for every craft.
 const GRIP_SLOW = 2.6;        // grip at a standstill
-const GRIP_FAST = 0.95;       // grip at top speed
+const GRIP_FAST = 1.45;       // grip at top speed
 const BRAKE_GRIP_SLOW = 1.6;  // grip while braking: looser, so braking into a corner swings the tail
-const BRAKE_GRIP_FAST = 0.6;
-const GRIP_KEEP = 0.9;        // share of sideways momentum grip turns into forward speed (the rest scrubs off)
-// ASSISTED handling (the original feel): grip stays strong at speed and throws sideways momentum
-// away instead of redirecting it, so turning hard scrubs speed off by itself.
-const ASSIST_GRIP_FAST = 1.45;
-const ASSIST_BRAKE_GRIP_FAST = 1.2;
-const ASSIST_KEEP = 0.5;          // ASSISTED: only half the sideways momentum is redirected, so turning hard brakes you
+const BRAKE_GRIP_FAST = 1.2;
+const GRIP_KEEP = 0.5;        // share of sideways momentum grip turns into forward speed (the rest scrubs off)
 const BRAKE_TURN_BONUS = 1.35;
 const DRAG = 0.12;            // forward air drag (1/s)
 const SCRAPE_FRICTION = 3.2;  // speed lost per second while grinding along a wall (1/s)
@@ -93,7 +89,7 @@ export interface Mods {
   heat: number;    // heat resistance: this share less heat from hits and grinding
   ers: number;     // boost effectiveness
   harvest: number; // how fast drifting charges the boost battery
-  assist: number;  // above 0: ASSISTED handling (turning scrubs speed for you)
+  assist: number;  // no longer used (every craft handles the same); kept so old saves and messages parse
   turn: number;    // steering rate (how fast the nose comes round)
 }
 export const NO_MODS: Mods = { top: 0, accel: 0, grip: 0, heat: 0, ers: 0, harvest: 0, assist: 0, turn: 0 };
@@ -255,11 +251,10 @@ export class Craft {
     // into a corner and you slide wide. Only a small share is scrubbed off.
     const sideBefore = side;
     const gripFade = Math.pow(speedFrac, 1.3);
-    const assist = this.mods.assist > 0;
-    const grip = (brake ? lerp(BRAKE_GRIP_SLOW, assist ? ASSIST_BRAKE_GRIP_FAST : BRAKE_GRIP_FAST, gripFade)
-      : lerp(GRIP_SLOW, assist ? ASSIST_GRIP_FAST : GRIP_FAST, gripFade)) * (1 + this.mods.grip) * (this.onGround ? 1 : AIR_GRIP);
+    const grip = (brake ? lerp(BRAKE_GRIP_SLOW, BRAKE_GRIP_FAST, gripFade) : lerp(GRIP_SLOW, GRIP_FAST, gripFade))
+      * (1 + this.mods.grip) * (this.onGround ? 1 : AIR_GRIP);
     side *= Math.exp(-grip * dt);
-    if (fwd > 0) fwd = Math.sqrt(fwd * fwd + (sideBefore * sideBefore - side * side) * (assist ? ASSIST_KEEP : GRIP_KEEP));
+    if (fwd > 0) fwd = Math.sqrt(fwd * fwd + (sideBefore * sideBefore - side * side) * GRIP_KEEP);
 
     this.vel.x = fx * fwd - fy * side;
     this.vel.y = fy * fwd + fx * side;
