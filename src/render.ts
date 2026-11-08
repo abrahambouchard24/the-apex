@@ -68,6 +68,8 @@ export interface RaceHud {
   restart?: number;
   /** A sprint (one run, no laps): its length, and how far along each car is (0..1). */
   sprint?: { km: number; cars: { f: number; color: string; me: boolean }[] };
+  /** The sprint strip the player is on: a small cue under the progress strip. */
+  strip?: 'boost' | 'charge' | 'cool' | 'fire';
 }
 
 export interface Scene {
@@ -133,6 +135,7 @@ function drawHudLayers(ctx: CanvasRenderingContext2D, w: number, h: number, s: S
   ctx.restore();
   drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud, !!s.touch);
   if (s.hud.sprint) drawSprintStrip(ctx, w, s.hud.sprint, s.touch ? 62 : 24);
+  if (s.hud.strip) drawStripCue(ctx, w, s.hud.strip, (s.touch ? 62 : 24) + 30, s.time);
   drawRaceBanners(ctx, w, h, s.hud);
   if (s.hud.restart) drawRestartHold(ctx, w, h, s.hud.restart);
   drawSteerBar(ctx, w, h, s.steer ?? 0);
@@ -527,6 +530,16 @@ function drawMinimap(ctx: CanvasRenderingContext2D, w: number, h: number, track:
   ctx.beginPath();
   ctx.arc(s.x, s.y, (4 * k) / scale, 0, Math.PI * 2);
   ctx.fill();
+  if (track.forks?.length) {
+    // Forks: small teal ticks where the road splits into two lanes.
+    ctx.fillStyle = '#3fe0d0';
+    const r = (2.6 * k) / scale;
+    for (const f of track.forks) {
+      const q = track.pts[f.from];
+      ctx.beginPath(); ctx.moveTo(q.x, q.y - r); ctx.lineTo(q.x + r, q.y); ctx.lineTo(q.x, q.y + r); ctx.lineTo(q.x - r, q.y); ctx.closePath();
+      ctx.fill();
+    }
+  }
   if (track.open) {
     // A sprint's finish: a gold diamond.
     const f = track.pts[track.finishIndex], r = (7 * k) / scale;
@@ -612,6 +625,30 @@ function drawLapPanel(ctx: CanvasRenderingContext2D, race: RaceState, now: numbe
   }
   ctx.fillStyle = race.bestLap ? '#c77dff' : '#8a93c0';
   ctx.fillText(`BEST ${race.bestLap ? formatTime(race.bestLap) : '-:--.---'}`, x + 16, y + 110);
+  ctx.restore();
+}
+
+const STRIP_CUE: Record<NonNullable<RaceHud['strip']>, [string, string]> = {
+  boost: ['BOOST PAD', '#e8c25a'], charge: ['CHARGING', '#c58bff'], cool: ['COOLING', '#7fdcff'], fire: ['FIRE', '#ff6a3d'],
+};
+/** A small pill under the progress strip naming the strip the player is on, pulsing gently. */
+function drawStripCue(ctx: CanvasRenderingContext2D, w: number, kind: NonNullable<RaceHud['strip']>, y: number, time: number): void {
+  const [text, color] = STRIP_CUE[kind];
+  ctx.save();
+  ctx.font = '600 12px Outfit, system-ui, sans-serif';
+  const tw = ctx.measureText(text).width + text.length * 2.4, pw = tw + 30;
+  ctx.globalAlpha = 0.85 + Math.sin(time * 8) * 0.15;
+  ctx.fillStyle = 'rgba(6,18,24,0.78)';
+  roundRect(ctx, w / 2 - pw / 2, y - 11, pw, 22, 11);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if ('letterSpacing' in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = '2.4px';
+  ctx.fillText(text, w / 2 + 1.2, y + 0.5);
   ctx.restore();
 }
 

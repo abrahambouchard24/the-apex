@@ -25,6 +25,8 @@ export class Sound {
   /** Wind while airborne off a jump: its level and a band-pass that rises with height. */
   private airGain!: GainNode;
   private airBand!: BiquadFilterNode;
+  /** Loops for sprint strips: a charging hum, a cooling hiss and a fire crackle. */
+  private stripGains: Record<'charge' | 'cool' | 'fire', GainNode> | null = null;
   /** Which race loop to play: the circuit groove or the sprint one. */
   private raceSong: 'race' | 'sprint' = 'race';
   private noise!: AudioBuffer;
@@ -213,6 +215,37 @@ export class Sound {
     this.airBand.frequency.setTargetAtTime(500 + Math.min(1, level) * 900, t, 0.1);
   }
 
+  /** The strip under the player ('charge', 'cool', 'fire') or null: fades its loop in, the others out. */
+  strip(kind: 'charge' | 'cool' | 'fire' | null): void {
+    if (!this.ctx || !this.stripGains) return;
+    const t = this.ctx.currentTime;
+    const level = { charge: 0.12, cool: 0.08, fire: 0.14 };
+    for (const k of ['charge', 'cool', 'fire'] as const) {
+      this.stripGains[k].gain.setTargetAtTime(kind === k ? level[k] : 0, t, kind === k ? 0.05 : 0.15);
+    }
+  }
+
+  /** A boost pad's push: a rising rush with a bright ping on top. */
+  padBoost(): void {
+    const ctx = this.live();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const src = this.noiseSource();
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 1.6;
+    band.frequency.setValueAtTime(400, t);
+    band.frequency.exponentialRampToValueAtTime(3600, t + 0.35);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    src.connect(band).connect(g).connect(this.sfx);
+    src.start(t); src.stop(t + 0.55);
+    this.tone(1568, 0.12, 0.05);
+    this.tone(2093, 0.16, 0.04, 0.06);
+  }
+
   /** The crowd at the finish: a swell of cheering that fades over a few seconds (bigger for a win). */
   crowd(win: boolean): void {
     const ctx = this.live();
@@ -372,6 +405,40 @@ export class Sound {
     const airSrc = this.noiseSource();
     airSrc.connect(this.airBand).connect(this.airGain).connect(this.sfx);
     airSrc.start();
+
+    // Sprint strips. Charging: a low electric hum with a fast tremolo. Cooling: a soft high hiss.
+    // Fire: low noise with a flickering level.
+    const mk = () => { const g = ctx.createGain(); g.gain.value = 0; g.connect(this.sfx); return g; };
+    this.stripGains = { charge: mk(), cool: mk(), fire: mk() };
+    const trem = ctx.createGain();
+    trem.gain.value = 0.6;
+    trem.connect(this.stripGains.charge);
+    for (const [f, type] of [[110, 'sawtooth'], [220, 'sine'], [331, 'sine']] as const) {
+      const o = ctx.createOscillator();
+      o.type = type; o.frequency.value = f;
+      const og = ctx.createGain(); og.gain.value = type === 'sawtooth' ? 0.25 : 0.4;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+      o.connect(og).connect(lp).connect(trem);
+      o.start();
+    }
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 14;
+    const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.4;
+    lfo.connect(lfoGain).connect(trem.gain);
+    lfo.start();
+    const hiss = this.noiseSource();
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 5200;
+    hiss.connect(hp).connect(this.stripGains.cool);
+    hiss.start();
+    const fire = this.noiseSource();
+    const flp = ctx.createBiquadFilter(); flp.type = 'lowpass'; flp.frequency.value = 700;
+    const flicker = ctx.createGain(); flicker.gain.value = 0.7;
+    const flo = ctx.createOscillator(); flo.type = 'square'; flo.frequency.value = 23;
+    const flg = ctx.createGain(); flg.gain.value = 0.3;
+    flo.connect(flg).connect(flicker.gain);
+    flo.start();
+    fire.connect(flp).connect(flicker).connect(this.stripGains.fire);
+    fire.start();
 
     this.music = new Music(ctx, this.musicVol, this.noise);
   }

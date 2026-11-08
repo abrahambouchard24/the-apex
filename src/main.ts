@@ -21,7 +21,7 @@ import { TouchControls } from './touch';
 import { DailyDef, DailyUI, dailyChallenge, dailyStatus, recordDaily } from './daily';
 import { GhostLap, GhostRecorder, ghostPose, loadGhost, saveGhost, trackSig } from './ghost';
 import { BoardRow, CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
-import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
+import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, lateral, placeOnGrid } from './track';
 
 const STEP = 1 / 60;
 const COUNTDOWN = 3;          // seconds of 3-2-1 before GO
@@ -854,6 +854,19 @@ function sprintHud(): NonNullable<RaceHud['sprint']> {
   };
 }
 
+/** The sprint strip under the player (boost pads, charging, cooling, fire), for the HUD cue and its sound. */
+let playerStrip: 'boost' | 'charge' | 'cool' | 'fire' | null = null;
+let lastPad = 0;
+function stripUnderPlayer(): void {
+  const c = player.craft;
+  const strip = track.strips.length && !finishOrder.includes(player)
+    ? track.stripAt(player.race.index, lateral(track, c, player.race.index)) : null;
+  playerStrip = strip ? strip.kind : c.pad > 0 ? 'boost' : null;
+  if (c.pad > lastPad + 0.05) sound.padBoost();   // a fresh push from a pad
+  lastPad = c.pad;
+  sound.strip(strip && strip.kind !== 'boost' ? strip.kind : null);
+}
+
 /** A craft touching down after a jump: sparks for anyone, and a jolt and a thud for the player. */
 function landing(car: Car): void {
   const hit = car.craft.landed;
@@ -971,6 +984,7 @@ function update(dt: number): void {
     }
     const contact = collideWalls(track, car.craft, car.race, dt);
     landing(car);
+    if (car === player) stripUnderPlayer();
     if (contact) {
       emitSparks(contact.x, contact.y, car.craft);
       if (car === player) {
@@ -1236,6 +1250,7 @@ function raceHud(): RaceHud {
     ...(mode === 'racing' || mode === 'paused' ? gaps(ranked) : { ahead: null, behind: null }),
     drsAvailable: drsAllowed(player),
     sprint: track.sprint ? sprintHud() : undefined,
+    strip: mode === 'racing' ? playerStrip ?? undefined : undefined,
     restart: online || mode !== 'racing' ? 0 : input.resetProgress(),
   };
 }
