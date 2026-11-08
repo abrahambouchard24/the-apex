@@ -488,13 +488,26 @@ function hudScale(w: number, h: number): number {
   return clamp(Math.min(w / 1280, h / 720) * 1.45, Math.min(1, h / 560), 1.6);
 }
 
+/** A sprint's route for the minimap: the lead-in into the start, then start to the end, left open. */
+const openRoutes = new WeakMap<Track, Path2D>();
+function openRoute(track: Track): Path2D {
+  let p = openRoutes.get(track);
+  if (p) return p;
+  p = new Path2D();
+  const order = [...Array.from({ length: track.length - track.routeEnd - 1 }, (_, k) => track.routeEnd + 1 + k),
+    ...Array.from({ length: track.routeEnd + 1 }, (_, k) => k)];
+  order.forEach((i, n) => { const q = track.pts[i]; if (n === 0) p!.moveTo(q.x, q.y); else p!.lineTo(q.x, q.y); });
+  openRoutes.set(track, p);
+  return p;
+}
+
 function drawMinimap(ctx: CanvasRenderingContext2D, w: number, h: number, track: Track, cars: Car[], player: Car): void {
   const b = track.bounds;
   const k = hudScale(w, h);
   const boxW = 220 * k, boxH = 160 * k, pad = 14 * k;
   const scale = Math.min((boxW - pad * 2) / (b.maxX - b.minX), (boxH - pad * 2) / (b.maxY - b.minY));
   const x = w - boxW - 24, y = 24;
-  const center = trackPaths(track).center;
+  const center = track.open ? openRoute(track) : trackPaths(track).center;
   ctx.save();
   ctx.fillStyle = 'rgba(8,10,22,0.7)';
   roundRect(ctx, x, y, boxW, boxH, 12);
@@ -514,6 +527,13 @@ function drawMinimap(ctx: CanvasRenderingContext2D, w: number, h: number, track:
   ctx.beginPath();
   ctx.arc(s.x, s.y, (4 * k) / scale, 0, Math.PI * 2);
   ctx.fill();
+  if (track.open) {
+    // A sprint's finish: a gold diamond.
+    const f = track.pts[track.finishIndex], r = (7 * k) / scale;
+    ctx.fillStyle = '#e8c25a';
+    ctx.beginPath(); ctx.moveTo(f.x, f.y - r); ctx.lineTo(f.x + r, f.y); ctx.lineTo(f.x, f.y + r); ctx.lineTo(f.x - r, f.y); ctx.closePath();
+    ctx.fill();
+  }
   // Player drawn last so it sits on top.
   for (const car of [...cars.filter((c) => c !== player), player]) {
     ctx.fillStyle = car.color;
