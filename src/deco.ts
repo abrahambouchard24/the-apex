@@ -10,7 +10,7 @@ const CSS = `
 .deco-panel::before, .deco-panel::after { content: ''; position: absolute; width: 18px; height: 18px; border: 1px solid #c9a24a; pointer-events: none; }
 .deco-panel::before { top: 10px; left: 10px; border-right: 0; border-bottom: 0; }
 .deco-panel::after { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
-.deco-title { font-family: 'Cinzel', 'Trajan Pro', Georgia, serif; font-weight: 700; font-style: normal; letter-spacing: 0.16em;
+.deco-title { font-family: 'Cinzel', 'Trajan Pro', Georgia, serif; font-weight: 800; font-style: normal; letter-spacing: 0.16em;
   background: linear-gradient(180deg, #fff6dc, #d9b45c 70%, #a8802e); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .deco-rule { height: 1px; margin: 8px 0 14px; background: linear-gradient(90deg, transparent, #c9a24a 20%, #c9a24a 80%, transparent); position: relative; }
 .deco-rule::after { content: ''; position: absolute; left: 50%; top: -4px; width: 7px; height: 7px; margin-left: -4px; transform: rotate(45deg);
@@ -27,14 +27,10 @@ const CSS = `
 `;
 
 let installed = false;
-/** Add the deco styles and the Cinzel title face (once). */
+/** Add the deco styles (once). The Cinzel title face is loaded by index.html. */
 export function installDeco(): void {
   if (installed) return;
   installed = true;
-  const font = document.createElement('link');
-  font.rel = 'stylesheet';
-  font.href = 'https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap';
-  document.head.append(font);
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.append(style);

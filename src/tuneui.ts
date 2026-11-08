@@ -1,36 +1,36 @@
 // The TUNE CAR screen: four trade-off sliders, presets, and stat bars that move as you tune.
 
+import { installDeco } from './deco';
 import { PRESETS, SLIDERS, STEPS, Setup, setupMods, statBars } from './setup';
 
 const CSS = `
-.tn-card { width: min(900px, calc(100% - 32px)); margin: auto; padding: 24px; border-radius: 18px; background: rgba(14,17,36,0.95);
-  border: 2px solid #252b52; text-align: left; }
-.tn-card h2 { margin: 0 0 4px; font: 900 italic 36px system-ui, sans-serif; letter-spacing: 0.04em;
-  background: linear-gradient(90deg, #ffd23f, #ff8a1f); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.tn-sub { color: #8a93c0; font-weight: 700; letter-spacing: 0.16em; font-size: 12px; margin-bottom: 18px; }
+.tn-card { width: min(900px, calc(100% - 32px)); margin: auto; padding: 26px 28px; text-align: left; }
+.tn-card h2 { margin: 0 0 4px; font-size: 32px; }
+.tn-sub { color: #c9a24a; font-weight: 700; letter-spacing: 0.22em; font-size: 11px; margin-bottom: 18px; }
 .tn-cols { display: grid; grid-template-columns: 0.9fr 1.3fr; gap: 26px; }
 @media (max-width: 760px) { .tn-cols { grid-template-columns: 1fr; } }
 .tn-car { display: block; height: 150px; margin: 0 auto 14px; filter: drop-shadow(0 10px 10px rgba(0,0,0,0.5)); }
-.tn-stat { display: grid; grid-template-columns: 110px 1fr 56px; gap: 8px; align-items: center; margin-bottom: 7px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; color: #8a93c0; }
-.tn-bar { height: 8px; border-radius: 4px; background: #1b2040; position: relative; overflow: hidden; }
-.tn-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #4fe3ff; transition: width 120ms; }
-.tn-bar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: rgba(255,255,255,0.35); }
+.tn-stat { display: grid; grid-template-columns: 110px 1fr 56px; gap: 8px; align-items: center; margin-bottom: 7px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; color: #93aba8; }
+.tn-bar { height: 6px; border-radius: 1px; background: rgba(201,162,74,0.12); position: relative; overflow: hidden; }
+.tn-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #1f8f86, #3fe0d0); transition: width 120ms; }
+.tn-bar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: #c9a24a; }
 .tn-delta { text-align: right; font-variant-numeric: tabular-nums; }
-.tn-up { color: #4dff9a; } .tn-down { color: #ff7a8a; }
+.tn-up { color: #3fe0d0; } .tn-down { color: #e0907a; }
 .tn-slider { margin-bottom: 16px; }
-.tn-slider b { display: block; font-size: 13px; letter-spacing: 0.14em; margin-bottom: 6px; }
-.tn-ends { display: flex; justify-content: space-between; color: #8a93c0; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; margin-top: 4px; }
-.tn-slider input { width: 100%; accent-color: #ffd23f; cursor: pointer; }
+.tn-slider b { display: block; font-size: 12px; letter-spacing: 0.2em; margin-bottom: 6px; color: #ece5d4; }
+.tn-ends { display: flex; justify-content: space-between; color: #93aba8; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; margin-top: 4px; }
+.tn-slider input { width: 100%; accent-color: #c9a24a; cursor: pointer; }
 .tn-presets { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 18px; }
-.tn-presets button { padding: 7px 12px; border-radius: 9px; border: 2px solid #252b52; background: rgba(20,24,48,0.85); color: #c8d2ff;
-  font: 800 11px system-ui, sans-serif; letter-spacing: 0.1em; cursor: pointer; }
-.tn-presets button.on { border-color: #ffd23f; color: #fff; }
+.tn-presets button { padding: 7px 12px; border-radius: 3px; border: 1px solid rgba(201,162,74,0.4); background: rgba(8,14,26,0.85); color: #ece5d4;
+  font: 700 11px system-ui, sans-serif; letter-spacing: 0.14em; cursor: pointer; }
+.tn-presets button:hover { border-color: #e8c25a; }
+.tn-presets button.on { border-color: #e8c25a; color: #10161c; background: linear-gradient(180deg, #f1d27a, #c9a24a); }
 .tn-hand { display: flex; gap: 6px; margin: 0 0 4px; }
-.tn-hand button { flex: 1; padding: 9px 10px; border-radius: 10px; border: 2px solid #252b52; background: rgba(20,24,48,0.85); color: #c8d2ff;
-  font: 900 12px system-ui, sans-serif; letter-spacing: 0.12em; cursor: pointer; }
-.tn-hand button.on { border-color: #4fe3ff; color: #fff; background: rgba(79,227,255,0.12); }
-.tn-hand-tip { color: #8a93c0; font-size: 12px; line-height: 1.4; margin-bottom: 16px; min-height: 34px; }
-.tn-tip { color: #8a93c0; font-size: 12px; line-height: 1.4; margin-top: 4px; }
+.tn-hand button { flex: 1; padding: 9px 10px; border-radius: 3px; border: 1px solid rgba(201,162,74,0.4); background: rgba(8,14,26,0.85); color: #93aba8;
+  font: 800 12px system-ui, sans-serif; letter-spacing: 0.16em; cursor: pointer; }
+.tn-hand button.on { border-color: #3fe0d0; color: #071214; background: #3fe0d0; }
+.tn-hand-tip { color: #93aba8; font-size: 12px; line-height: 1.4; margin-bottom: 16px; min-height: 34px; }
+.tn-tip { color: #93aba8; font-size: 12px; line-height: 1.4; margin-top: 4px; }
 `;
 
 export class TuneUI {
@@ -41,6 +41,7 @@ export class TuneUI {
   private closed: () => void = () => {};
 
   constructor() {
+    installDeco();
     const style = document.createElement('style');
     style.textContent = CSS;
     document.head.append(style);
@@ -68,8 +69,8 @@ export class TuneUI {
       <div class="tn-ends"><span>◂ ${sl.low}</span><span>${sl.high} ▸</span></div></div>`).join('');
     const presets = PRESETS.map((p, i) => `<button data-preset="${i}">${p.name}</button>`).join('');
     this.el.innerHTML = `
-      <div class="tn-card">
-        <h2>TUNE CAR</h2>
+      <div class="tn-card deco-panel">
+        <h2 class="deco-title">TUNE CAR</h2>
         <div class="tn-sub">EVERY GAIN COSTS SOMETHING · THE MIDDLE IS THE STANDARD CAR</div>
         <div class="tn-cols">
           <div><img class="tn-car" src="${this.carUrl}" alt=""><div data-stats></div>
