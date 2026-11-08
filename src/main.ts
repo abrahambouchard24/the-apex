@@ -18,6 +18,7 @@ import { LobbyUI } from './lobbyui';
 import { addMods, loadSetup, sanitize, saveSetup, setupMods } from './setup';
 import { TuneUI } from './tuneui';
 import { TouchControls } from './touch';
+import { DailyDef, DailyUI, dailyChallenge, dailyStatus, recordDaily } from './daily';
 import { GhostLap, GhostRecorder, ghostPose, loadGhost, saveGhost, trackSig } from './ghost';
 import { BoardRow, CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
@@ -149,9 +150,36 @@ let pausedAt = 0;             // performance.now() when the pause menu opened
 let raceLaps = 3;
 /** Time Trial: alone on track, chasing the ghost of the best lap. */
 let trial = false;
+/** The daily challenge being raced (null otherwise), and how today's latest attempt went. */
+let daily: DailyDef | null = null;
+let dailyResult: { met: boolean; better: boolean } | null = null;
 let ghostLap: GhostLap | null = null;     // the lap the ghost replays (Time Trial only)
 let ghostCar: Car | null = null;
 const ghostRec = new GhostRecorder();      // the player's lap in progress
+const dailyUI = new DailyUI();
+/** The daily challenge's briefing card, from the front menu. */
+function openDaily(): void {
+  const d = dailyChallenge(TRACKS.length, LIVERIES.length, AI_SKILL_MIN, AI_SKILL_MAX);
+  menus.hide();
+  dailyUI.open(d, TRACKS[d.track].name, LIVERIES[d.car].name, carPicture(d.car, true), formatTime, {
+    start() {
+      endTutorial();
+      mission = null;
+      trial = false;
+      season = null;
+      menus.setSeason(false);
+      daily = d;
+      dailyResult = null;
+      playerLivery = d.car;
+      raceLaps = d.laps;
+      startRound(d.track);
+      showToast('DAILY CHALLENGE', '#e8c25a');
+    },
+    back() { menus.showFront(); },
+    tune() { tuneUI.open(carSetup, carPicture(d.car, true), (s) => { carSetup = s; saveSetup(s); }, () => {}); },
+  });
+}
+
 /** Lap time against the ghost for the lap just finished (null = no ghost to compare with). */
 let ghostDelta: number | null = null;
 
@@ -255,6 +283,16 @@ function raceConfig(): RaceConfig {
     return {
       field: m.rivals.map((e) => ({ livery: e.livery, name: e.name, skill: e.skill, mods: rivalMods(m, e, playerMods(save!)), who: e.who })),
       playerName: save.name, playerMods: addMods(playerMods(save), setupMods(carSetup)), grid: m.grid, startHeat: m.startHeat ?? 0,
+    };
+  }
+  if (daily) {
+    const d = daily;
+    return {
+      field: LIVERIES.map((_, i) => i).filter((i) => i !== d.car).map((li) => ({
+        livery: li, name: LIVERIES[li].name, skill: d.skills[li], mods: { ...NO_MODS, top: d.aiPace, accel: d.aiPace },
+      })),
+      playerName: LIVERIES[d.car].name, playerMods: setupMods(carSetup),
+      grid: d.twist === 'back' ? 'back' : d.twist === 'fast' ? 'pole' : 'random', startHeat: d.twist === 'hot' ? 0.7 : 0,
     };
   }
   return {
@@ -399,6 +437,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
   tutorial() {
     endTutorial();
     trial = false;
+    daily = null;
     mission = null;
     season = null;
     menus.setSeason(false);
@@ -412,12 +451,14 @@ const menus = new Menus(LIVERIES, trackChoices, {
   online() {
     endTutorial();
     trial = false;
+    daily = null;
     menus.hide();
     lobbyUI.showMenu(playerName());
   },
   story() {
     endTutorial();
     trial = false;
+    daily = null;
     menus.hide();
     storyUI.open(save);
   },
@@ -427,6 +468,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
     playerLivery = setup.car;
     raceLaps = setup.laps;
     trial = setup.trial;
+    daily = null;
     season = !trial && setup.races > 1 ? { races: setup.races, round: 0, openingTrack: setup.track, points: new Map() } : null;
     menus.setSeason(!!season);
     startRound(setup.track);
@@ -439,6 +481,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
   },
   action(act) {
     if (act === 'install') installApp();
+    if (act === 'daily') openDaily();
     if (act === 'lobby') onlineToLobby();
     if (act === 'leave') leaveOnline();
     if (act === 'next' && season) {
@@ -467,6 +510,14 @@ const menus = new Menus(LIVERIES, trackChoices, {
       input.unlock();
       menus.hide();
       storyUI.open(save);
+      return;
+    }
+    if (daily) {
+      daily = null;
+      mode = 'menu';
+      sound.menu();
+      input.unlock();
+      menus.showFront();
       return;
     }
     season = null;
@@ -509,6 +560,7 @@ menus.setNewPlayer(!settings.tutorialDone);
 function loadMission(i: number): void {
   const m = MISSIONS[i];
   trial = false;
+  daily = null;
   mission = i;
   season = null;
   raceLaps = m.laps;
@@ -817,7 +869,11 @@ function update(dt: number): void {
         sound.chime(true);
         if (!online && !tutorial) {
           achievements.raceFinished({ track: track.name, place: finishOrder.length, racers: cars.length, laps: raceLaps,
-            online: false, tutorial: false, special: mission !== null, touchedWall, driftCharge });
+            online: false, tutorial: false, special: mission !== null || !!daily, touchedWall, driftCharge });
+        }
+        if (daily) {
+          const met = finishOrder.length <= daily.top;
+          dailyResult = { met, better: recordDaily(daily.date, met, time - goTime) };
         }
         // Hand the car to an AI driver for the cool-down lap.
         autopilot = new Driver(0.6, 9);
@@ -826,7 +882,7 @@ function update(dt: number): void {
         resultsAt = time + RESULTS_DELAY;
       }
     }
-    if (car === player && racing && (!finishOrder.includes(player) || finishTimes.get(player) === time - goTime) && !online && mission === null && !tutorial) ghostLapStep(lap);
+    if (car === player && racing && (!finishOrder.includes(player) || finishTimes.get(player) === time - goTime) && !online && mission === null && !tutorial && !daily) ghostLapStep(lap);
     if (lap && car === player && car.race.lap <= raceLaps && (raceBestLap === 0 || player.race.lastLap < raceBestLap)) {
       raceBestLap = player.race.lastLap;
     }
@@ -850,7 +906,7 @@ function update(dt: number): void {
   }
   sound.scrape(scraping);
   // A new track record (not in Story, online or the tutorial, where the car or the race differ).
-  if (!online && mission === null && !tutorial && player.race.bestLap > 0
+  if (!online && mission === null && !tutorial && !daily && player.race.bestLap > 0
       && (bestLaps[trackIndex] === 0 || player.race.bestLap < bestLaps[trackIndex] - 1e-6)) {
     bestLaps[trackIndex] = player.race.bestLap;
     records[track.name] = player.race.bestLap;
@@ -951,6 +1007,16 @@ function resultsView(): ResultsView {
     return {
       title: 'RESULTS', subtitle, rows,
       buttons: [{ act: 'restart', label: 'RACE AGAIN', primary: true }, { act: 'lobby', label: 'BACK TO LOBBY' }],
+    };
+  }
+  if (daily) {
+    const st = dailyStatus(daily.date);
+    const verdict = !dailyResult ? '' : dailyResult.met ? (dailyResult.better ? 'GOAL MET · NEW BEST TODAY' : 'GOAL MET') : `GOAL MISSED · TOP ${daily.top} NEEDED`;
+    return {
+      title: 'DAILY CHALLENGE',
+      subtitle: `${subtitle}  ·  ${verdict}${st.best ? `  ·  BEST ${formatTime(st.best)}` : ''}${st.streak ? `  ·  ${st.streak}-DAY STREAK` : ''}`,
+      rows,
+      buttons: [{ act: 'restart', label: 'TRY AGAIN', primary: true }, { act: 'change', label: 'MENU' }],
     };
   }
   if (trial) {

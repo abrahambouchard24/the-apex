@@ -97,6 +97,8 @@ const CSS = `
 .hr-btn.secondary { background: #1d2346; color: #e8ecff; }
 .hr-keys { margin-top: 18px; color: #8a93c0; font-size: 13px; }
 .hr-front-actions .hr-btn { min-width: 180px; padding: 11px 22px; font-size: 15px; }
+.hr-front-actions .hr-btn.daily { color: #f1d27a; box-shadow: 0 0 0 1px rgba(201,162,74,0.75) inset; }
+.hr-front-actions .hr-btn.daily:hover { color: #fff6dc; box-shadow: 0 0 0 1px #e8c25a inset, 0 0 18px -6px #e8c25a; }
 .hr-front-actions .hr-btn.fresh { background: linear-gradient(90deg, #4fe3ff, #7dffb0); color: #07080f; box-shadow: 0 0 24px -6px #4fe3ff; }
 .hr-track .hr-rec { color: #ffd23f; font-weight: 800; letter-spacing: 0.06em; }
 .hr-h2 { margin: 0 0 22px; font-size: 44px; font-weight: 900; letter-spacing: 0.1em; }
@@ -305,6 +307,7 @@ export class Menus {
         <div class="hr-btns row hr-front-actions">
           <button class="hr-btn secondary" data-act="tutorial">HOW TO PLAY</button>
           <button class="hr-btn secondary" data-act="trial">TIME TRIAL</button>
+          <button class="hr-btn secondary daily" data-act="daily">DAILY CHALLENGE</button>
           <button class="hr-btn secondary" data-act="garage">GARAGE</button>
           <button class="hr-btn secondary" data-act="settings">SETTINGS</button>
           <button class="hr-btn secondary hidden" data-act="install">INSTALL</button>
