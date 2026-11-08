@@ -4,7 +4,7 @@ import { Craft, LAUNCH_TIME, Mods, NO_MODS, STALL_TIME, bumpOff, clamp, collideC
 import { Input } from './input';
 import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
-import { ChaseView } from './view3d';
+import { ChaseView, renderCarCards } from './view3d';
 import { loadRecords, loadSettings, saveRecords, saveSettings, type Settings } from './settings';
 import { SettingsUI } from './settingsui';
 import { Tutorial } from './tutorial';
@@ -124,7 +124,9 @@ const LIVERIES = [
   { name: '04 ORANGE', url: 'sprites/craft-orange.png', color: '#ff8a1f', hue: 35 },
   { name: '05 PURPLE', url: 'sprites/craft-purple.png', color: '#a46bff', hue: 275 },
   { name: '06 BLUE', url: 'sprites/craft-blue.png', color: '#3d7bff', hue: 215 },
-].map((l) => ({ ...l, sprite: loadSprite(l.url) }));
+].map((l) => ({ ...l, sprite: loadSprite(l.url), card: undefined as string | undefined }));
+// The selection cards show each car's 3D model (falling back to the top-down sprite without WebGL).
+try { if (chase) renderCarCards(LIVERIES).forEach((url, i) => { LIVERIES[i].card = url; }); } catch { /* sprites it is */ }
 
 /** menu = start screen; paused = pause menu; racing = the simulation runs; results = it keeps
  * running behind the results table while the rest of the field finishes. */

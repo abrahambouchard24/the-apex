@@ -122,7 +122,7 @@ export class LobbyUI {
       <small>${this.cars[p.car].name}${p === lobby.players[0] ? ' · HOST' : ''} · ${p.setup?.assist === 0 ? 'PRO' : 'ASSISTED'}</small></li>`).join('')
       + (lobby.ai ? `<li><span style="color:#8a93c0">AI × ${Math.min(lobby.ai, maxAi)}</span><small>COMPUTER</small></li>` : '');
     const cars = this.cars.map((c, i) => `<button class="hr-car ${mine?.car === i ? 'selected' : ''}" style="--c:${c.color}" data-car="${i}"
-      ${taken.has(i) ? 'disabled' : ''}><img src="${c.url}" alt=""><span style="color:${c.color}">${c.name}</span></button>`).join('');
+      ${taken.has(i) ? 'disabled' : ''}><img src="${c.card ?? c.url}" alt=""><span style="color:${c.color}">${c.name}</span></button>`).join('');
     // The session leaderboard: everyone's tally across the races played together in this lobby.
     const meName = mine?.name;
     const rows = [...(lobby.board ?? [])].sort((a, b) => b.points - a.points || b.wins - a.wins || a.best - b.best);

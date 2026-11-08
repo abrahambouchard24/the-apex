@@ -1164,6 +1164,7 @@ class CarRig {
     // A charge aura for a full ERS battery (purple) or an open DRS wing (green).
     this.auraMat = new THREE.MeshBasicMaterial({ color: ERS_GLOW, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide });
     this.aura = mesh(s.aura, this.auraMat, this.body);
+    this.body.position.y = 9;   // hover height
     this.root.add(this.body);
 
     // On the ground: a soft shadow and the livery-coloured underglow of the hover pads.
@@ -1376,3 +1377,38 @@ function wrapAngle(a: number): number {
 }
 
 function clamp(v: number, lo: number, hi: number): number { return Math.max(lo, Math.min(hi, v)); }
+
+/**
+ * Pictures of each car's 3D model at a three-quarter angle on a transparent background, for the
+ * car selection cards. Rendered once with a small renderer of its own, which is then released.
+ */
+export function renderCarCards(cars: { color: string; name: string; hue: number }[], w = 360, h = 240): string[] {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setSize(w, h, false);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setClearColor(0x000000, 0);
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xfff4e0, 0x1c3a44, 1.6));
+  const key = new THREE.DirectionalLight(0xffffff, 2.2);
+  key.position.set(1, 1.6, 0.8);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x8ff0ff, 1.2);
+  rim.position.set(-1.2, 0.6, -1);
+  scene.add(rim);
+  const camera = new THREE.PerspectiveCamera(30, w / h, 1, 2000);
+  camera.position.set(150, 95, 185);
+  camera.lookAt(-4, 10, 0);
+  const out: string[] = [];
+  for (const c of cars) {
+    const rig = new CarRig({ color: c.color, name: c.name, hue: c.hue } as Car);
+    rig.root.rotation.y = 0.1;
+    scene.add(rig.root);
+    renderer.render(scene, camera);
+    out.push(renderer.domElement.toDataURL('image/png'));
+    scene.remove(rig.root);
+    dispose(rig.root);
+  }
+  renderer.dispose();
+  renderer.forceContextLoss();
+  return out;
+}
