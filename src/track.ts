@@ -120,14 +120,14 @@ export const TRACKS: TrackDef[] = [
       [3600, 200],
       [3300, -800],
       [2300, -1300],
-      [1400, -1150],
+      [1450, -1330],  // eased: the esses' first flick was a wall magnet
       [800, -1700],   // esses over the ridge
       [600, -2450],
       [-200, -3000],
       [-1300, -2700],
       [-1800, -1900], // the descent
-      [-1700, -1000],
-      [-2150, -200],
+      [-1650, -1000], // eased with the S-bend below (wall hits in AI races: 38 a race before, about 14 after)
+      [-2200, -290],  // eased: the descent S-bend
       [-3000, 200],
       [-3300, 1100],
       [-2600, 1500],

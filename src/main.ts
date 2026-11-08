@@ -18,7 +18,7 @@ import { LobbyUI } from './lobbyui';
 import { addMods, loadSetup, sanitize, saveSetup, setupMods } from './setup';
 import { TuneUI } from './tuneui';
 import { TouchControls } from './touch';
-import { GhostLap, GhostRecorder, ghostPose, loadGhost, saveGhost } from './ghost';
+import { GhostLap, GhostRecorder, ghostPose, loadGhost, saveGhost, trackSig } from './ghost';
 import { BoardRow, CarSnap, Controls, Guest, Host, LobbyState, NetEntrant, Snapshot } from './net';
 import { RaceState, TRACKS, Track, WALL_DIST, collideWalls, inCoolingLane, placeOnGrid } from './track';
 
@@ -349,7 +349,7 @@ function startRace(): void {
   raceBestLap = 0;
   ghostRec.reset();
   ghostDelta = null;
-  ghostLap = trial ? loadGhost(track.name) : null;
+  ghostLap = trial ? loadGhost(track.name, trackSig(track.pts)) : null;
   ghostCar = ghostLap ? makeGhostCar(ghostLap) : null;
 
   // Grid: shuffle the AI into the slots; the player goes on pole, at the back, or anywhere.
@@ -715,11 +715,11 @@ function ghostLapStep(lap: 'lap' | 'best' | null): void {
   if (lap) {
     const frames = ghostRec.take();
     const t = player.race.lastLap;
-    const saved = loadGhost(track.name);
+    const saved = loadGhost(track.name, trackSig(track.pts));
     ghostDelta = ghostLap ? t - ghostLap.time : null;
     // A standing-start first lap only becomes the ghost when there's nothing to chase yet.
     if ((player.race.lap > 1 || !saved) && (!saved || t < saved.time - 1e-6) && frames.length >= 6) {
-      const g: GhostLap = { time: t, livery: carLivery.get(player) ?? 0, skin: achievements.equipped, frames };
+      const g: GhostLap = { time: t, livery: carLivery.get(player) ?? 0, skin: achievements.equipped, frames, sig: trackSig(track.pts) };
       saveGhost(track.name, g);
       if (trial) { ghostLap = g; ghostCar = makeGhostCar(g); }
     }
@@ -954,7 +954,7 @@ function resultsView(): ResultsView {
     };
   }
   if (trial) {
-    const g = loadGhost(track.name);
+    const g = loadGhost(track.name, trackSig(track.pts));
     return {
       title: 'TIME TRIAL', subtitle: `${subtitle}  ·  BEST ${formatTime(raceBestLap)}${g ? `  ·  GHOST ${formatTime(g.time)}` : ''}`, rows,
       buttons: [{ act: 'restart', label: 'GO AGAIN', primary: true }, { act: 'change', label: 'CHANGE CAR' }],

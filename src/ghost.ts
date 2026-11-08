@@ -5,15 +5,23 @@ const KEY = 'the-apex-ghosts';
 export const GHOST_RATE = 30;   // frames per second
 
 /** One recorded lap. frames is flat [x, y, heading, x, y, heading, ...] from the lap's start. */
-export interface GhostLap { time: number; livery: number; skin?: string; frames: number[] }
+export interface GhostLap { time: number; livery: number; skin?: string; frames: number[]; sig?: string }
 
 function loadAll(): Record<string, GhostLap> {
   try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}; } catch { return {}; }
 }
 
-export function loadGhost(track: string): GhostLap | null {
+/** The saved ghost for a track; sig is the track's shape, so a ghost from an older layout is ignored. */
+export function loadGhost(track: string, sig: string): GhostLap | null {
   const g = loadAll()[track];
-  return g && Array.isArray(g.frames) && g.frames.length >= 6 ? g : null;
+  return g && Array.isArray(g.frames) && g.frames.length >= 6 && (g.sig ?? '') === sig ? g : null;
+}
+
+/** A fingerprint of a track's shape (its samples), stored with each ghost. */
+export function trackSig(pts: { x: number; y: number }[]): string {
+  let h = 0;
+  for (let i = 0; i < pts.length; i += 7) h = (h * 31 + Math.round(pts[i].x) * 7 + Math.round(pts[i].y)) | 0;
+  return `${pts.length}:${h >>> 0}`;
 }
 
 export function saveGhost(track: string, g: GhostLap): void {
