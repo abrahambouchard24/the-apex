@@ -1,6 +1,5 @@
 // Everything drawn to the canvas. Reads game state, never changes it.
 
-import type { SkinColors } from './achievements';
 import { Craft, GEARS, clamp } from './craft';
 import { drawGround as drawSceneryGround, drawOverlays, drawProps, groundMoves, View } from './scenery';
 import { COOL_LANE, HALF_WIDTH, KERB_WIDTH, RaceState, Track, WALL_DIST, WALL_THICKNESS } from './track';
@@ -48,7 +47,9 @@ export function loadSprite(url: string, height = 256): Sprite {
 }
 
 /** One racer: physics, race progress, art, minimap color and exhaust flame hue. */
-export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string; skin?: SkinColors | null }
+/** An unlockable colour scheme for a car (overrides its livery colours; null = stock livery). */
+export interface CarSkin { body: string; trim: string; accent: string; glow: string }
+export interface Car { craft: Craft; race: RaceState; sprite: Sprite; color: string; hue: number; name: string; skin?: CarSkin | null }
 
 export interface RaceHud {
   position: number; racers: number; laps: number; countdown: string | null; banner: string | null;
@@ -643,7 +644,7 @@ export const CRAFT_LENGTH = 80;
 export const NOZZLE_BACK = CRAFT_LENGTH / 2 - 4;
 export const NOZZLE_SIDE = 5.5;
 
-function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite, hue: number, bobbing: boolean, skin?: SkinColors | null): void {
+function drawCraft(ctx: CanvasRenderingContext2D, c: Craft, time: number, sprite: Sprite, hue: number, bobbing: boolean, skin?: CarSkin | null): void {
   // (hue is reassigned below while ERS is deploying)
   const bob = bobbing ? Math.sin(time * 5 + c.pos.x * 0.001) * 2.5 : 0;
   const hoverHeight = 10 + bob;
@@ -1047,7 +1048,7 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
-  const help = 'A / D or ← / →: steer   S / ↓ / Space: brake   W / ↑ / Shift: boost   V: view   Hold R: restart   Esc: pause';
+  const help = 'A / D or ← / →: steer   S / ↓ / Space: brake   W / ↑ / Shift: boost   Hold R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }

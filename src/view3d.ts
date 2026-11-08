@@ -506,13 +506,18 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     group.add(gantry);
   }
 
-  // Scenery props, as simple 3D shapes.
+  // Scenery props: built from simple shapes, then turned into voxels (all of them in two instanced
+  // meshes for the whole map); moving parts, signs and see-through effects stay as they are.
   const spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 'z'; rate: number }[] = [];
   const sc = sceneryFor(track);
+  const voxels = new PropVoxels();
   for (const p of [...sc.props, ...sc.overlays]) {
     const obj = propObject(p, spinners, atmos, theme.wall);
-    if (obj) group.add(obj);
+    if (!obj) continue;
+    voxels.absorb(obj, spinners.map((sp) => sp.obj));
+    group.add(obj);
   }
+  for (const mesh of voxels.build()) group.add(mesh);
 
   // Light gates: slim white arches over the track with a soft line of the accent colour inside.
   {
@@ -800,54 +805,262 @@ function windowsMaterial(base: string, lit: string, w: number, h: number): THREE
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(Math.max(1, w / 64), Math.max(1, h / 128));
-  return new THREE.MeshBasicMaterial({ map: t });
+  const mat = new THREE.MeshBasicMaterial({ map: t });
+  mat.userData.windows = { base, lit };
+  return mat;
+}
+
+// --- voxel scenery ----------------------------------------------------------------------------------
+
+/**
+ * Turns props made of simple shapes (boxes, cylinders, cones, spheres, octahedra, dodecahedra)
+ * into world-aligned cubes for the pixel-art look. Cube size follows the prop's size (small props
+ * get fine cubes, mountains coarse ones), only cubes on the surface are kept, and every cube on the
+ * map ends up in one of two instanced meshes (lit, or glowing), so it stays cheap to draw.
+ */
+const PROP_VOX_MIN = 5, PROP_VOX_MAX = 22, PROP_VOX_DIV = 16;
+interface PropCube { x: number; y: number; z: number; size: number; color: THREE.Color; glow: boolean }
+
+class PropVoxels {
+  private cubes: PropCube[] = [];
+
+  /** Convert the static solid parts of a prop to cubes and remove them from it. */
+  absorb(obj: THREE.Object3D, moving: THREE.Object3D[]): void {
+    obj.updateMatrixWorld(true);
+    const parts: { mesh: THREE.Mesh; inv: THREE.Matrix4; centre: THREE.Vector3 }[] = [];
+    obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !solidShape(m)) return;
+      for (let a: THREE.Object3D | null = m; a; a = a.parent) if (moving.includes(a)) return;
+      m.geometry.computeBoundingBox();
+      parts.push({ mesh: m, inv: m.matrixWorld.clone().invert(), centre: m.geometry.boundingBox!.getCenter(new THREE.Vector3()) });
+    });
+    if (!parts.length) return;
+    const box = new THREE.Box3();
+    for (const pt of parts) box.expandByObject(pt.mesh);
+    const dims = box.getSize(new THREE.Vector3());
+    const size = Math.max(PROP_VOX_MIN, Math.min(PROP_VOX_MAX, Math.round(Math.max(dims.x, dims.y, dims.z) / PROP_VOX_DIV)));
+
+    // Sample the prop's box on its own grid: each cell takes the first part it falls inside.
+    const i0 = Math.floor(box.min.x / size), i1 = Math.ceil(box.max.x / size);
+    const j0 = Math.max(0, Math.floor(box.min.y / size)), j1 = Math.ceil(box.max.y / size);
+    const k0 = Math.floor(box.min.z / size), k1 = Math.ceil(box.max.z / size);
+    const cells = new Map<string, { color: THREE.Color; glow: boolean }>();
+    const world = new THREE.Vector3(), local = new THREE.Vector3();
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) for (let k = k0; k <= k1; k++) {
+      world.set((i + 0.5) * size, (j + 0.5) * size, (k + 0.5) * size);
+      for (const pt of parts) {
+        local.copy(world).applyMatrix4(pt.inv).sub(pt.centre);
+        if (!insideShape(pt.mesh.geometry, local)) continue;
+        cells.set(`${i},${j},${k}`, cubeColour(pt.mesh, local, j));
+        break;
+      }
+    }
+    for (const [key, c] of cells) {
+      const [i, j, k] = key.split(',').map(Number);
+      const hidden = cells.has(`${i + 1},${j},${k}`) && cells.has(`${i - 1},${j},${k}`) && cells.has(`${i},${j + 1},${k}`)
+        && (j === j0 || cells.has(`${i},${j - 1},${k}`)) && cells.has(`${i},${j},${k + 1}`) && cells.has(`${i},${j},${k - 1}`);
+      if (!hidden) this.cubes.push({ x: (i + 0.5) * size, y: (j + 0.5) * size, z: (k + 0.5) * size, size, ...c });
+    }
+    for (const pt of parts) pt.mesh.removeFromParent();
+  }
+
+  build(): THREE.Object3D[] {
+    const out: THREE.Object3D[] = [];
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3();
+    for (const glow of [false, true]) {
+      const list = this.cubes.filter((c) => c.glow === glow);
+      if (!list.length) continue;
+      const inst = new THREE.InstancedMesh(geo, glow ? new THREE.MeshBasicMaterial() : new THREE.MeshLambertMaterial(), list.length);
+      list.forEach((c, n) => {
+        m4.compose(pos.set(c.x, c.y, c.z), q, scl.setScalar(c.size));
+        inst.setMatrixAt(n, m4);
+        inst.setColorAt(n, c.color);
+      });
+      out.push(inst);
+    }
+    return out;
+  }
+
+  get count(): number { return this.cubes.length; }
+}
+
+/** Shapes the voxelizer understands (solid, opaque or near enough, and not a textured sign). */
+function solidShape(m: THREE.Mesh): boolean {
+  const mat = m.material as THREE.MeshBasicMaterial;
+  if (Array.isArray(m.material) || mat.blending === THREE.AdditiveBlending || (mat.transparent && mat.opacity < 0.5)) return false;
+  if (mat.map && !mat.userData.windows) return false;
+  return ['BoxGeometry', 'CylinderGeometry', 'ConeGeometry', 'SphereGeometry', 'OctahedronGeometry', 'DodecahedronGeometry'].includes(m.geometry.type);
+}
+
+/** Whether a point (in the shape's own space, centred) lies inside it. Low-poly round shapes keep their facets. */
+function insideShape(geo: THREE.BufferGeometry, v: THREE.Vector3): boolean {
+  const g = geo as THREE.BufferGeometry & { parameters: Record<string, number> };
+  const pr = g.parameters;
+  switch (geo.type) {
+    case 'BoxGeometry':
+      return Math.abs(v.x) <= pr.width / 2 && Math.abs(v.y) <= pr.height / 2 && Math.abs(v.z) <= pr.depth / 2;
+    case 'CylinderGeometry': case 'ConeGeometry': {
+      const h = pr.height;
+      if (Math.abs(v.y) > h / 2) return false;
+      const t = (v.y + h / 2) / h;
+      const rTop = geo.type === 'ConeGeometry' ? 0 : pr.radiusTop, rBot = geo.type === 'ConeGeometry' ? pr.radius : pr.radiusBottom;
+      const r = rBot + (rTop - rBot) * t;
+      const n = pr.radialSegments;
+      // Distance to the edge of the n-sided cross-section, measured the way three.js lays out its sides.
+      const rel = ((Math.atan2(v.x, v.z) % (2 * Math.PI / n)) + 2 * Math.PI / n) % (2 * Math.PI / n) - Math.PI / n;
+      const edge = n <= 12 ? (r * Math.cos(Math.PI / n)) / Math.cos(rel) : r;
+      return Math.hypot(v.x, v.z) <= edge;
+    }
+    case 'SphereGeometry': {
+      // (Centred on its bounding box: a half sphere spans -r/2..r/2 here.)
+      const half = (pr.thetaLength ?? Math.PI) < Math.PI - 0.01;
+      const y = half ? v.y + pr.radius / 2 : v.y;
+      return (!half || y >= 0) && v.x * v.x + y * y + v.z * v.z <= pr.radius * pr.radius;
+    }
+    case 'OctahedronGeometry':
+      return Math.abs(v.x) + Math.abs(v.y) + Math.abs(v.z) <= pr.radius;
+    case 'DodecahedronGeometry':
+      return v.length() <= pr.radius * 0.88;
+  }
+  return false;
+}
+
+/** A cube's colour: the part's material, with lit window rows on building sides. */
+function cubeColour(m: THREE.Mesh, local: THREE.Vector3, row: number): { color: THREE.Color; glow: boolean } {
+  const mat = m.material as THREE.MeshPhongMaterial;
+  const win = mat.userData.windows as { base: string; lit: string } | undefined;
+  if (win) {
+    const pr = (m.geometry as THREE.BoxGeometry).parameters;
+    const onSide = Math.abs(local.y) < pr.height / 2 - 6;
+    const hash = ((Math.round(local.x) * 73856093) ^ (row * 19349663) ^ (Math.round(local.z) * 83492791)) >>> 0;
+    if (onSide && row % 2 === 1 && hash % 7 !== 0) return { color: new THREE.Color(win.lit), glow: true };
+    return { color: new THREE.Color(win.base), glow: false };
+  }
+  const col = mat.color.clone();
+  // Plain unlit materials are lights and neon trims: they keep glowing.
+  if ((mat as THREE.Material).type === 'MeshBasicMaterial') return { color: col, glow: true };
+  if (mat.emissive) col.add(mat.emissive.clone().multiplyScalar(0.6));
+  // A little per-cube shade variation, so surfaces read as pixels.
+  const hash = ((Math.round(local.x) * 73856093) ^ (row * 19349663) ^ (Math.round(local.z) * 83492791)) >>> 0;
+  return { color: col.multiplyScalar(0.92 + (hash % 100) / 100 * 0.16), glow: false };
 }
 
 // --- the cars ------------------------------------------------------------------------------------
 
 /**
- * The hovercraft, built from voxels (4 px cubes) for a pixel-art look: 20 long, 11 wide, 6 tall,
- * nose along +x. Each car is two instanced meshes (lit cubes and glowing cubes) plus its wing.
+ * The hovercraft, built from voxels (2 px cubes) for a detailed pixel-art look: about 86 long,
+ * 50 wide and 30 tall, nose along +x. The shape is described in world px (`carVoxel`), sampled on
+ * the voxel grid, and only cubes on the surface are kept. Each car is two instanced meshes (lit
+ * cubes and glowing cubes) plus its rear wing.
  */
-const VOX = 4;
-type VoxKind = 'paint' | 'dark' | 'carbon' | 'glass' | 'shine' | 'white' | 'intake' | 'nozzle';
+const VOX = 2;
+type VoxKind = 'paint' | 'dark' | 'carbon' | 'metal' | 'glass' | 'shine' | 'white' | 'intake' | 'nozzle' | 'neon';
 interface Voxel { x: number; y: number; z: number; kind: VoxKind }
-const GLOWING: VoxKind[] = ['intake', 'nozzle'];
+const GLOWING: VoxKind[] = ['intake', 'nozzle', 'neon'];
 
-/** Half-width of the hull (in voxels) at each step from the tail (0) to the nose (19). */
-const HULL_HW = [2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 1, 1, 0];
-
-function hullVoxels(): Voxel[] {
-  const grid = new Map<string, Voxel>();
-  const set = (x: number, y: number, z: number, kind: VoxKind) => grid.set(`${x},${y},${z}`, { x, y, z, kind });
-  for (let x = 0; x < 20; x++) {
-    const hw = HULL_HW[x];
-    if (x >= 1 && x <= 17) for (let z = -hw - 1; z <= hw + 1; z++) set(x, 0, z, 'carbon');           // hover skirt
-    for (let z = -hw; z <= hw; z++) set(x, 1, z, 'paint');                                             // lower hull
-    if (x >= 1 && x <= 17) for (let z = -(hw - 1); z <= hw - 1; z++) set(x, 2, z, x >= 7 && z === 0 ? 'white' : 'paint');
-  }
-  for (const z of [-4, 4]) {
-    for (let x = 3; x <= 13; x++) for (const y of [1, 2]) set(x, y, z, 'dark');                       // side pods
-    for (const y of [1, 2]) set(14, y, z, 'intake');
-  }
-  for (let x = 9; x <= 13; x++) for (let z = -1; z <= 1; z++) set(x, 3, z, x === 12 && z === -1 ? 'shine' : 'glass');  // canopy
-  set(10, 4, 0, 'glass');
-  for (let x = 1; x <= 6; x++) for (let z = -2; z <= 2; z++) set(x, 3, z, 'dark');                    // engine cover
-  for (let x = 18; x <= 19; x++) for (let z = -5; z <= 5; z++) set(x, 0, z, Math.abs(z) === 5 ? 'paint' : 'carbon');  // front wing
-  for (const z of [-5, 5]) for (let x = 18; x <= 19; x++) set(x, 1, z, 'paint');
-  for (const z of [-2, 2]) {
-    for (const y of [1, 2]) { set(0, y, z, 'carbon'); set(-1, y, z, 'nozzle'); }                      // thrusters
-    for (const y of [3, 4]) set(1, y, z, 'carbon');                                                    // wing struts
-  }
-  return [...grid.values()];
+/** Half-width of the hull at a point along the car (tapering to the nose and a little at the tail). */
+function hullHalfWidth(x: number): number {
+  if (x > 14) return Math.max(1.5, (13 * (40 - x)) / 26);
+  if (x < -30) return 13 - (-30 - x) * 0.45;
+  return 13;
 }
 
-/** The rear wing, around its pivot (it tilts flat when DRS opens). */
-function wingVoxels(): Voxel[] {
-  const v: Voxel[] = [];
-  for (let x = -1; x <= 1; x++) for (let z = -5; z <= 5; z++) v.push({ x, y: 0, z, kind: 'carbon' });
-  for (const z of [-5, 5]) for (let x = -1; x <= 1; x++) v.push({ x, y: -1, z, kind: 'paint' });
-  return v;
+/** Height of the hull deck (it slopes down toward the nose). */
+function hullTop(x: number): number {
+  return x > 18 ? 11 - (x - 18) * 0.25 : 11;
+}
+
+/** What the car is made of at a point (world px, y up from the bottom of the skirt), or null for air. */
+function carVoxel(x: number, y: number, z: number): VoxKind | null {
+  const az = Math.abs(z);
+  const hw = hullHalfWidth(x), top = hullTop(x);
+  // Twin thrusters: round pods with a metal rim around the glowing nozzle.
+  for (const tz of [-7, 7]) {
+    const r = Math.hypot(y - 7, z - tz);
+    if (x >= -44 && x <= -30 && r <= 5.2) {
+      if (x <= -41) return r <= 3 ? 'nozzle' : r <= 4.2 ? 'metal' : 'carbon';
+      return 'carbon';
+    }
+  }
+  // Front wing with livery endplates.
+  if (x >= 31 && x <= 39 && y <= 4 && az <= 23) return az >= 21 ? 'paint' : 'carbon';
+  if (x >= 29 && x <= 39 && az >= 21 && az <= 23 && y <= 10) return 'paint';
+  // Side pods: rounded along their length, a livery stripe on top, glowing intakes at the front.
+  const pr = Math.hypot(y - 7, az - 18);
+  if (x >= -24 && x <= 20 && pr <= 4.8) {
+    if (x >= 18) return pr <= 3 ? 'intake' : 'carbon';
+    if (x <= -22) return 'carbon';
+    return y >= 9 && pr >= 3.5 ? 'paint' : 'dark';
+  }
+  // Pod mounts tying the pods to the hull.
+  if (x >= -12 && x <= 6 && y >= 5 && y <= 9 && az > hw && az < 15) return 'carbon';
+  // Hover skirt, with a neon strip along its bottom edge.
+  if (y < 3 && x >= -36 && x <= 34 && az <= hw + 3) return az > hw + 1 ? 'neon' : 'carbon';
+  // Hull: rounded over the top, with a lower trim line, side pinstripes and a racing stripe.
+  const round = Math.max(0, y - (top - 3)) * 1.3;
+  if (x >= -40 && x <= 40 && y >= 3 && y <= top && az <= hw - round) {
+    if (x > 37) return 'dark';
+    if (y >= top - 2 && az <= 2.5 && x > -14) return 'white';
+    if (y < 5) return 'dark';
+    if (az >= hw - round - 2 && y >= 7 && y < 9 && x > -30 && x < 28) return 'white';
+    return 'paint';
+  }
+  // Canopy: a glass bubble on a dark frame, with a glint.
+  const cx = (x - 8) / 13, cy = (y - top) / 6.5, cz = z / 6.5;
+  if (y > top && cx * cx + cy * cy + cz * cz <= 1) {
+    if (y < top + 2.2 && cx * cx + cz * cz > 0.55) return 'dark';
+    if (cx > 0.1 && cx < 0.6 && z < -1 && z > -5 && cy > 0.35) return 'shine';
+    return 'glass';
+  }
+  // Airbox behind the cockpit, its intake facing forward.
+  if (x >= -10 && x <= -2 && y > top && y <= top + 7 && az <= 3.5) {
+    return x >= -3 && y >= top + 3 && az <= 2 ? 'glass' : 'dark';
+  }
+  // Engine cover with cooling vents.
+  if (x >= -34 && x < -10 && y > top && y <= top + (x < -28 ? 2 : 4) && az <= 9) {
+    if (y > top + 2 && x > -28 && az <= 6 && Math.floor((x + 40) / 4) % 2 === 0) return 'carbon';
+    return 'dark';
+  }
+  // Rear wing struts.
+  if (x >= -38 && x <= -34 && y > top && y <= 22 && Math.abs(az - 6) <= 1.2) return 'carbon';
+  return null;
+}
+
+/** The rear wing, around its pivot (it tilts flat when DRS opens): a livery top, carbon underneath, endplates. */
+function wingVoxel(x: number, y: number, z: number): VoxKind | null {
+  const az = Math.abs(z);
+  if (az >= 22 && az <= 25 && x >= -6 && x <= 6 && y >= -8 && y <= 4) return 'paint';
+  if (x >= -6 && x <= 6 && y >= -1 && y <= 2 && az <= 23) return y >= 1 ? 'paint' : 'carbon';
+  if (x <= -5 && y > 2 && y <= 4 && az <= 22) return 'carbon';   // gurney flap
+  return null;
+}
+
+/** Sample a shape on the voxel grid, keeping only cubes with at least one open face. */
+function sampleVoxels(shape: (x: number, y: number, z: number) => VoxKind | null,
+  xr: [number, number], yr: [number, number], zr: [number, number]): Voxel[] {
+  const kinds = new Map<string, VoxKind>();
+  const at = (i: number, j: number, k: number) => kinds.get(`${i},${j},${k}`);
+  for (let i = xr[0]; i <= xr[1]; i++) for (let j = yr[0]; j <= yr[1]; j++) for (let k = zr[0]; k <= zr[1]; k++) {
+    const kind = shape((i + 0.5) * VOX, (j + 0.5) * VOX, k * VOX);
+    if (kind) kinds.set(`${i},${j},${k}`, kind);
+  }
+  const out: Voxel[] = [];
+  for (const [key, kind] of kinds) {
+    const [i, j, k] = key.split(',').map(Number);
+    const hidden = at(i + 1, j, k) && at(i - 1, j, k) && at(i, j + 1, k) && at(i, j - 1, k) && at(i, j, k + 1) && at(i, j, k - 1);
+    if (!hidden) out.push({ x: (i + 0.5) * VOX, y: (j + 0.5) * VOX, z: k * VOX, kind });
+  }
+  return out;
+}
+
+let carVoxelCache: { hull: Voxel[]; wing: Voxel[] } | null = null;
+function carVoxels() {
+  return carVoxelCache ??= {
+    hull: sampleVoxels(carVoxel, [-23, 21], [0, 13], [-13, 13]),
+    wing: sampleVoxels(wingVoxel, [-4, 3], [-5, 2], [-13, 13]),
+  };
 }
 
 let shared: { cube: THREE.BufferGeometry; flame: THREE.BufferGeometry; aura: THREE.BufferGeometry; glow: THREE.Texture; shadow: THREE.Texture } | null = null;
@@ -867,7 +1080,7 @@ function carShared() {
   shared = {
     cube: new THREE.BoxGeometry(VOX, VOX, VOX),
     // A block one unit long reaching back along -x from the nozzle (scaled to the flame length).
-    flame: new THREE.BoxGeometry(1, 7, 7).translate(-0.5, 0, 0),
+    flame: new THREE.BoxGeometry(1, 6, 6).translate(-0.5, 0, 0),
     aura: new THREE.BoxGeometry(CRAFT_LENGTH + 12, 30, 52).translate(0, 12, 0),
     glow: radial('rgba(255,255,255,0.9)', 'rgba(255,255,255,0)'),
     shadow: radial('rgba(0,0,0,0.7)', 'rgba(0,0,0,0)'),
@@ -877,7 +1090,7 @@ function carShared() {
 }
 
 /** Voxels as two instanced meshes: shaded cubes, and glowing ones that ignore the lighting. */
-function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>, origin: [number, number, number]): THREE.Object3D[] {
+function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>): THREE.Object3D[] {
   const s = carShared();
   const out: THREE.Object3D[] = [];
   for (const glowing of [false, true]) {
@@ -887,10 +1100,10 @@ function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>, orig
     const inst = new THREE.InstancedMesh(s.cube, mat, list.length);
     const m4 = new THREE.Matrix4(), col = new THREE.Color();
     list.forEach((v, i) => {
-      m4.makeTranslation((v.x - origin[0]) * VOX, (v.y - origin[1]) * VOX + VOX / 2, (v.z - origin[2]) * VOX);
+      m4.makeTranslation(v.x, v.y, v.z);
       inst.setMatrixAt(i, m4);
       // A little per-cube shade variation, so the surfaces read as pixels.
-      const hash = (((v.x + 7) * 73856093) ^ ((v.y + 7) * 19349663) ^ ((v.z + 7) * 83492791)) >>> 0;
+      const hash = ((Math.round(v.x + 99) * 73856093) ^ (Math.round(v.y + 99) * 19349663) ^ (Math.round(v.z + 99) * 83492791)) >>> 0;
       const jitter = glowing ? 1 : 0.93 + (hash % 100) / 100 * 0.14;
       inst.setColorAt(i, col.copy(colors[v.kind]).multiplyScalar(jitter));
     });
@@ -914,16 +1127,19 @@ class CarRig {
 
   constructor(car: Car) {
     const s = carShared();
-    const livery = new THREE.Color(car.color);
+    // A skin (unlocked colours) replaces the livery: body paint, trim, stripes and the neon glow.
+    const sk = car.skin;
+    const livery = new THREE.Color(sk?.body ?? car.color);
     const colors: Record<VoxKind, THREE.Color> = {
-      paint: livery, dark: livery.clone().multiplyScalar(0.5), carbon: new THREE.Color(0x1a1d2e),
-      glass: new THREE.Color(0x10204a), shine: new THREE.Color(0x7fb4ff), white: new THREE.Color(0xf2f4ff),
-      intake: new THREE.Color(0xdff6ff), nozzle: new THREE.Color(0xbff4ff),
+      paint: livery, dark: sk ? new THREE.Color(sk.trim) : livery.clone().multiplyScalar(0.5), carbon: new THREE.Color(0x1a1d2e),
+      metal: new THREE.Color(0x9aa3b8), glass: new THREE.Color(0x10204a), shine: new THREE.Color(0x8fc0ff),
+      white: new THREE.Color(sk?.accent ?? 0xf2f4ff), intake: new THREE.Color(0xdff6ff), nozzle: new THREE.Color(0xbff4ff),
+      neon: sk ? new THREE.Color(sk.glow) : livery.clone().lerp(new THREE.Color(0xffffff), 0.35),
     };
-    // Grid x 0..19 is centred on the car; the wing's pivot sits above the tail.
-    for (const m of voxelMeshes(hullVoxels(), colors, [9.5, 0, 0])) { m.castShadow = true; this.body.add(m); }
-    for (const m of voxelMeshes(wingVoxels(), colors, [0, 0, 0])) { m.castShadow = true; this.wing.add(m); }
-    this.wing.position.set((1 - 9.5) * VOX, 5 * VOX, 0);
+    const vox = carVoxels();
+    for (const m of voxelMeshes(vox.hull, colors)) { m.castShadow = true; this.body.add(m); }
+    for (const m of voxelMeshes(vox.wing, colors)) { m.castShadow = true; this.wing.add(m); }
+    this.wing.position.set(-36, 23, 0);   // the wing's pivot, above the struts
     this.body.add(this.wing);
 
     // The car number on the engine cover, in chunky pixels.
@@ -934,15 +1150,15 @@ class CarRig {
       map.magFilter = THREE.NearestFilter;
       map.minFilter = THREE.NearestFilter;
       decal.geometry.rotateY(-Math.PI / 2);
-      decal.position.set((3.5 - 9.5) * VOX, 4 * VOX + 0.2, 0);
+      decal.position.set(-20, hullTop(-20) + 4.3, 0);
       this.body.add(decal);
     }
 
     // Blocky flames out of the twin thrusters.
     this.flameMat = new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
-    for (const z of [-2, 2]) {
+    for (const z of [-7, 7]) {
       const f = mesh(s.flame, this.flameMat, this.body);
-      f.position.set((-1.5 - 9.5) * VOX, 2 * VOX, z * VOX);
+      f.position.set(-44, 7, z);
       this.flames.push(f);
     }
     // A charge aura for a full ERS battery (purple) or an open DRS wing (green).

@@ -41,11 +41,12 @@ const ctx = canvas.getContext('2d')!;
 // The HUD canvas sits over the 3D view's canvas.
 Object.assign(canvas.style, { position: 'fixed', inset: '0', zIndex: '1' });
 
-// --- view: the 3D chase camera (default) or the original top-down view; V switches -------------
+// --- view: the 3D chase camera. The original top-down view is kept in the code (render.ts) as a
+// fallback when WebGL is missing, and V switches to it in dev builds only. -------------------------
 type ViewMode = 'chase' | 'top';
 let chase: ChaseView | null = null;
 try { chase = new ChaseView(); } catch { chase = null; }   // no WebGL: top-down only
-let view: ViewMode = chase && localStorage.getItem('the-apex-view') !== 'top' ? 'chase' : 'top';
+let view: ViewMode = chase ? 'chase' : 'top';
 if (chase) chase.visible = view === 'chase';
 
 function toggleView(): void {
@@ -1686,7 +1687,7 @@ function frame(now: number): void {
   }
   // Esc on the Settings screen closes it (rather than resuming the race underneath).
   if (settingsUI.isOpen && input.takePause()) settingsUI.close();
-  if (input.takeView()) toggleView();
+  if (input.takeView() && import.meta.env.DEV) toggleView();
   if (online?.role === 'guest') {
     acc = 0;
     if (online.inRace) guestFrame(Math.min(0.1, (now - lastGuest) / 1000));
