@@ -234,6 +234,71 @@ function build(track: Track): Scenery {
       rocks(12, '#9a7650');
       break;
     }
+    // --- sprints: long routes, so landmarks line the way at intervals -------------------------------
+    case 'FAE FOREST': {
+      // An enchanted forest: ancient trees crowding the route, giant glowing mushrooms, fairy lights
+      // drifting in the glades, rings of standing stones.
+      ground = 'garden';
+      const cap = () => pick(['#ff6bd8', '#4fe3ff', '#b98cff', '#7dffb0']);
+      row(0, m - 1, 52, -1, WALL_DIST + 110, () => ({ kind: 'ancient-tree', r: between(80, 120), h: between(200, 300) }));
+      row(26, m - 1, 52, 1, WALL_DIST + 110, () => ({ kind: 'ancient-tree', r: between(80, 120), h: between(200, 300) }));
+      row(13, m - 1, 61, -1, WALL_DIST + 60, () => { const c = cap(); return { kind: 'mushroom', r: between(40, 70), h: between(70, 130), color: c, accent: c }; });
+      row(40, m - 1, 67, 1, WALL_DIST + 60, () => { const c = cap(); return { kind: 'mushroom', r: between(40, 70), h: between(70, 130), color: c, accent: c }; });
+      scatter(40, (x, y) => ({ kind: 'ancient-tree', x, y, r: between(90, 140), h: between(220, 340) }), 900, 1400);
+      scatter(60, (x, y) => { const c = cap(); return { kind: 'wisp', x, y, r: 10, h: between(30, 110), color: c, accent: c }; }, 400);
+      scatter(4, (x, y) => ({ kind: 'stone-ring', x, y, r: 150, h: 70 }), 500);
+      break;
+    }
+    case 'NOVA CAMELOT': {
+      // A futurist Camelot: curtain walls and round towers along the route, banners, a great keep,
+      // and the sword in the stone by the start.
+      ground = 'garden';
+      for (let i = 0; i < m; i += 70) {
+        const t = beside(i, -1, WALL_DIST + 140);
+        place({ kind: 'castle-tower', ...t, r: 60, h: between(220, 340) }, 0);
+        const w = beside(i + 35, -1, WALL_DIST + 110);
+        place({ kind: 'castle-wall', ...w, r: 95, h: 90, w: 180 }, 0);
+      }
+      row(20, m - 1, 45, 1, WALL_DIST + 60, () => ({ kind: 'banner', r: 26, h: 150, color: pick(['#3d7bff', '#ff3d6e', '#ffd23f', '#f3ead2']) }));
+      place({ kind: 'keep', x: cx, y: cy, r: 300, h: 360 }) || scatter(1, (x, y) => ({ kind: 'keep', x, y, r: 300, h: 360 }), 600);
+      { const q = beside(30, 1, WALL_DIST + 200); place({ kind: 'sword-stone', ...q, r: 80, h: 200 }, 0); }
+      scatter(70, (x, y) => ({ kind: 'cypress', x, y, r: 18, h: 110 }), 900, 1400);
+      break;
+    }
+    case 'ZOROPERSIA': {
+      // Fire temples and columned halls of a reimagined Persia: winged guardian bulls along the
+      // straights, eternal flames, palm groves, and a great winged-disc monument.
+      ground = 'sand';
+      row(0, m - 1, 60, -1, WALL_DIST + 70, () => ({ kind: 'lamassu', r: 45, h: 90 }));
+      row(30, m - 1, 60, 1, WALL_DIST + 70, () => ({ kind: 'lamassu', r: 45, h: 90 }));
+      scatter(14, (x, y) => ({ kind: 'fire-temple', x, y, r: 140, h: 150 }), 900);
+      scatter(10, (x, y) => ({ kind: 'columns', x, y, r: 170, h: 220, rot: rand() * Math.PI }), 900);
+      place({ kind: 'faravahar', x: cx, y: cy, r: 220, h: 300 }) || scatter(1, (x, y) => ({ kind: 'faravahar', x, y, r: 220, h: 300 }), 600);
+      clumps(12, 5, 320, (x, y) => ({ kind: 'palm', x, y, r: 26, h: 120 }));
+      break;
+    }
+    case 'BIFROST': {
+      // The rainbow bridge: the road runs between floating islands under the aurora, with rainbow
+      // arches and gold spires of a sky citadel, above a sea of cloud.
+      ground = 'snow';
+      scatter(46, (x, y) => ({ kind: 'float-isle', x, y, r: between(90, 170), h: between(140, 520) }), 1200, 1600);
+      scatter(10, (x, y) => ({ kind: 'rainbow', x, y, r: between(220, 320), h: 300, rot: rand() * Math.PI }), 900);
+      scatter(16, (x, y) => ({ kind: 'gold-tower', x, y, r: 55, h: between(340, 560) }), 900);
+      break;
+    }
+    case 'EL DORADO': {
+      // The golden city in the jungle: stepped temples with gold shrines, jungle giants, waterfalls,
+      // golden idols and overgrown ruins.
+      ground = 'garden';
+      row(0, m - 1, 48, -1, WALL_DIST + 100, () => ({ kind: 'jungle-tree', r: between(70, 110), h: between(200, 300) }));
+      row(24, m - 1, 48, 1, WALL_DIST + 100, () => ({ kind: 'jungle-tree', r: between(70, 110), h: between(200, 300) }));
+      scatter(10, (x, y) => ({ kind: 'meso-temple', x, y, r: between(200, 300), h: between(240, 360) }), 900, 300);
+      scatter(8, (x, y) => ({ kind: 'waterfall', x, y, r: 120, h: 200, w: 200, rot: rand() * Math.PI }), 800);
+      row(12, m - 1, 90, -1, WALL_DIST + 60, () => ({ kind: 'statue', r: 40, h: 120, color: '#d9b25b' }));
+      scatter(16, (x, y) => ({ kind: 'ruin', x, y, r: 60, h: 90, rot: rand() * Math.PI }), 700);
+      clumps(10, 5, 300, (x, y) => ({ kind: 'palm', x, y, r: 26, h: 120 }));
+      break;
+    }
     case 'HANGING GARDENS': {
       // Babylon in the sky: terraced gardens with waterfalls between slim gold towers, cypress rows,
       // above the clouds.

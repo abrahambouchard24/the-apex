@@ -74,6 +74,31 @@ const ATMOS: Record<string, Atmos> = {
     fog: '#f0d2a0', fogNear: 3600, fogFar: 14000, hemi: ['#fff1dc', '#6a5038', 1.8], ground: '#ead2a4',
     road: '#463e38', wall: ['#fff8ec', '#e2c9a2'], skyline: 'dunes', skylineColor: '#d8b483', windows: '#9ff0ff', gates: 3,
   },
+  'FAE FOREST': {          // fae twilight: a mint-green sky, mist between the ancient trees
+    sky: ['#06121c', '#14404a', '#c8f0d0'], sun: { color: '#d8fff0', elev: 0.1, azim: 2.0, size: 200, light: 1.1 }, stars: 200,
+    fog: '#1a3a3a', fogNear: 1500, fogFar: 7500, hemi: ['#b8ffe0', '#10201a', 1.6], ground: '#2f5a46',
+    road: '#202a28', wall: ['#e8fff4', '#9cc8b4'], skyline: 'dunes', skylineColor: '#0f2a28', windows: '#fff0a0', gates: 3,
+  },
+  'NOVA CAMELOT': {        // a bright morning over the castle city
+    sky: ['#2a6fd0', '#8fc4f0', '#fff4d8'], sun: { color: '#fff8e8', elev: 0.35, azim: 2.6, size: 220, light: 2.0 }, stars: 0,
+    fog: '#dfe8f0', fogNear: 2600, fogFar: 12000, hemi: ['#f4f8ff', '#5a6a48', 1.9], ground: '#7fa060',
+    road: '#33363f', wall: ['#fffaf0', '#d8ccb0'], skyline: 'towers', skylineColor: '#9fb6d8', windows: '#ffe8a0', gates: 3,
+  },
+  'ZOROPERSIA': {          // a fire-lit dusk over the temples
+    sky: ['#160c2a', '#8a3a3a', '#ffb070'], sun: { color: '#ffc080', elev: 0.06, azim: 0.6, size: 380, light: 1.6 }, stars: 60,
+    fog: '#b8705a', fogNear: 2200, fogFar: 10000, hemi: ['#ffd8b8', '#40242a', 1.6], ground: '#c8a070',
+    road: '#3a302c', wall: ['#fff2e0', '#d8b890'], skyline: 'mesas', skylineColor: '#6a3a3a', windows: '#ffb060', gates: 3,
+  },
+  'BIFROST': {             // dusk above the clouds, the aurora overhead
+    sky: ['#0a0628', '#3a2a7a', '#ffb8d8'], sun: { color: '#ffd8f0', elev: 0.05, azim: 4.0, size: 320, light: 1.5 }, stars: 300,
+    fog: '#8a7ab8', fogNear: 2400, fogFar: 11000, hemi: ['#e8dcff', '#2a2048', 1.6], ground: '#d8d0f0',
+    road: '#26223a', wall: ['#f6f0ff', '#c4b4e8'], skyline: 'clouds', skylineColor: '#f0e0ff', windows: '#e0d0ff', gates: 4, aurora: true,
+  },
+  'EL DORADO': {           // a humid golden afternoon in the jungle
+    sky: ['#1f5a8a', '#8fd0c0', '#ffe8a8'], sun: { color: '#fff0c0', elev: 0.25, azim: 1.2, size: 260, light: 2.0 }, stars: 0,
+    fog: '#b8d8b0', fogNear: 1800, fogFar: 8500, hemi: ['#f0ffe0', '#304a28', 1.8], ground: '#3f6a3a',
+    road: '#2c2e26', wall: ['#fff6dc', '#d8c890'], skyline: 'peaks', skylineColor: '#4a7a5a', windows: '#ffe08a', gates: 3,
+  },
   'HANGING GARDENS': {     // morning in the sky gardens, above the clouds
     sky: ['#2a6fc0', '#9fd0f0', '#fff2d8'], sun: { color: '#fff4e0', elev: 0.3, azim: 3.1, size: 260, light: 2.0 }, stars: 0,
     fog: '#e6eef4', fogNear: 2200, fogFar: 10000, hemi: ['#f4f8ff', '#4a6a48', 1.8], ground: '#7faa6a',
@@ -228,10 +253,10 @@ export class ChaseView {
     const rx = (Math.sin(t * 37) + Math.sin(t * 23.3) * 0.6) * hum, ry = (Math.sin(t * 41.7) + Math.sin(t * 29.1) * 0.5) * hum;
     this.camera.position.set(
       c.pos.x - fx * back + (Math.random() - 0.5) * shake - fy * rx,
-      up + (Math.random() - 0.5) * shake + ry,
+      up + c.alt * 0.7 + (Math.random() - 0.5) * shake + ry,
       c.pos.y - fy * back + (Math.random() - 0.5) * shake + fx * rx);
     this.camPos.set(c.pos.x, 0, c.pos.y);
-    this.camera.lookAt(c.pos.x + fx * 150, 14, c.pos.y + fy * 150);
+    this.camera.lookAt(c.pos.x + fx * 150, 14 + c.alt * 0.8, c.pos.y + fy * 150);
     if (this.debugCam) {
       const a = c.heading + this.debugCam.yaw;
       this.camera.position.set(c.pos.x + Math.cos(a) * this.debugCam.dist, this.debugCam.h, c.pos.y + Math.sin(a) * this.debugCam.dist);
@@ -362,7 +387,65 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     g.fillStyle = theme.wall; g.globalAlpha = 0.28;
     for (const u of [256 / 3, 512 / 3]) { g.fillRect(u - 1.5, 30, 3, 70); g.fillRect(u - 1.5, 158, 3, 70); }
   });
-  add(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0, 0, 128), basic({ map: tex(road) }));
+  /**
+   * Jumps (sprints): road-level strips rise over each ramp to its lip, and are left out over the gap
+   * after it. Ribbons built over the whole track have two vertices per sample (2i, 2i+1).
+   */
+  const rampLift = (i: number, j: { from: number; lip: number; height: number }) =>
+    (j.height * (track.dist[i] - track.dist[j.from])) / (track.dist[j.lip] - track.dist[j.from]);
+  const jumpify = <G extends THREE.BufferGeometry>(g: G, base: number): G => {
+    if (!track.jumps.length) return g;
+    const pos = g.getAttribute('position') as THREE.BufferAttribute;
+    for (const j of track.jumps) for (let i = j.from; i <= j.lip; i++) {
+      pos.setY(2 * i, base + rampLift(i, j)); pos.setY(2 * i + 1, base + rampLift(i, j));
+    }
+    const idx = g.getIndex()!, keep: number[] = [];
+    for (let t = 0; t < idx.count; t += 3) {
+      const a = idx.getX(t), b = idx.getX(t + 1), c = idx.getX(t + 2);
+      const seg = Math.min(a, b, c) >> 1;
+      if (!track.jumps.some((j) => seg >= j.lip && seg < j.land)) keep.push(a, b, c);
+    }
+    g.setIndex(keep);
+    return g;
+  };
+  add(jumpify(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0, 0, 128), 0), basic({ map: tex(road) }));
+  if (track.jumps.length) {
+    // Ramp sides and the face under the lip, glowing chevrons up the deck, and the gap: a dark drop
+    // with an energy net across it.
+    const sideMat = new THREE.MeshPhongMaterial({ color: new THREE.Color(atmos.wall[1]).multiplyScalar(0.85), side: THREE.DoubleSide, flatShading: true });
+    const netTex = tex(canvas2d(64, 64, (g) => {
+      g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.stroke();
+      g.strokeRect(0, 0, 64, 64);
+    }));
+    const rampChev = tex(canvas2d(64, 64, (g) => {
+      g.strokeStyle = 'rgba(255,255,255,0.95)'; g.lineWidth = 7; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(10, 46); g.lineTo(32, 20); g.lineTo(54, 46); g.stroke();
+    }));
+    for (const j of track.jumps) {
+      for (const side of [1, -1]) {
+        const g = ribbon(j.from, j.lip, side * HALF_WIDTH, side * HALF_WIDTH, 0, 0, 1e9);
+        const pos = g.getAttribute('position') as THREE.BufferAttribute;
+        for (let i = j.from, k = 0; i <= j.lip; i++, k++) pos.setY(2 * k, rampLift(i, j));
+        add(g, sideMat);
+      }
+      const p = pts[j.lip];
+      const lipFace = new THREE.BufferGeometry();
+      lipFace.setAttribute('position', new THREE.Float32BufferAttribute([
+        p.x + p.nx * HALF_WIDTH, 0, p.y + p.ny * HALF_WIDTH, p.x - p.nx * HALF_WIDTH, 0, p.y - p.ny * HALF_WIDTH,
+        p.x - p.nx * HALF_WIDTH, j.height, p.y - p.ny * HALF_WIDTH, p.x + p.nx * HALF_WIDTH, j.height, p.y + p.ny * HALF_WIDTH,
+      ], 3));
+      lipFace.setIndex([0, 1, 2, 0, 2, 3]);
+      lipFace.computeVertexNormals();
+      add(lipFace, sideMat);
+      const chev = ribbon(j.from, j.lip, HALF_WIDTH * 0.6, -HALF_WIDTH * 0.6, 0.6, 0.6, 70);
+      const cp = chev.getAttribute('position') as THREE.BufferAttribute;
+      for (let i = j.from, k = 0; i <= j.lip; i++, k++) { cp.setY(2 * k, rampLift(i, j) + 0.6); cp.setY(2 * k + 1, rampLift(i, j) + 0.6); }
+      add(chev, additive({ map: rampChev, color: theme.wall }), 2);
+      add(ribbon(j.lip, j.land, WALL_DIST, -WALL_DIST, -0.6, -0.6, 1e9), basic({ color: 0x04070c, transparent: true, opacity: 0.9, depthWrite: false }), 1);
+      add(ribbon(j.lip, j.land, HALF_WIDTH, -HALF_WIDTH, -3, -3, 64), additive({ map: netTex, color: theme.wall, opacity: 0.55 }), 2);
+    }
+  }
   {
     // The deck faces straight up (normals for lighting the two layers below).
     const up = (g: THREE.BufferGeometry) => {
@@ -372,10 +455,10 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       return g;
     };
     // Shadows of the cars, cast onto the road.
-    const catcher = add(up(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0.15, 0.15, 128)), new THREE.ShadowMaterial({ opacity: 0.38 }), 1);
+    const catcher = add(jumpify(up(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0.15, 0.15, 128)), 0.15), new THREE.ShadowMaterial({ opacity: 0.38 }), 1);
     catcher.receiveShadow = true;
     // A glossy sheen: only the sun's specular highlight, added on top, so the deck reads polished.
-    add(up(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0.3, 0.3, 128)), new THREE.MeshPhongMaterial({
+    add(jumpify(up(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0.3, 0.3, 128)), 0.3), new THREE.MeshPhongMaterial({
       color: 0x000000, specular: new THREE.Color(atmos.sun.color).multiplyScalar(0.55), shininess: 26,
       transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
     }), 1);
@@ -977,8 +1060,9 @@ function propObject(p: Prop, spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 
     case 'statue': {
       // A guardian on a pedestal: robed body, head under a gold headdress, a gold staff.
       put(new THREE.BoxGeometry(p.r * 1.8, h * 0.22, p.r * 1.8), phong(MARBLE_SH), 0, h * 0.11);
-      put(new THREE.CylinderGeometry(p.r * 0.45, p.r * 0.75, h * 0.48, 8), phong(MARBLE), 0, h * 0.22 + h * 0.24);
-      put(new THREE.SphereGeometry(p.r * 0.32, 10, 8), phong(MARBLE), 0, h * 0.7 + p.r * 0.28);
+      const stone = p.color ?? MARBLE;
+      put(new THREE.CylinderGeometry(p.r * 0.45, p.r * 0.75, h * 0.48, 8), phong(stone), 0, h * 0.22 + h * 0.24);
+      put(new THREE.SphereGeometry(p.r * 0.32, 10, 8), phong(stone), 0, h * 0.7 + p.r * 0.28);
       put(new THREE.ConeGeometry(p.r * 0.46, h * 0.18, 6), phong(GOLD_C), 0, h * 0.7 + p.r * 0.55);
       put(new THREE.CylinderGeometry(5, 5, h * 0.7, 6), phong(GOLD_C), p.r * 0.6, h * 0.22 + h * 0.35);
       break;
@@ -1193,6 +1277,170 @@ function propObject(p: Prop, spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 
       for (const f of [0.3, 0.6]) put(new THREE.CylinderGeometry(r * 0.74 - f * 0.2 * r + 2, r * 0.74 - f * 0.2 * r + 2, h * 0.04, 8), phong(GOLD_C), 0, h * 0.82 * f);
       put(new THREE.SphereGeometry(r * 0.66, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), phong(GOLD_C, 0x3a2a08), 0, h * 0.82);
       put(new THREE.ConeGeometry(r * 0.14, h * 0.12, 6), phong(GOLD_C), 0, h * 0.82 + r * 0.66 + h * 0.05);
+      break;
+    }
+    // --- Fae Forest ------------------------------------------------------------------------------------
+    case 'ancient-tree': {
+      put(new THREE.CylinderGeometry(p.r * 0.22, p.r * 0.34, h * 0.6, 7), phong(0x4a3426), 0, h * 0.3);
+      for (const [x, y, z, s2] of [[0, 0.68, 0, 0.75], [p.r * 0.4, 0.58, p.r * 0.2, 0.55], [-p.r * 0.35, 0.6, -p.r * 0.25, 0.55]]) {
+        put(new THREE.SphereGeometry(p.r * s2, 9, 7), phong(0x1f4a32), x, h * y, z);
+      }
+      break;
+    }
+    case 'mushroom': {
+      put(new THREE.CylinderGeometry(p.r * 0.22, p.r * 0.32, h * 0.72, 8), phong(MARBLE), 0, h * 0.36);
+      put(new THREE.SphereGeometry(p.r, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), phong(p.color ?? '#ff6bd8', new THREE.Color(p.color ?? '#ff6bd8').multiplyScalar(0.45)), 0, h * 0.68);
+      put(new THREE.CylinderGeometry(p.r * 0.9, p.r * 0.9, 6, 12), glowing(p.color ?? '#ff6bd8'), 0, h * 0.68);
+      break;
+    }
+    case 'wisp':
+      put(new THREE.SphereGeometry(p.r, 8, 6), glowing(p.color ?? '#7dffb0'), 0, h);
+      break;
+    case 'stone-ring': {
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const st = put(new THREE.BoxGeometry(26, h, 18), phong(0x8a8a90), Math.cos(a) * p.r * 0.8, h / 2, Math.sin(a) * p.r * 0.8);
+        st.rotation.y = -a;
+      }
+      put(new THREE.CylinderGeometry(p.r * 0.35, p.r * 0.35, 4, 12), glowing('#7dffb0'), 0, 2);
+      break;
+    }
+    // --- Nova Camelot ---------------------------------------------------------------------------------
+    case 'castle-tower': {
+      const r = p.r;
+      put(new THREE.CylinderGeometry(r, r * 1.06, h, 10), phong(0xd8d2c4), 0, h / 2);
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        put(new THREE.BoxGeometry(r * 0.42, r * 0.4, r * 0.42), phong(0xc8c2b4), Math.cos(a) * r * 0.92, h + r * 0.2, Math.sin(a) * r * 0.92);
+      }
+      put(new THREE.CylinderGeometry(r * 1.02, r * 1.02, h * 0.04, 10), phong(GOLD_C), 0, h * 0.82);
+      put(new THREE.ConeGeometry(r * 1.05, h * 0.5, 10), phong(0x2a4a9a), 0, h + r * 0.4 + h * 0.25);
+      put(new THREE.ConeGeometry(r * 0.16, h * 0.14, 6), phong(GOLD_C), 0, h + r * 0.4 + h * 0.5 + h * 0.06);
+      break;
+    }
+    case 'castle-wall': {
+      const ww = p.w ?? 180;
+      put(new THREE.BoxGeometry(ww, h, 34), phong(0xd8d2c4), 0, h / 2);
+      for (let x = -ww / 2 + 12; x <= ww / 2 - 12; x += 34) put(new THREE.BoxGeometry(18, 18, 34), phong(0xc8c2b4), x, h + 9);
+      put(new THREE.BoxGeometry(ww, 6, 36), phong(GOLD_C), 0, h * 0.75);
+      break;
+    }
+    case 'banner': {
+      put(new THREE.CylinderGeometry(8, 9, h, 6), phong(GOLD_C), 0, h / 2);
+      put(new THREE.BoxGeometry(10, h * 0.42, 54), phong(p.color ?? '#3d7bff'), 0, h * 0.72, 30);
+      put(new THREE.BoxGeometry(12, 10, 56), phong(GOLD_C), 0, h * 0.95, 30);
+      break;
+    }
+    case 'keep': {
+      const r = p.r;
+      put(new THREE.BoxGeometry(r * 1.3, h * 0.7, r * 1.3), phong(0xd8d2c4), 0, h * 0.35);
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        put(new THREE.CylinderGeometry(r * 0.24, r * 0.26, h * 0.9, 10), phong(0xe0dacc), x * r * 0.65, h * 0.45, z * r * 0.65);
+        put(new THREE.ConeGeometry(r * 0.27, h * 0.3, 10), phong(0x2a4a9a), x * r * 0.65, h * 0.9 + h * 0.15, z * r * 0.65);
+      }
+      put(new THREE.ConeGeometry(r * 0.5, h * 0.35, 4), phong(GOLD_C, 0x3a2a08), 0, h * 0.7 + h * 0.175).rotation.y = Math.PI / 4;
+      break;
+    }
+    case 'sword-stone': {
+      put(new THREE.DodecahedronGeometry(p.r * 0.6, 0), phong(0x8a8a90), 0, p.r * 0.35).scale.set(1.2, 0.7, 1);
+      put(new THREE.BoxGeometry(16, h * 0.62, 10), phong(0xe6ecf4, 0x223040), 0, p.r * 0.5 + h * 0.31);
+      put(new THREE.BoxGeometry(70, 12, 14), phong(GOLD_C), 0, p.r * 0.5 + h * 0.62);
+      put(new THREE.BoxGeometry(12, h * 0.16, 12), phong(0x4a2a1a), 0, p.r * 0.5 + h * 0.62 + h * 0.08);
+      put(new THREE.SphereGeometry(12, 8, 6), phong(GOLD_C, 0x3a2a08), 0, p.r * 0.5 + h * 0.62 + h * 0.18);
+      break;
+    }
+    // --- Zoropersia -----------------------------------------------------------------------------------
+    case 'lamassu': {
+      put(new THREE.BoxGeometry(p.r * 2, 14, p.r * 1.1), phong(MARBLE_SH), 0, 7);
+      put(new THREE.BoxGeometry(p.r * 1.5, h * 0.4, p.r * 0.7), phong(SANDSTONE), 0, 14 + h * 0.3);
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) put(new THREE.BoxGeometry(12, h * 0.22, 12), phong(SANDSTONE), x * p.r * 0.55, 14 + h * 0.11, z * p.r * 0.25);
+      put(new THREE.BoxGeometry(p.r * 0.5, h * 0.36, p.r * 0.5), phong(SANDSTONE_LT), p.r * 0.85, 14 + h * 0.55);
+      put(new THREE.BoxGeometry(p.r * 0.3, h * 0.12, p.r * 0.56), phong(GOLD_C), p.r * 0.85, 14 + h * 0.78);
+      for (const z of [-1, 1]) {
+        const wing = put(new THREE.BoxGeometry(p.r * 1.2, h * 0.36, 8), phong(GOLD_C), -p.r * 0.1, 14 + h * 0.62, z * p.r * 0.38);
+        wing.rotation.z = 0.35;
+      }
+      break;
+    }
+    case 'fire-temple': {
+      const r = p.r;
+      for (let k = 0; k < 3; k++) put(new THREE.BoxGeometry(r * 2 * (1 - k * 0.22), h * 0.18, r * 2 * (1 - k * 0.22)), phong(k % 2 ? SANDSTONE_LT : SANDSTONE), 0, h * 0.09 + k * h * 0.18);
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) put(new THREE.CylinderGeometry(r * 0.08, r * 0.1, h * 0.5, 8), phong(MARBLE), x * r * 0.42, h * 0.54 + h * 0.25, z * r * 0.42);
+      put(new THREE.CylinderGeometry(r * 0.3, r * 0.2, h * 0.1, 10), phong(GOLD_C), 0, h * 0.59);
+      put(new THREE.ConeGeometry(r * 0.24, h * 0.36, 7), glowing('#ff8a2a'), 0, h * 0.64 + h * 0.18);
+      put(new THREE.ConeGeometry(r * 0.12, h * 0.24, 7), glowing('#ffd86a'), 0, h * 0.64 + h * 0.2);
+      break;
+    }
+    case 'columns': {
+      for (let i = 0; i < 4; i++) for (let k = 0; k < 2; k++) {
+        const x = -p.r * 0.75 + i * p.r * 0.5, z = (k ? 1 : -1) * p.r * 0.4;
+        put(new THREE.CylinderGeometry(12, 14, h, 8), phong(MARBLE), x, h / 2, z);
+        put(new THREE.BoxGeometry(46, 22, 26), phong(GOLD_C), x, h + 11, z);
+      }
+      put(new THREE.BoxGeometry(p.r * 2, 16, p.r * 1.1), phong(MARBLE_SH), 0, 8);
+      break;
+    }
+    case 'faravahar': {
+      put(new THREE.BoxGeometry(p.r * 0.9, h * 0.25, p.r * 0.5), phong(MARBLE_SH), 0, h * 0.125);
+      put(new THREE.CylinderGeometry(p.r * 0.32, p.r * 0.32, 24, 16), phong(GOLD_C, 0x3a2a08), 0, h * 0.6).rotation.x = Math.PI / 2;
+      for (const sx of [-1, 1]) {
+        for (let k = 0; k < 3; k++) {
+          const wing = put(new THREE.BoxGeometry(p.r * (0.9 - k * 0.18), 26, 20), phong(GOLD_C), sx * p.r * (0.5 + (0.9 - k * 0.18) / 2 - 0.1), h * 0.6 - k * 28, 0);
+          wing.rotation.z = sx * 0.12;
+        }
+      }
+      put(new THREE.CylinderGeometry(p.r * 0.14, p.r * 0.14, 30, 12), glowing('#ffb060'), 0, h * 0.6).rotation.x = Math.PI / 2;
+      break;
+    }
+    // --- Bifrost --------------------------------------------------------------------------------------
+    case 'float-isle': {
+      // Floating at p.h: a grassy top, a rocky underside tapering to a point, a glowing crystal below.
+      const y0 = p.h, r = p.r;
+      put(new THREE.CylinderGeometry(r, r * 0.92, 18, 9), phong(0x7faa6a), 0, y0);
+      put(new THREE.ConeGeometry(r * 0.95, r * 1.3, 7), phong(0x6a5a8a), 0, y0 - 9 - r * 0.65).rotation.x = Math.PI;
+      put(new THREE.OctahedronGeometry(r * 0.18, 0), glowing('#b98cff'), 0, y0 - r * 1.35);
+      put(new THREE.ConeGeometry(r * 0.25, r * 0.8, 7), phong(0x2a5a38), r * 0.3, y0 + 9 + r * 0.4);
+      break;
+    }
+    case 'rainbow': {
+      // A translucent glowing arch (left as a smooth mesh, not cubes).
+      const bands = ['#ff4f6e', '#ff9a3c', '#ffe65c', '#5df08a', '#4fb8ff', '#9a6bff'];
+      bands.forEach((c, b) => {
+        const arc = new THREE.Mesh(new THREE.TorusGeometry(p.r - b * 16, 8, 6, 40, Math.PI),
+          new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+        g.add(arc);
+      });
+      break;
+    }
+    // --- El Dorado ------------------------------------------------------------------------------------
+    case 'jungle-tree': {
+      put(new THREE.CylinderGeometry(p.r * 0.16, p.r * 0.24, h * 0.8, 7), phong(0x5a4a30), 0, h * 0.4);
+      put(new THREE.CylinderGeometry(p.r, p.r * 0.75, h * 0.14, 9), phong(0x2a6a34), 0, h * 0.82);
+      put(new THREE.CylinderGeometry(p.r * 0.6, p.r * 0.5, h * 0.12, 9), phong(0x3a7a3a), p.r * 0.2, h * 0.95);
+      break;
+    }
+    case 'meso-temple': {
+      const r = p.r, tiers = 5;
+      for (let k = 0; k < tiers; k++) {
+        const s2 = r * 2 * (1 - k * 0.16), th = h * 0.75 / tiers;
+        put(new THREE.BoxGeometry(s2, th, s2), phong(k % 2 ? 0x9a8a6a : 0x8a7a5c), 0, k * th + th / 2);
+      }
+      put(new THREE.BoxGeometry(r * 0.3, h * 0.75, r * 2 * 0.95), phong(0xa89878), 0, h * 0.35, 0);
+      put(new THREE.BoxGeometry(r * 0.5, h * 0.14, r * 0.5), phong(GOLD_C, 0x3a2a08), 0, h * 0.75 + h * 0.07);
+      put(new THREE.ConeGeometry(r * 0.3, h * 0.14, 4), phong(GOLD_C), 0, h * 0.89 + h * 0.07).rotation.y = Math.PI / 4;
+      break;
+    }
+    case 'waterfall': {
+      const ww = p.w ?? 200;
+      put(new THREE.BoxGeometry(ww, h, 70), phong(0x5a5a48), 0, h / 2);
+      put(new THREE.BoxGeometry(ww * 0.36, h * 0.96, 14), glowing('#9fe8ff'), 0, h * 0.48, 42);
+      put(new THREE.CylinderGeometry(ww * 0.4, ww * 0.45, 8, 12), phong(0x3fb8c4, 0x0f4a52), 0, 4, 90);
+      break;
+    }
+    case 'ruin': {
+      put(new THREE.CylinderGeometry(14, 16, h * 0.6, 8), phong(0x9a9480), 0, h * 0.3);
+      put(new THREE.CylinderGeometry(14, 16, h * 0.7, 8), phong(0x8a8470), 40, 14).rotation.z = Math.PI / 2;
+      put(new THREE.BoxGeometry(40, 16, 40), phong(0x4a7a3a), 0, h * 0.6 + 8);
       break;
     }
     default:
@@ -1654,6 +1902,8 @@ class CarRig {
   private roll = 0;
   private pitch = 0;
   private wingTilt = 0;
+  private shadow!: THREE.Mesh;
+  private under!: THREE.Mesh;
   /** The fighter's four wing plates, each hinged at its root (sign: which way it opens). */
   private plates: { g: THREE.Group; sign: number }[] = [];
 
@@ -1733,12 +1983,12 @@ class CarRig {
     this.root.add(this.body);
 
     // On the ground: a soft shadow and the livery-coloured underglow of the hover pads.
-    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(CRAFT_LENGTH * 1.15, 54).rotateX(-Math.PI / 2),
+    const shadow = this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(CRAFT_LENGTH * 1.15, 54).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ map: s.shadow, transparent: true, depthWrite: false }));
     shadow.position.set(-4, 0.25, 4);
     shadow.renderOrder = 3;
     this.root.add(shadow);
-    const under = new THREE.Mesh(new THREE.PlaneGeometry(CRAFT_LENGTH * 1.3, 70).rotateX(-Math.PI / 2),
+    const under = this.under = new THREE.Mesh(new THREE.PlaneGeometry(CRAFT_LENGTH * 1.3, 70).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ map: s.glow, color: livery, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
     under.position.y = 0.35;
     under.renderOrder = 4;
@@ -1750,14 +2000,24 @@ class CarRig {
     this.root.position.set(c.pos.x, 0, c.pos.y);
     this.root.rotation.y = -c.heading;
     const racing = car.race.lapStart >= 0;
-    this.body.position.y = 9 + (racing ? Math.sin(time * 5 + c.pos.x * 0.001) * 2 : 0);
+    this.body.position.y = 9 + c.alt + (racing ? Math.sin(time * 5 + c.pos.x * 0.001) * 2 : 0);
+    // Shadow and underglow lie on the road (or the ramp) and fade as the craft flies higher.
+    const above = Math.max(0, c.alt - c.ground);
+    const fade = 1 / (1 + above / 40);
+    this.shadow.position.y = c.ground + 0.25;
+    this.under.position.y = c.ground + 0.35;
+    (this.shadow.material as THREE.MeshBasicMaterial).opacity = fade;
+    (this.under.material as THREE.MeshBasicMaterial).opacity = 0.55 * fade;
+    this.shadow.scale.setScalar(1 + above / 160);
 
     // Lean into turns and slides; dip the nose under braking, lift it a touch under power.
     const turn = this.lastHeading === null || dt <= 0 ? 0 : wrapAngle(c.heading - this.lastHeading) / dt;
     this.lastHeading = c.heading;
     const k = 1 - Math.exp(-8 * dt);
     this.roll += (clamp(turn * 0.11 + c.slip * 0.25, -0.38, 0.38) - this.roll) * k;
-    this.pitch += ((c.braking ? -0.07 : c.thrust * 0.025) - this.pitch) * k;
+    // In the air the nose follows the flight: up off the lip, down toward the landing.
+    const pitchTarget = c.airborne ? clamp(c.vAlt / 900, -0.28, 0.3) : c.braking ? -0.07 : c.thrust * 0.025;
+    this.pitch += (pitchTarget - this.pitch) * k;
     this.body.rotation.set(this.roll, 0, this.pitch);
 
     const hue = c.deploying ? 280 : car.hue;
