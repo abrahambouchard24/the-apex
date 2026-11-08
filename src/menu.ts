@@ -332,14 +332,138 @@ const CSS = `
 .hr-results-track { color: #93aba8; font-weight: 500; letter-spacing: 0.28em; font-size: 11px; }
 .hr-standings-head { font-weight: 300; letter-spacing: 0.3em; color: #fffaf0; }
 .hr-note { font-weight: 300; letter-spacing: 0.24em; color: #f1d79a; }
+
+/* Front windows as origami dioramas: the paper art fills the window, the craft sit on it. */
+.hr-window .scene { background: #0b2a30; }
+.hr-window .scene svg.paper { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sc-story img { top: 50%; }
+.sc-story .vs { top: 56%; }
+.sc-quick svg .kerb, .sc-quick svg .chev { animation: hr-paper-run 1.1s linear infinite; }
+@keyframes hr-paper-run { from { transform: translate(0, 0); } to { transform: translate(-68px, 32px); } }
+.sc-quick img { top: 36%; }
+.sc-online img { top: 42%; }
+.sc-online .dart { position: absolute; left: 22%; top: 34%; width: 34px; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.35));
+  animation: hr-dart 2.6s ease-in-out infinite; }
+.sc-online .dart:nth-of-type(2) { animation-delay: 0.85s; }
+.sc-online .dart:nth-of-type(3) { animation-delay: 1.7s; }
+@keyframes hr-dart {
+  0% { transform: translate(0, 30px) rotate(-14deg); opacity: 0; }
+  15% { opacity: 1; }
+  50% { transform: translate(70px, -8px) rotate(0deg); }
+  85% { opacity: 1; }
+  100% { transform: translate(140px, 30px) rotate(14deg); opacity: 0; }
+}
+.sc-season svg .trophy { animation: hr-cup 3.2s ease-in-out infinite; }
+@keyframes hr-cup { 50% { transform: translateY(-6px); } }
+.sc-season .spark { width: 8px; height: 8px; border-radius: 0; clip-path: polygon(0 0, 100% 30%, 20% 100%); }
 `;
 
-const TROPHY = `<svg class="cup" viewBox="0 0 120 130"><defs><linearGradient id="hrg" x1="0" x2="1"><stop offset="0" stop-color="#b8860b"/><stop offset=".45" stop-color="#ffe7a0"/><stop offset="1" stop-color="#c8961e"/></linearGradient></defs>
-<path d="M30 10h60v20c0 26-14 42-30 44-16-2-30-18-30-44z" fill="url(#hrg)"/>
-<path d="M30 18H12c0 18 8 28 20 30M90 18h18c0 18-8 28-20 30" fill="none" stroke="url(#hrg)" stroke-width="7"/>
-<rect x="54" y="74" width="12" height="22" fill="url(#hrg)"/><rect x="34" y="96" width="52" height="10" rx="2" fill="url(#hrg)"/>
-<rect x="26" y="106" width="68" height="16" rx="3" fill="#2a2350" stroke="url(#hrg)" stroke-width="3"/>
-<text x="60" y="44" text-anchor="middle" font-family="system-ui" font-weight="900" font-size="18" fill="#7a5410">1</text></svg>`;
+
+
+// --- the front menu's scenes, folded from paper -------------------------------------------------
+// Each window is a little origami diorama: flat paper planes in SVG, each a slightly different tone
+// where the light catches its fold, with crisp creases and no gloss. Sizes are in a 300 x 440 box,
+// cropped to fit the window (preserveAspectRatio slice).
+
+/** A seeded random, so the folds come out the same every time. */
+function seeded(seed: number): () => number {
+  return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+}
+const poly = (pts: number[][], fill: string, extra = '') =>
+  `<polygon points="${pts.map((p) => p.map((v) => v.toFixed(1)).join(',')).join(' ')}" fill="${fill}" ${extra}/>`;
+const shade = (hex: string, k: number) => {
+  const n = parseInt(hex.slice(1), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.max(0, Math.min(255, Math.round(v * k))));
+  return `rgb(${c.join(',')})`;
+};
+
+/** A band of folded paper: a strip cut into triangles that alternate tone like a pleat. */
+function pleatBand(y0: number, y1: number, color: string, folds: number, seed: number): string {
+  const r = seeded(seed);
+  const xs = Array.from({ length: folds + 1 }, (_, i) => (i / folds) * 320 - 10 + (i && i < folds ? (r() - 0.5) * 18 : 0));
+  let out = '';
+  for (let i = 0; i < folds; i++) {
+    const a = xs[i], b = xs[i + 1], m = (a + b) / 2 + (r() - 0.5) * 12;
+    out += poly([[a, y0], [b, y0], [m, y1]], shade(color, 0.92 + r() * 0.16));
+    out += poly([[a, y0], [m, y1], [a - (b - a) / 2, y1]], shade(color, 0.8 + r() * 0.14));
+  }
+  out += poly([[xs[folds], y0], [330, y0], [330, y1], [xs[folds] - 10, y1]], shade(color, 0.86));
+  return out;
+}
+
+/** A paper mountain or dune: two faces folded along the ridge, one in light and one in shade. */
+const ridge = (x: number, w: number, h: number, base: number, color: string) =>
+  poly([[x - w / 2, base], [x, base - h], [x + w * 0.08, base]], shade(color, 1.08)) +
+  poly([[x + w * 0.08, base], [x, base - h], [x + w / 2, base]], shade(color, 0.72));
+
+const SCENE_STORY = (() => {
+  // Dusk: pleated sky bands from plum to amber, a fanned paper sun, folded hills and a dark deck.
+  let svg = pleatBand(0, 70, '#3a1d4a', 9, 1) + pleatBand(70, 140, '#7a2f4f', 9, 2) + pleatBand(140, 196, '#c8563f', 9, 3);
+  const cx = 150, cy = 200, R = 74;
+  for (let k = 0; k < 10; k++) {
+    const a0 = Math.PI + (k / 10) * Math.PI, a1 = Math.PI + ((k + 1) / 10) * Math.PI;
+    svg += poly([[cx, cy], [cx + Math.cos(a0) * R, cy + Math.sin(a0) * R], [cx + Math.cos(a1) * R, cy + Math.sin(a1) * R]], k % 2 ? '#f6c25a' : '#ffd98a');
+  }
+  svg += ridge(40, 150, 62, 214, '#1d4a52') + ridge(250, 170, 78, 214, '#163d45') + ridge(150, 120, 40, 214, '#24575f');
+  svg += poly([[-10, 212], [310, 212], [310, 440], [-10, 440]], '#0f2a30');
+  svg += poly([[-10, 212], [310, 212], [150, 300]], '#143439');
+  svg += `<line x1="-10" y1="212" x2="310" y2="212" stroke="#e8c25a" stroke-width="2"/>`;
+  return `<svg class="paper" viewBox="0 0 300 440" preserveAspectRatio="xMidYMid slice">${svg}</svg>`;
+})();
+
+const SCENE_QUICK = (() => {
+  // Night teal paper, and a folded road strip racing up and across, its kerb in gold.
+  let svg = pleatBand(0, 440, '#0f3a42', 6, 4);
+  svg += poly([[-40, 330], [340, 150], [340, 250], [-40, 430]], '#26343c');
+  svg += poly([[-40, 330], [340, 150], [340, 200], [-40, 380]], '#33454f');   // the crease down the road's middle
+  svg += `<g class="kerb">${Array.from({ length: 14 }, (_, i) => {
+    const x = -60 + i * 34, y = 340 - i * 16;
+    return poly([[x, y], [x + 17, y - 8], [x + 17, y - 2], [x, y + 6]], i % 2 ? '#e8c25a' : '#fff4d6');
+  }).join('')}</g>`;
+  svg += `<g class="chev">${Array.from({ length: 6 }, (_, i) => {
+    const x = 10 + i * 60, y = 300 - i * 28;
+    return poly([[x, y], [x + 18, y - 4], [x, y + 8]], '#3fe0d0', 'opacity="0.7"');
+  }).join('')}</g>`;
+  return `<svg class="paper" viewBox="0 0 300 440" preserveAspectRatio="xMidYMid slice">${svg}</svg>`;
+})();
+
+/** A paper dart: the classic folded plane, two wings and a keel in three tones. */
+const DART = `<svg class="dart" viewBox="0 0 60 30"><polygon points="0,15 60,12 18,0" fill="#fff8e8"/><polygon points="0,15 60,12 24,30" fill="#d8cdb6"/><polygon points="0,15 60,12 30,17" fill="#b9ab90"/></svg>`;
+
+const SCENE_ONLINE = (() => {
+  // Deep teal paper folded into a few big planes, a dotted gold flight path between the two craft.
+  let svg = '';
+  const r = seeded(9);
+  const pts = [[-10, -10], [150, -10], [310, -10], [-10, 220], [130, 200], [310, 230], [-10, 450], [160, 450], [310, 450]];
+  const tris = [[0, 1, 4], [1, 2, 4], [2, 5, 4], [0, 4, 3], [3, 4, 7], [4, 5, 7], [3, 7, 6], [5, 8, 7]];
+  for (const [a, b, c] of tris) svg += poly([pts[a], pts[b], pts[c]], shade('#12434c', 0.75 + r() * 0.35));
+  svg += `<path d="M60 205 Q150 110 240 205" fill="none" stroke="#e8c25a" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>`;
+  return `<svg class="paper" viewBox="0 0 300 440" preserveAspectRatio="xMidYMid slice">${svg}</svg>`;
+})();
+
+const SCENE_SEASON = (() => {
+  // A trophy folded from gold paper, under two paper spotlights, on a stepped paper podium.
+  let svg = pleatBand(0, 440, '#123c44', 5, 6);
+  svg += poly([[95, -10], [125, -10], [175, 330], [40, 330]], 'rgba(255,248,225,0.07)');
+  svg += poly([[175, -10], [205, -10], [260, 330], [125, 330]], 'rgba(255,248,225,0.06)');
+  const G = ['#fff0bf', '#f2cf6f', '#d9a640', '#b5822a', '#8f6420'];
+  // Cup: a faceted bowl (four planes a side), handles, stem and base.
+  const cup = [
+    poly([[110, 120], [150, 120], [150, 205]], G[1]), poly([[110, 120], [150, 205], [124, 186]], G[2]),
+    poly([[190, 120], [150, 120], [150, 205]], G[0]), poly([[190, 120], [150, 205], [176, 186]], G[1]),
+    poly([[110, 120], [124, 186], [112, 160]], G[3]), poly([[190, 120], [176, 186], [188, 160]], G[2]),
+    poly([[110, 128], [90, 132], [96, 160], [112, 166], [112, 154], [102, 150], [100, 138], [110, 136]], G[2]),
+    poly([[190, 128], [210, 132], [204, 160], [188, 166], [188, 154], [198, 150], [200, 138], [190, 136]], G[1]),
+    poly([[143, 205], [157, 205], [160, 238], [140, 238]], G[2]), poly([[150, 205], [157, 205], [160, 238], [150, 238]], G[1]),
+    poly([[124, 238], [176, 238], [184, 252], [116, 252]], G[1]), poly([[150, 238], [176, 238], [184, 252], [150, 252]], G[0]),
+    poly([[108, 252], [192, 252], [192, 276], [108, 276]], '#173a40'), `<line x1="108" y1="252" x2="192" y2="252" stroke="#e8c25a" stroke-width="2"/>`,
+    poly([[140, 150], [160, 150], [150, 170]], '#3fe0d0'),
+  ];
+  svg += `<g class="trophy">${cup.join('')}</g>`;
+  // Podium steps.
+  svg += poly([[60, 330], [240, 330], [240, 440], [60, 440]], '#0f2c33') + poly([[60, 330], [240, 330], [150, 360]], '#163b42');
+  return `<svg class="paper" viewBox="0 0 300 440" preserveAspectRatio="xMidYMid slice">${svg}</svg>`;
+})();
 
 export class Menus {
   private front: HTMLDivElement;
@@ -367,32 +491,30 @@ export class Menus {
     document.head.append(style);
 
     // Front menu: Story, Quick Race and Season, each a window onto its own little scene.
-    const sparks = Array.from({ length: 18 }, (_, i) => `<i class="spark" style="left:${(i * 37) % 100}%;top:-10px;`
-      + `background:${['#ffd23f', '#ff3d6e', '#4fe3ff', '#7dffb0'][i % 4]};animation-duration:${3 + (i % 5) * 0.7}s;animation-delay:${(i * 0.43) % 4}s"></i>`).join('');
-    const outlines = tracks.filter((t) => !t.sprint).map((t, i) => `<polygon points="${t.outline}" transform="translate(${(i % 4) * 130} ${Math.floor(i / 4) * 95})"
-      fill="none" stroke="${t.color}" stroke-width="3" stroke-linejoin="round"/>`).join('');
+    // Paper confetti: little folded triangles in gold, ivory and teal.
+    const sparks = Array.from({ length: 16 }, (_, i) => `<i class="spark" style="left:${(i * 37) % 100}%;top:-10px;`
+      + `background:${['#e8c25a', '#fff4d6', '#3fe0d0', '#c99e45'][i % 4]};animation-duration:${3.4 + (i % 5) * 0.7}s;animation-delay:${(i * 0.43) % 4}s"></i>`).join('');
     this.front = overlay(`
       <div class="hr-panel" style="max-width:1240px">
         <h1 class="hr-title">THE APEX</h1>
         <p class="hr-sub">HOVER RACING · ROOKIE SEASON</p>
         <div class="hr-front">
           <button class="hr-window" data-act="story" style="--c:#ff7a3d">
-            <div class="scene sc-story"><div class="sun"></div><div class="stand"></div><div class="deck"></div>
+            <div class="scene sc-story">${SCENE_STORY}
               <img class="me" src="${cars[0]?.card ?? cars[0]?.url ?? ''}" alt=""><span class="vs">VS</span><img class="him" src="${cars[3]?.card ?? cars[3]?.url ?? ''}" alt=""></div>
             <div class="label"><b>STORY</b><small>From the county speedway to the top of the Apex Series. Your first season starts with one race against a legend.</small></div>
           </button>
           <button class="hr-window" data-act="quick" style="--c:#4fe3ff">
-            <div class="scene sc-quick"><div class="road"><div class="chev"></div><div class="rail t"></div><div class="rail b"></div></div><div class="trail"></div><img src="${cars[0]?.card ?? cars[0]?.url ?? ''}" alt=""></div>
+            <div class="scene sc-quick">${SCENE_QUICK}<img src="${cars[0]?.card ?? cars[0]?.url ?? ''}" alt=""></div>
             <div class="label"><b>QUICK RACE</b><small>One race. Pick your car, your track and your laps, and go.</small></div>
           </button>
           <button class="hr-window" data-act="online" style="--c:#7dffb0">
-            <div class="scene sc-online"><div class="grid"></div><img class="a" src="${cars[0]?.card ?? cars[0]?.url ?? ''}" alt=""><div class="wave"></div><div class="wave"></div><div class="wave"></div>
+            <div class="scene sc-online">${SCENE_ONLINE}<img class="a" src="${cars[0]?.card ?? cars[0]?.url ?? ''}" alt="">${DART}${DART}${DART}
               <img class="b" src="${cars[1]?.card ?? cars[1]?.url ?? ''}" alt=""></div>
             <div class="label"><b>ONLINE</b><small>Host a race, send the code, and race your friends live.</small></div>
           </button>
           <button class="hr-window" data-act="season" style="--c:#ffd23f">
-            <div class="scene sc-season"><svg class="tracks" viewBox="0 0 520 190">${outlines}</svg>
-              <div class="beam a"></div><div class="beam b"></div>${sparks}${TROPHY}</div>
+            <div class="scene sc-season">${SCENE_SEASON}${sparks}</div>
             <div class="label"><b>SEASON</b><small>A championship across the circuits. Points for every finish, a title for the best.</small></div>
           </button>
         </div>
