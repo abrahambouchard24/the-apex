@@ -64,6 +64,12 @@ export const LAUNCH_TIME = 1.4;   // seconds a perfect launch lasts
 export const STALL_TIME = 0.8;    // seconds of no thrust after a jump start
 // ERS: drifting charges a battery; deploying it adds pull and a little top speed.
 const ERS_DRIFT = 0.55;           // energy per second in a deep, fast drift (under 2 s from empty to full)
+// Jumps (sprint tracks): ramps lift the craft, it flies when the road drops away, and lands again.
+const GRAVITY = 1000;             // px/s² pulling the craft back down (floaty, for hang time)
+const AIR_GRIP = 0.12;            // share of grip left in the air (it keeps its sideways momentum)
+const AIR_TURN = 0.5;             // share of steering left in the air
+const ERS_AIR = 0.32;             // energy per second of airtime at speed (airtime charges the boost)
+const LANDING_LOSS = 1 / 12000;   // speed lost per px/s of landing impact (capped at 8%)
 export const HARVEST_PER_LAP = 1;  // most energy a craft can harvest in one lap (one full battery)
 const DRIFT_CHARGE_FROM = 0.4;    // rad (~23°) of slip before a slide counts as a charging drift
 const DRIFT_DEEP = 0.8;           // rad (~46°) of slip that charges at the full rate
@@ -98,6 +104,7 @@ export interface CraftState {
   drifting: boolean; braking: boolean; thrust: number; shiftTimer: number; shiftPause: number;
   slipstream: number; catchUp: number; heat: number; overheated: boolean; launch: number;
   stall: number; energy: number; deploying: boolean; harvested: number; drsOpen: boolean; cooling: boolean;
+  alt: number; vAlt: number; onGround: boolean; ground: number;
 }
 
 export class Craft {
@@ -139,6 +146,14 @@ export class Craft {
   drsOpen = false;
   /** True while over the cooling lane (set by the race each step). */
   cooling = false;
+  /** Height above the base road (px), vertical speed, and whether it's riding the road surface. */
+  alt = 0;
+  vAlt = 0;
+  onGround = true;
+  /** Road height under the craft (ramps), set by collideWalls each step. */
+  ground = 0;
+  /** Landing impact (px/s of vertical speed) on the step the craft touched down, else 0 (for effects). */
+  landed = 0;
 
   /** Every field the physics reads or writes, so a car can be copied exactly (online prediction). */
   getState(): CraftState {
@@ -147,6 +162,7 @@ export class Craft {
       drifting: this.drifting, braking: this.braking, thrust: this.thrust, shiftTimer: this.shiftTimer, shiftPause: this.shiftPause,
       slipstream: this.slipstream, catchUp: this.catchUp, heat: this.heat, overheated: this.overheated, launch: this.launch,
       stall: this.stall, energy: this.energy, deploying: this.deploying, harvested: this.harvested, drsOpen: this.drsOpen, cooling: this.cooling,
+      alt: this.alt, vAlt: this.vAlt, onGround: this.onGround, ground: this.ground,
     };
   }
 
@@ -155,7 +171,11 @@ export class Craft {
     this.drifting = s.drifting; this.braking = s.braking; this.thrust = s.thrust; this.shiftTimer = s.shiftTimer; this.shiftPause = s.shiftPause;
     this.slipstream = s.slipstream; this.catchUp = s.catchUp; this.heat = s.heat; this.overheated = s.overheated; this.launch = s.launch;
     this.stall = s.stall; this.energy = s.energy; this.deploying = s.deploying; this.harvested = s.harvested; this.drsOpen = s.drsOpen; this.cooling = s.cooling;
+    this.alt = s.alt ?? 0; this.vAlt = s.vAlt ?? 0; this.onGround = s.onGround ?? true; this.ground = s.ground ?? 0;
   }
+
+  /** In the air off a jump. */
+  get airborne(): boolean { return !this.onGround; }
 
   get speed(): number { return Math.hypot(this.vel.x, this.vel.y); }
 
@@ -198,6 +218,7 @@ export class Craft {
     const speedFrac = clamp(speed / GEARS[GEARS.length - 1].top, 0, 1);
     let turnRate = lerp(TURN_RATE, TURN_RATE_FAST, speedFrac) * (1 + this.mods.turn);
     if (brake) turnRate *= BRAKE_TURN_BONUS;
+    if (!this.onGround) turnRate *= AIR_TURN;
     const diff = wrapAngle(aimAngle - this.heading);
     const maxTurn = turnRate * dt;
     this.heading = wrapAngle(this.heading + clamp(diff, -maxTurn, maxTurn));
@@ -236,7 +257,7 @@ export class Craft {
     const gripFade = Math.pow(speedFrac, 1.3);
     const assist = this.mods.assist > 0;
     const grip = (brake ? lerp(BRAKE_GRIP_SLOW, assist ? ASSIST_BRAKE_GRIP_FAST : BRAKE_GRIP_FAST, gripFade)
-      : lerp(GRIP_SLOW, assist ? ASSIST_GRIP_FAST : GRIP_FAST, gripFade)) * (1 + this.mods.grip);
+      : lerp(GRIP_SLOW, assist ? ASSIST_GRIP_FAST : GRIP_FAST, gripFade)) * (1 + this.mods.grip) * (this.onGround ? 1 : AIR_GRIP);
     side *= Math.exp(-grip * dt);
     if (fwd > 0) fwd = Math.sqrt(fwd * fwd + (sideBefore * sideBefore - side * side) * (assist ? ASSIST_KEEP : GRIP_KEEP));
 
@@ -250,14 +271,49 @@ export class Craft {
       const gain = Math.min(ERS_DRIFT * (1 + this.mods.harvest) * depth * clamp(speed / 600, 0, 1) * dt, HARVEST_PER_LAP - this.harvested, 1 - this.energy);
       if (gain > 0) { this.energy += gain; this.harvested += gain; }
     }
+    // Airtime charges it too.
+    if (!this.onGround && speed > 300) {
+      const gain = Math.min(ERS_AIR * (1 + this.mods.harvest) * clamp(speed / 600, 0, 1.3) * dt, HARVEST_PER_LAP - this.harvested, 1 - this.energy);
+      if (gain > 0) { this.energy += gain; this.harvested += gain; }
+    }
 
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
+    this.fly(dt);
 
     this.launch = Math.max(0, this.launch - dt);
     this.stall = Math.max(0, this.stall - dt);
     this.heat = Math.max(0, this.heat - (this.cooling ? LANE_COOL : HEAT_COOL) * dt);
     if (this.overheated && this.heat < OVERHEAT_CLEAR) this.overheated = false;
+  }
+
+  /**
+   * Height: on the road the craft follows it (a ramp gives it upward speed); when the road drops
+   * away beneath it (a ramp's lip) it flies on that speed under gravity, and lands when it meets the
+   * road again, losing a little speed on a hard landing.
+   */
+  private fly(dt: number): void {
+    this.landed = 0;
+    const g = this.ground;
+    if (this.onGround) {
+      if (g >= this.alt - 1) {
+        this.vAlt = Math.max(0, (g - this.alt) / dt);
+        this.alt = g;
+      } else {
+        this.onGround = false;   // launched
+      }
+    }
+    if (!this.onGround) {
+      this.vAlt -= GRAVITY * dt;
+      this.alt += this.vAlt * dt;
+      if (this.alt <= g) {
+        const impact = -this.vAlt;
+        this.landed = Math.max(1, impact);
+        const keep = 1 - Math.min(0.08, impact * LANDING_LOSS);
+        this.vel.x *= keep; this.vel.y *= keep;
+        this.alt = g; this.vAlt = 0; this.onGround = true;
+      }
+    }
   }
 
   /** Fraction of top speed currently lost to heat. */
