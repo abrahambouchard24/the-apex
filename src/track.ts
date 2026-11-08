@@ -24,7 +24,27 @@ export interface TrackDef {
   sprint?: boolean;
   samples?: number;
   jumps?: number;
+  /**
+   * Sprints: what the two lanes offer at each fork on a straight, taken in turn ([left, right] lanes
+   * alternate sides), and at each fork on a sweeping turn ([inside, outside]).
+   */
+  forks?: [LaneKind, LaneKind][];
+  curveForks?: [LaneKind, LaneKind][];
 }
+
+/**
+ * What a fork lane offers: a jump (a glide that charges the boost), boost pads, a charging strip
+ * (refills the battery while you're on it), a cooling strip, a fire lane (boost pads that heat you
+ * up), or a plain road (at a turn, the inside line is shorter but tighter).
+ */
+export type LaneKind = 'jump' | 'boost' | 'charge' | 'cool' | 'fire' | 'plain';
+/** A fork: the road splits around an island from `from` to `to`; `left` / `right` lanes (side +1 / -1). */
+export interface Fork { from: number; to: number; curve: boolean; left: LaneKind; right: LaneKind; sign: number }
+/** A strip of lane surface with an effect, on one side of a fork. */
+export interface Strip { side: number; kind: 'boost' | 'charge' | 'cool' | 'fire'; from: number; to: number }
+const CHARGE_RATE = 0.45;         // battery per second on a charging strip
+const FIRE_HEAT = 0.4;            // seconds of wall-grind heat per second on a fire lane
+const PAD_HOLD = 0.9;             // seconds a pad's push lasts after leaving it
 
 /**
  * A jump: a ramp from `from` rising to `height` at `lip`, a gap to `land` (sample indices), in the
@@ -291,6 +311,8 @@ export const TRACKS: TrackDef[] = [
     name: 'FAE FOREST',
     blurb: 'Enchanted forest sprint: flowing sweepers and glade jumps',
     sprint: true, samples: 26, jumps: 20,
+    forks: [['jump', 'charge'], ['boost', 'cool'], ['jump', 'boost'], ['charge', 'boost']],
+    curveForks: [['plain', 'charge'], ['plain', 'boost']],
     theme: { wall: '#7dffb0', wallFace: '#e6fff0', lights: '190, 255, 210', kerb: '#c88bff', surface: '#1e2a26' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -318,6 +340,8 @@ export const TRACKS: TrackDef[] = [
     name: 'NOVA CAMELOT',
     blurb: 'Castle-city sprint: long straights and tight castle ramps',
     sprint: true, samples: 26, jumps: 20,
+    forks: [['jump', 'boost'], ['boost', 'charge'], ['jump', 'cool']],
+    curveForks: [['plain', 'boost'], ['plain', 'charge']],
     theme: { wall: '#ffd23f', wallFace: '#fff6d8', lights: '255, 236, 170', kerb: '#3d7bff', surface: '#262a36' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -346,6 +370,8 @@ export const TRACKS: TrackDef[] = [
     name: 'ZOROPERSIA',
     blurb: 'Persian fire-temple sprint: long straights and big jumps',
     sprint: true, samples: 26, jumps: 20,
+    forks: [['fire', 'cool'], ['jump', 'fire'], ['charge', 'boost']],
+    curveForks: [['plain', 'fire'], ['plain', 'cool']],
     theme: { wall: '#ff8a1f', wallFace: '#ffe8cc', lights: '255, 200, 120', kerb: '#4fe3ff', surface: '#2e2622' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -376,6 +402,8 @@ export const TRACKS: TrackDef[] = [
     name: 'BIFROST',
     blurb: 'Rainbow bridge between floating islands: jump after jump',
     sprint: true, samples: 26, jumps: 20,
+    forks: [['jump', 'boost'], ['jump', 'charge'], ['boost', 'charge'], ['jump', 'cool']],
+    curveForks: [['plain', 'boost']],
     theme: { wall: '#b98cff', wallFace: '#f3eaff', lights: '230, 210, 255', kerb: '#4fe3ff', surface: '#232036' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -407,6 +435,8 @@ export const TRACKS: TrackDef[] = [
     name: 'EL DORADO',
     blurb: 'Golden jungle city: tight switchbacks and waterfall jumps',
     sprint: true, samples: 26, jumps: 20,
+    forks: [['cool', 'charge'], ['jump', 'boost'], ['fire', 'cool'], ['jump', 'charge']],
+    curveForks: [['plain', 'cool'], ['plain', 'charge']],
     theme: { wall: '#ffd23f', wallFace: '#fff2c8', lights: '255, 230, 150', kerb: '#2fd16b', surface: '#24261c' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
@@ -473,6 +503,9 @@ export class Track {
   open = false;
   routeEnd = 0;
   finishIndex = 0;
+  /** Forks on a sprint, and the effect strips on their lanes. */
+  forks: Fork[] = [];
+  strips: Strip[] = [];
   /** Half-width of the drivable road at each sample, and of the island in its middle (0 = none). */
   outer: Float32Array = new Float32Array(0);
   island: Float32Array = new Float32Array(0);
@@ -547,7 +580,8 @@ export class Track {
       this.finishIndex = f;
     }
     this.rampAt = new Int16Array(m).fill(-1);
-    if (def.jumps) this.placeJumps(def.jumps);
+    if (def.jumps) this.placeJumps(def.jumps, def.forks);
+    if (def.curveForks) this.placeCurveForks(def.curveForks);
     // Splits make the road wider: grow the bounds to match.
     const extra = Math.max(...this.outer) - HALF_WIDTH;
     this.bounds.minX -= extra; this.bounds.minY -= extra; this.bounds.maxX += extra; this.bounds.maxY += extra;
@@ -611,7 +645,7 @@ export class Track {
    * a long, nearly straight stretch: the road eases apart into two lanes around an island, one lane
    * gets a ramp and a gap, and the lanes ease back together after the landing run.
    */
-  private placeJumps(count: number): void {
+  private placeJumps(count: number, recipe?: [LaneKind, LaneKind][]): void {
     const m = this.pts.length, end = this.open ? this.routeEnd : m - 1;
     const need = SPLIT_EASE * 2 + SPLIT_BEFORE + RAMP_LENGTH + JUMP_GAP + SPLIT_AFTER;
     const spots: number[] = [];
@@ -635,13 +669,29 @@ export class Track {
     const pickN = Math.min(count, usable.length);
     for (let k = 0; k < pickN; k++) {
       const from = usable[Math.floor(((k + 0.5) / pickN) * usable.length)];
-      const at = (d: number) => { let j = from; while (j < end && this.dist[j] - this.dist[from] < d) j++; return j; };
+      const at = (d: number) => {
+        let j = from;
+        if (d < 0) { while (j > 0 && this.dist[from] - this.dist[j] < -d) j--; return j; }
+        while (j < end && this.dist[j] - this.dist[from] < d) j++;
+        return j;
+      };
       const lip = at(RAMP_LENGTH), land = at(RAMP_LENGTH + JUMP_GAP);
-      const side = k % 2 ? -1 : 1;
-      this.jumps.push({ from, lip, land, height: RAMP_HEIGHT, side });
-      for (let j = from; j <= lip; j++) this.rampAt[j] = this.jumps.length - 1;
-      // The split around it.
+      // What each lane offers (the recipe in turn; sides alternate so it isn't always the same way).
+      const pair = recipe?.[k % recipe.length] ?? ['jump', 'plain'];
+      const flip = k % 2 === 1;
+      const left = flip ? pair[1] : pair[0], right = flip ? pair[0] : pair[1];
       const d0 = this.dist[from] - SPLIT_BEFORE, d1 = this.dist[land] + SPLIT_AFTER;
+      const s0 = at(-SPLIT_BEFORE - SPLIT_EASE * 0.5), s1 = at(RAMP_LENGTH + JUMP_GAP + SPLIT_AFTER + SPLIT_EASE * 0.5);
+      this.forks.push({ from: s0, to: s1, curve: false, left, right, sign: 0 });
+      for (const [side, kind] of [[1, left], [-1, right]] as const) {
+        if (kind === 'jump') {
+          this.jumps.push({ from, lip, land, height: RAMP_HEIGHT, side });
+          for (let j = from; j <= lip; j++) this.rampAt[j] = this.jumps.length - 1;
+        } else if (kind !== 'plain') {
+          this.strips.push({ side, kind, from: at(-SPLIT_BEFORE * 0.6), to: at(RAMP_LENGTH + JUMP_GAP + SPLIT_AFTER * 0.8) });
+        }
+      }
+      // The split around it.
       for (let i = 0; i <= end; i++) {
         const d = this.dist[i];
         if (d < d0 - SPLIT_EASE || d > d1 + SPLIT_EASE) continue;
@@ -651,6 +701,58 @@ export class Track {
         this.outer[i] = Math.max(this.outer[i], HALF_WIDTH + (ISLAND_HALF + LANE_WIDTH - HALF_WIDTH) * t);
       }
     }
+  }
+
+  /**
+   * Forks on the long sweeping turns (the U-turns between rows): the road splits around an island
+   * that follows the bend, so the inside lane is shorter but tighter and the outside lane longer but
+   * faster; the recipe says what each lane offers ([inside, outside]).
+   */
+  private placeCurveForks(recipe: [LaneKind, LaneKind][]): void {
+    if (!this.open) return;
+    const end = this.routeEnd, L = this.dist[this.finishIndex];
+    let run = -1, k = 0;
+    for (let i = 0; i <= end + 1; i++) {
+      const bend = i <= end && Math.abs(this.pts[i].curve) > 1 / 1800;
+      if (bend && run < 0) run = i;
+      if ((!bend || i === end + 1) && run >= 0) {
+        const len = this.dist[Math.min(i, end)] - this.dist[run];
+        const mid = Math.floor((run + i) / 2);
+        if (len >= 2400 && this.dist[mid] > L * 0.05 && this.dist[mid] < L * 0.95 && this.island[mid] === 0) {
+          const pair = recipe[k++ % recipe.length];
+          const inside = Math.sign(this.pts[mid].curve) || 1;
+          const d0 = this.dist[run] + 300, d1 = this.dist[Math.min(i, end)] - 300, ease = 500;
+          let a = run, b = Math.min(i, end);
+          for (let j = run; j <= b; j++) {
+            const d = this.dist[j];
+            if (d < d0 || d > d1) continue;
+            const e = Math.min(1, (d - d0) / ease, (d1 - d) / ease);
+            const t = e * e * (3 - 2 * e);
+            const isl = 120 * t;
+            this.island[j] = Math.max(this.island[j], isl);
+            this.outer[j] = Math.max(this.outer[j], HALF_WIDTH + (120 + 250 - HALF_WIDTH) * t);
+          }
+          while (a < b && this.island[a] < 1) a++;
+          while (b > a && this.island[b] < 1) b--;
+          const left = inside > 0 ? pair[0] : pair[1], right = inside > 0 ? pair[1] : pair[0];
+          this.forks.push({ from: a, to: b, curve: true, left, right, sign: inside });
+          for (const [side, kind] of [[1, left], [-1, right]] as const) {
+            if (kind !== 'plain' && kind !== 'jump') this.strips.push({ side, kind, from: a + 10, to: b - 10 });
+          }
+        }
+        run = -1;
+      }
+    }
+  }
+
+  /** The fork whose split covers sample i, or null. */
+  forkAt(i: number): Fork | null { return this.forks.find((f) => i >= f.from && i <= f.to) ?? null; }
+
+  /** The effect strip under a point on sample i, or null. */
+  stripAt(i: number, lat: number): Strip | null {
+    if (!this.strips.length || this.island[i] < 1) return null;
+    const side = lat >= 0 ? 1 : -1;
+    return this.strips.find((st) => st.side === side && i >= st.from && i <= st.to) ?? null;
   }
 
   /** Road height at a point (ramps rise toward their lip, in their own lane; everywhere else 0). */
@@ -702,6 +804,7 @@ export function lateral(track: Track, craft: Craft, index: number): number {
 
 /** Whether a craft is over the cooling lane right now. */
 export function inCoolingLane(track: Track, craft: Craft, index: number): boolean {
+  if (track.strips.length && track.stripAt(index, lateral(track, craft, index))?.kind === 'cool') return true;
   if (index < COOL_LANE.from || index > COOL_LANE.to) return false;
   return lateral(track, craft, index) * COOL_LANE.side >= HALF_WIDTH - COOL_LANE.width;
 }
@@ -798,6 +901,12 @@ export interface WallContact { impact: number; x: number; y: number }
 export function collideWalls(track: Track, craft: Craft, race: RaceState, dt: number): WallContact | null {
   const i = race.index, p = track.pts[i];
   craft.ground = track.groundAt(craft.pos, i);
+  if (track.strips.length && craft.onGround) {
+    const st = track.stripAt(i, (craft.pos.x - p.x) * p.nx + (craft.pos.y - p.y) * p.ny);
+    if (st?.kind === 'boost' || st?.kind === 'fire') craft.pad = PAD_HOLD;
+    if (st?.kind === 'fire') craft.addHeat(0, FIRE_HEAT * dt);
+    if (st?.kind === 'charge') craft.energy = Math.min(1, craft.energy + CHARGE_RATE * dt);
+  }
   const ox = craft.pos.x - p.x, oy = craft.pos.y - p.y;
   const lat = ox * p.nx + oy * p.ny, along = ox * -p.ny + oy * p.nx;
   const sign = lat >= 0 ? 1 : -1;

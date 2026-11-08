@@ -50,6 +50,9 @@ const HEAT_PER_IMPACT = 1 / 560;  // heat per px/s of into-the-wall speed
 const HEAT_PER_SCRAPE = 0.55;     // heat per second of grinding along a wall
 const HEAT_COOL = 0.05;           // heat shed per second (a full bar takes 20 s to clear)
 const LANE_COOL = 0.35;           // heat shed per second on the cooling lane (7x faster)
+// Boost pads (sprint fork lanes): a burst of pace while on them and for a moment after.
+const PAD_TOP = 0.1;              // extra top speed
+const PAD_PULL = 1.45;            // thrust multiplier
 const HEAT_WARM = 0.5;            // above this, top speed starts to drop...
 const HEAT_WARM_LOSS = 0.1;       // ...by up to this much just before overheating
 const OVERHEAT_LOSS = 0.25;       // top speed lost while overheated
@@ -100,7 +103,7 @@ export interface CraftState {
   drifting: boolean; braking: boolean; thrust: number; shiftTimer: number; shiftPause: number;
   slipstream: number; catchUp: number; heat: number; overheated: boolean; launch: number;
   stall: number; energy: number; deploying: boolean; harvested: number; drsOpen: boolean; cooling: boolean;
-  alt: number; vAlt: number; onGround: boolean; ground: number;
+  alt: number; vAlt: number; onGround: boolean; ground: number; pad?: number;
 }
 
 export class Craft {
@@ -148,6 +151,8 @@ export class Craft {
   onGround = true;
   /** Road height under the craft (ramps), set by collideWalls each step. */
   ground = 0;
+  /** Seconds left of a boost pad's push (set by the track while on a pad). */
+  pad = 0;
   /** Landing impact (px/s of vertical speed) on the step the craft touched down, else 0 (for effects). */
   landed = 0;
 
@@ -158,7 +163,7 @@ export class Craft {
       drifting: this.drifting, braking: this.braking, thrust: this.thrust, shiftTimer: this.shiftTimer, shiftPause: this.shiftPause,
       slipstream: this.slipstream, catchUp: this.catchUp, heat: this.heat, overheated: this.overheated, launch: this.launch,
       stall: this.stall, energy: this.energy, deploying: this.deploying, harvested: this.harvested, drsOpen: this.drsOpen, cooling: this.cooling,
-      alt: this.alt, vAlt: this.vAlt, onGround: this.onGround, ground: this.ground,
+      alt: this.alt, vAlt: this.vAlt, onGround: this.onGround, ground: this.ground, pad: this.pad,
     };
   }
 
@@ -167,6 +172,7 @@ export class Craft {
     this.drifting = s.drifting; this.braking = s.braking; this.thrust = s.thrust; this.shiftTimer = s.shiftTimer; this.shiftPause = s.shiftPause;
     this.slipstream = s.slipstream; this.catchUp = s.catchUp; this.heat = s.heat; this.overheated = s.overheated; this.launch = s.launch;
     this.stall = s.stall; this.energy = s.energy; this.deploying = s.deploying; this.harvested = s.harvested; this.drsOpen = s.drsOpen; this.cooling = s.cooling;
+    this.pad = s.pad ?? 0;
     this.alt = s.alt ?? 0; this.vAlt = s.vAlt ?? 0; this.onGround = s.onGround ?? true; this.ground = s.ground ?? 0;
   }
 
@@ -206,7 +212,7 @@ export class Craft {
     const speed = this.speed;
     this.deploying = this.deploy && this.energy > 0 && throttle && !brake;
     if (this.deploying) this.energy = Math.max(0, this.energy - ERS_DRAIN * dt);
-    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp - this.heatLoss + this.mods.top
+    const tow = 1 + SLIPSTREAM_BONUS * this.slipstream + this.catchUp - this.heatLoss + this.mods.top + (this.pad > 0 ? PAD_TOP : 0)
       + (this.deploying ? ERS_TOP * (1 + this.mods.ers) : 0) + (this.drsOpen ? DRS_TOP : 0);
     const gear = { top: GEARS[this.gear].top * tow, accel: GEARS[this.gear].accel * tow };
 
@@ -231,7 +237,7 @@ export class Craft {
     if (accelerating) {
       const top = this.gear === GEARS.length - 1;
       const pull = top ? Math.sqrt(clamp(1 - fwd / gear.top, 0, 1)) : fwd < gear.top ? 1 : 0;
-      const engaging = (this.shiftPause > 0 ? SHIFT_PULL : 1) * (this.stall > 0 ? 0 : this.launch > 0 ? LAUNCH_PULL : 1)
+      const engaging = (this.shiftPause > 0 ? SHIFT_PULL : 1) * (this.stall > 0 ? 0 : this.launch > 0 ? LAUNCH_PULL : 1) * (this.pad > 0 ? PAD_PULL : 1)
         * (this.deploying ? 1 + (ERS_PULL - 1) * (1 + this.mods.ers) : 1) * (1 + this.mods.accel);
       this.thrust = pull * engaging;
       fwd += engaging * gear.accel * pull * dt;
@@ -277,6 +283,7 @@ export class Craft {
     this.fly(dt);
 
     this.launch = Math.max(0, this.launch - dt);
+    this.pad = Math.max(0, this.pad - dt);
     this.stall = Math.max(0, this.stall - dt);
     this.heat = Math.max(0, this.heat - (this.cooling ? LANE_COOL : HEAT_COOL) * dt);
     if (this.overheated && this.heat < OVERHEAT_CLEAR) this.overheated = false;

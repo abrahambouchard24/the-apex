@@ -120,9 +120,20 @@ export class Driver {
     const isl = Math.max(track.island[aheadIndex], track.island[i]);
     if (isl > 1) {
       if (this.lane === 0) {
-        const jump = track.jumps.find((j) => j.from >= i && j.from - i < 260);
-        const side = jump?.side ?? 1;
-        this.lane = Math.random() < 0.45 + 0.4 * this.skill ? side : -side;
+        // Choose by what each lane offers and what the craft needs right now.
+        const fork = track.forkAt(aheadIndex) ?? track.forkAt(i);
+        if (fork) {
+          const worth = (kind: string, side: number) => {
+            let v = kind === 'jump' ? 1.0 + 0.3 * this.skill : kind === 'boost' ? 1.05
+              : kind === 'charge' ? 0.5 + (1 - c.energy) * 1.1 : kind === 'cool' ? 0.35 + c.heat * 2.4
+              : kind === 'fire' ? 1.1 - c.heat * 2 : 0.6;
+            if (fork.curve && side === fork.sign) v += 0.5 * this.skill;   // the shorter inside line
+            return v + (Math.random() - 0.5) * 0.5;
+          };
+          this.lane = worth(fork.left, 1) >= worth(fork.right, -1) ? 1 : -1;
+        } else {
+          this.lane = Math.random() < 0.5 ? 1 : -1;
+        }
       }
       // Once the island has started, stay in the lane we're actually in (never cut across its nose).
       const myLat = lateral(track, c, i);
@@ -144,7 +155,9 @@ export class Driver {
     const late = this.mistake?.kind === 'late-brake' ? 1.18 : 1;
     // More grip (wing, upgrades) lets the car carry more speed through a bend: about its square root.
     const gripGain = Math.sqrt(Math.max(0.5, 1 + c.mods.grip));
-    const safe = Math.min(1000, (this.cornerK * this.skill * late * gripGain) / Math.sqrt(maxCurve + 1e-6));
+    const forkNow = this.lane !== 0 ? track.forkAt(i) : null;
+    const insideLine = forkNow?.curve && this.lane === forkNow.sign ? 0.86 : 1;
+    const safe = Math.min(1000, (this.cornerK * this.skill * late * gripGain * insideLine) / Math.sqrt(maxCurve + 1e-6));
     const brake = speed > safe * 1.04;
     const throttle = !brake && speed < safe;
     // ERS: spend energy on straights to attack or defend, or when the battery is nearly full.

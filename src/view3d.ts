@@ -464,6 +464,49 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       add(ribbon(j.lip, j.land, ISL(sd), OUT(sd), -3, -3, 64), additive({ map: netTex, color: theme.wall, opacity: 0.55 }), 2);
     }
   }
+  // Fork lanes: each effect strip glows in its own way (gold pads, flames, charging pulses, frost),
+  // and a sign on the island's nose says what each lane offers.
+  const stripTex: THREE.Texture[] = [];
+  if (track.strips.length) {
+    const STRIP_LOOK: Record<string, { color: string; draw: (g: CanvasRenderingContext2D) => void; v: number; speed: number }> = {
+      boost: { color: '#ffd23f', v: 110, speed: 2.2, draw: (g) => { g.strokeStyle = '#fff'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(8, 50); g.lineTo(32, 18); g.lineTo(56, 50); g.stroke(); } },
+      fire: { color: '#ff6a2a', v: 90, speed: 3.2, draw: (g) => { g.fillStyle = '#fff'; for (const x of [10, 32, 54]) { g.beginPath(); g.moveTo(x - 8, 60); g.quadraticCurveTo(x - 6, 30, x, 6); g.quadraticCurveTo(x + 6, 30, x + 8, 60); g.fill(); } } },
+      charge: { color: '#b98cff', v: 70, speed: 1.6, draw: (g) => { g.fillStyle = '#fff'; for (const y of [12, 36]) { g.beginPath(); g.arc(32, y + 8, 7, 0, Math.PI * 2); g.fill(); } g.fillRect(29, 0, 6, 64); } },
+      cool: { color: '#7fe6ff', v: 80, speed: 0.9, draw: (g) => { g.strokeStyle = '#fff'; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(12, 46); g.lineTo(32, 24); g.lineTo(52, 46); g.stroke(); } },
+    };
+    const looks = new Map<string, { mat: THREE.Material; tex: THREE.Texture; speed: number }>();
+    for (const st of track.strips) {
+      const look = STRIP_LOOK[st.kind];
+      if (!looks.has(st.kind)) {
+        const t2 = tex(canvas2d(64, 64, look.draw));
+        stripTex.push(t2);
+        (t2 as THREE.Texture & { speed?: number }).userData = { speed: look.speed };
+        looks.set(st.kind, { mat: additive({ map: t2, color: look.color, opacity: 0.9 }), tex: t2, speed: look.speed });
+      }
+      const sd = st.side;
+      add(ribbon(st.from, st.to, ISL(sd, 18), OUT(sd, -18), 0.5, 0.5, 1e9), basic({ color: look.color, transparent: true, opacity: 0.14, depthWrite: false }), 1);
+      add(ribbon(st.from, st.to, ISL(sd, 30), OUT(sd, -30), 0.7, 0.7, look.v), looks.get(st.kind)!.mat, 2);
+    }
+  }
+  if (track.forks.length) {
+    const NAME: Record<string, string> = { jump: 'JUMP', boost: 'BOOST', charge: 'CHARGE', cool: 'COOL', fire: 'FIRE' };
+    for (const f of track.forks) {
+      const nameOf = (kind: string, side: number) => NAME[kind] ?? (f.curve ? (side === f.sign ? 'INSIDE' : 'WIDE') : 'ROAD');
+      let i = f.from;
+      while (i < f.to && track.island[i] < 70) i++;
+      const p = pts[i], dir = track.direction(i);
+      const sign = textPlane(`◀ ${nameOf(f.left, 1)}     ${nameOf(f.right, -1)} ▶`, '#ffffff', 300, 40, theme.wall);
+      sign.geometry.rotateX(Math.PI / 2).rotateY(Math.PI / 2);
+      const holder = new THREE.Group();
+      holder.add(bothWays(sign));
+      const post = new THREE.Mesh(new THREE.BoxGeometry(8, 64, 8), new THREE.MeshLambertMaterial({ color: GOLD_C }));
+      post.position.y = -32;
+      holder.add(post);
+      holder.position.set(p.x, 104, p.y);
+      holder.rotation.y = -dir;
+      group.add(holder);
+    }
+  }
   {
     // The deck faces straight up (normals for lighting the two layers below).
     const up = (g: THREE.BufferGeometry) => {
@@ -734,6 +777,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       pulseTex.offset.y = -(time * 1100) / 376;
       lampMat.opacity = 0.55 + 0.45 * Math.sin(time * 4);
       chevTex.offset.y = -time * 0.35 * 9;
+      for (const t2 of stripTex) t2.offset.y = -time * (t2.userData.speed as number);
       if (water) groundTex.offset.set(-(time * 18) / 512, (time * 7) / 512);
       for (const s of spinners) s.obj.rotation[s.axis] = time * s.rate;
     },
