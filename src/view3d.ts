@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { CRAFT_LENGTH, type Camera, type Car, type Particle } from './render';
 import { COOL_LANE, HALF_WIDTH, KERB_WIDTH, Track, WALL_DIST, WALL_THICKNESS } from './track';
 import { groundCanvas, groundMoves, sceneryFor, type Prop } from './scenery';
-import { liveryPainter, type Face, type Painter } from './liveries';
+import { liveryMetal, liveryPainter, type Face, type Kind, type Painted } from './liveries';
 
 const WALL_H = 24;            // barrier height
 const KERB_CURVE = 1 / 900;   // corners tighter than this get kerbs (as in render.ts)
@@ -1472,6 +1472,84 @@ function sampleVoxels(shape: (x: number, y: number, z: number) => VoxKind | null
   return out;
 }
 
+/**
+ * The craft the game uses: 'fighter' (a starfighter-style body flying with its wings closed) or
+ * 'car' (the earlier F1-style hovercar, kept in the code).
+ */
+const CRAFT_MODEL: 'fighter' | 'car' = 'fighter';
+
+/**
+ * The fighter: a long tapered nose with ivory bands, a framed glass canopy, a gold spine fairing,
+ * two engine pods with gold intake rings and glowing nozzles, and on each side two stacked blade
+ * wings (closed, in flying formation) that part a little when DRS opens. World px, nose along +x.
+ */
+const FY = 9;   // fuselage centreline height
+
+/** Half-width and half-height of the fuselage along its length. */
+function fuselageHalf(x: number): [number, number] {
+  if (x < -12) return [7.5, 6.5];
+  if (x < 14) { const t = (x + 12) / 26; return [7.5 - t * 1.5, 6.5 - t]; }
+  const t = (x - 14) / 30;
+  return [Math.max(1.4, 6 - t * 4.8), Math.max(1.4, 5.5 - t * 4.2)];
+}
+
+function fighterVoxel(x: number, y: number, z: number): VoxKind | null {
+  const az = Math.abs(z), dy = y - FY;
+  // Engine pods at the wing roots: gold intake ring in front, a glowing nozzle behind.
+  for (const tz of [-12, 12]) {
+    const r = Math.hypot(dy, z - tz);
+    if (x >= -46 && x <= -18 && r <= 4.8) {
+      if (x <= -44) return r <= 3 ? 'nozzle' : 'metal';
+      if (x >= -20) return r <= 2.6 ? 'carbon' : 'metal';
+      if (dy > 3) return 'paint';
+      return 'dark';
+    }
+  }
+  const [hw, hh] = fuselageHalf(x);
+  if (x >= -42 && x <= 44 && az <= hw && Math.abs(dy) <= hh && az / hw + Math.abs(dy) / hh <= 1.55) {
+    if (x > 40) return 'dark';                                         // nose tip
+    if ((x >= 22 && x < 25) || (x >= 31 && x < 33)) return 'white';    // nose bands
+    if (dy < -hh * 0.45) return 'dark';                                // dark belly
+    if (x <= -40) return 'carbon';                                     // tail plate
+    if (Math.abs(dy) < 1.6 && az > hw - 1.6 && x > -36 && x < 20) return 'white';   // side pinstripe
+    return 'paint';
+  }
+  // A neon strip under the belly (the hover glow).
+  if (dy >= -hh - 2 && dy < -hh && az <= 2 && x > -30 && x < 28) return 'neon';
+  // Canopy: a long glass bubble with two dark frame struts and a glint.
+  if (x >= -4 && x <= 18 && dy > hh) {
+    const t = (x + 4) / 22, hc = 5.5 * Math.sin(Math.PI * Math.min(1, t * 1.15));
+    const up = dy - hh;
+    if (up <= hc && az <= 4.2 - up * 0.35) {
+      if (Math.abs(x - 3) < 1 || Math.abs(x - 10) < 1) return 'dark';
+      if (x > 11 && z < -0.5 && up > 2) return 'shine';
+      return 'glass';
+    }
+  }
+  // A gold fairing running back from the canopy.
+  if (x >= -12 && x < -4 && az <= 1.6 && dy > hh && dy <= hh + 3) return 'metal';
+  return null;
+}
+
+/** One wing plate, in its own space: root at z = 0 reaching out to z = 24, one cube thick. */
+function plateVoxel(x: number, y: number, z: number): VoxKind | null {
+  if (z < 0 || z > 24.5 || y < 0 || y > 2) return null;
+  const le = 12 - z * 0.6, te = -14 + z * 0.3;   // swept leading edge, straight-ish trailing edge
+  if (x > le || x < te) return null;
+  if (z >= 22.5) return 'neon';                     // glowing tip
+  if (x >= le - 2.5) return 'metal';                // gold leading edge
+  if (x >= le - 6.5) return 'paint';                // livery stripe
+  return 'white';
+}
+
+let fighterCache: { hull: Voxel[]; plate: Voxel[] } | null = null;
+function fighterVoxels() {
+  return fighterCache ??= {
+    hull: sampleVoxels(fighterVoxel, [-24, 23], [0, 11], [-9, 9]),
+    plate: sampleVoxels(plateVoxel, [-8, 7], [0, 0], [0, 13]),
+  };
+}
+
 let carVoxelCache: { hull: Voxel[]; wing: Voxel[] } | null = null;
 function carVoxels() {
   return carVoxelCache ??= {
@@ -1507,18 +1585,15 @@ function carShared() {
 }
 
 /**
- * Voxels as two instanced meshes: shaded cubes, and glowing ones that ignore the lighting. A
- * livery painter (src/liveries.ts) can colour each cube of the paintwork itself; origin moves the
- * voxels into car space for it (the wing is built around its own pivot).
+ * Voxels as two instanced meshes: shaded cubes, and glowing ones that ignore the lighting. paint,
+ * when given, colours each cube of the paintwork itself (a mythic livery, src/liveries.ts).
  */
-function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>, painter?: Painter, origin = { x: 0, y: 0 }): THREE.Object3D[] {
+function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>, paint?: ((v: Voxel) => Painted) | null): THREE.Object3D[] {
   const s = carShared();
   const out: THREE.Object3D[] = [];
   const painted = voxels.map((v) => {
-    if (painter && (v.kind === 'paint' || v.kind === 'dark' || v.kind === 'white')) {
-      const x = v.x + origin.x, y = v.y + origin.y;
-      const face: Face = y >= hullTop(x) - 1.6 ? 'top' : Math.abs(v.z) >= hullHalfWidth(x) - 2.6 ? 'side' : 'other';
-      const p = painter(x, y, v.z, v.kind, face);
+    if (paint && (v.kind === 'paint' || v.kind === 'dark' || v.kind === 'white')) {
+      const p = paint(v);
       if (p) return { v, color: new THREE.Color(p[0]), glow: p[1] };
     }
     return { v, color: colors[v.kind], glow: GLOWING.includes(v.kind) };
@@ -1579,6 +1654,8 @@ class CarRig {
   private roll = 0;
   private pitch = 0;
   private wingTilt = 0;
+  /** The fighter's four wing plates, each hinged at its root (sign: which way it opens). */
+  private plates: { g: THREE.Group; sign: number }[] = [];
 
   constructor(car: Car) {
     const s = carShared();
@@ -1588,16 +1665,47 @@ class CarRig {
     const colors: Record<VoxKind, THREE.Color> = {
       paint: livery, dark: sk ? new THREE.Color(sk.trim) : livery.clone().multiplyScalar(0.5), carbon: new THREE.Color(0x1a1d2e),
       // Gold rims and ivory stripes, for the deco look; a skin's accent replaces the ivory.
-      metal: new THREE.Color(0xd9b25b), glass: new THREE.Color(0x0e3a44), shine: new THREE.Color(0x9ff0ff),
+      metal: new THREE.Color(liveryMetal(sk?.pattern) ?? 0xd9b25b), glass: new THREE.Color(0x0e3a44), shine: new THREE.Color(0x9ff0ff),
       white: new THREE.Color(sk?.accent ?? 0xf3ead2), intake: new THREE.Color(0xdff6ff), nozzle: new THREE.Color(0xbff4ff),
       neon: sk ? new THREE.Color(sk.glow) : livery.clone().lerp(new THREE.Color(0xffffff), 0.35),
     };
-    const vox = carVoxels();
+    const fighter = CRAFT_MODEL === 'fighter';
     const painter = liveryPainter(sk?.pattern);   // a mythic livery's own pattern, cube by cube
-    for (const m of voxelMeshes(vox.hull, colors, painter)) { m.castShadow = true; this.body.add(m); }
-    for (const m of voxelMeshes(vox.wing, colors, painter, { x: -36, y: 23 })) { m.castShadow = true; this.wing.add(m); }
-    this.wing.position.set(-36, 23, 0);   // the wing's pivot, above the struts
-    this.body.add(this.wing);
+    if (fighter) {
+      const vox = fighterVoxels();
+      const hullPaint = painter && ((v: Voxel) => {
+        const [hw, hh] = fuselageHalf(v.x), dy = v.y - FY;
+        const face: Face = dy > hh - 2 ? 'top' : Math.abs(v.z) > hw - 2 ? 'side' : 'other';
+        return painter(v.x, v.y, v.z, v.kind as Kind, face);
+      });
+      for (const m of voxelMeshes(vox.hull, colors, hullPaint)) { m.castShadow = true; this.body.add(m); }
+      // Two stacked plates a side (upper and lower), mirrored for the left.
+      const left = vox.plate.map((v) => ({ ...v, z: -v.z }));
+      for (const side of [1, -1]) {
+        for (const upper of [true, false]) {
+          const g = new THREE.Group();
+          g.position.set(-16, upper ? FY + 1.2 - 1 : FY - 3.2 - 1, side * 6);
+          // On the wings the ivory panel carries the livery's pattern and the stripe its accent.
+          const platePaint = painter && ((v: Voxel) => painter(v.x + g.position.x, v.y + g.position.y, v.z + g.position.z,
+            v.kind === 'white' ? 'paint' : v.kind === 'paint' ? 'white' : v.kind as Kind, 'top'));
+          for (const m of voxelMeshes(side > 0 ? vox.plate : left, colors, platePaint)) { m.castShadow = true; g.add(m); }
+          this.body.add(g);
+          // Opening means the upper plate swings up and the lower one down, on both sides.
+          this.plates.push({ g, sign: (upper ? -1 : 1) * side });
+        }
+      }
+    } else {
+      const vox = carVoxels();
+      const carPaint = (dx: number, dy: number) => painter && ((v: Voxel) => {
+        const x = v.x + dx, y = v.y + dy;
+        const face: Face = y >= hullTop(x) - 1.6 ? 'top' : Math.abs(v.z) >= hullHalfWidth(x) - 2.6 ? 'side' : 'other';
+        return painter(x, y, v.z, v.kind as Kind, face);
+      });
+      for (const m of voxelMeshes(vox.hull, colors, carPaint(0, 0))) { m.castShadow = true; this.body.add(m); }
+      for (const m of voxelMeshes(vox.wing, colors, carPaint(-36, 23))) { m.castShadow = true; this.wing.add(m); }
+      this.wing.position.set(-36, 23, 0);   // the wing's pivot, above the struts
+      this.body.add(this.wing);
+    }
 
     // The car number on the engine cover, in chunky pixels.
     const num = car.name.match(/^\d+/)?.[0];
@@ -1607,15 +1715,15 @@ class CarRig {
       map.magFilter = THREE.NearestFilter;
       map.minFilter = THREE.NearestFilter;
       decal.geometry.rotateY(-Math.PI / 2);
-      decal.position.set(-20, hullTop(-20) + 4.3, 0);
+      decal.position.set(fighter ? -28 : -20, fighter ? FY + 6.5 + 0.3 : hullTop(-20) + 4.3, 0);
       this.body.add(decal);
     }
 
     // Blocky flames out of the twin thrusters.
     this.flameMat = new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
-    for (const z of [-7, 7]) {
+    for (const z of fighter ? [-12, 12] : [-7, 7]) {
       const f = mesh(s.flame, this.flameMat, this.body);
-      f.position.set(-44, 7, z);
+      f.position.set(fighter ? -46 : -44, fighter ? FY : 7, z);
       this.flames.push(f);
     }
     // A charge aura for a full ERS battery (purple) or an open DRS wing (green).
@@ -1660,8 +1768,14 @@ class CarRig {
     const len = Math.max(VOX, Math.round(flame / VOX) * VOX);
     for (const f of this.flames) f.scale.set(len, 1, 1);
 
-    this.wingTilt += ((c.drsOpen ? -0.45 : 0) - this.wingTilt) * (1 - Math.exp(-12 * dt));
-    this.wing.rotation.z = this.wingTilt;
+    if (this.plates.length) {
+      // DRS parts the stacked wings a little, a hint of the X they could open into.
+      this.wingTilt += ((c.drsOpen ? 0.22 : 0) - this.wingTilt) * (1 - Math.exp(-10 * dt));
+      for (const p of this.plates) p.g.rotation.x = p.sign * this.wingTilt;
+    } else {
+      this.wingTilt += ((c.drsOpen ? -0.45 : 0) - this.wingTilt) * (1 - Math.exp(-12 * dt));
+      this.wing.rotation.z = this.wingTilt;
+    }
 
     const full = c.energy >= ENERGY_FULL;
     this.aura.visible = full || c.drsOpen;
@@ -1853,7 +1967,7 @@ export function renderCarCards(cars: { color: string; name: string; hue: number;
   rim.position.set(-1.2, 0.6, -1);
   scene.add(rim);
   const camera = new THREE.PerspectiveCamera(30, w / h, 1, 2000);
-  camera.position.set(88, 56, 108);
+  camera.position.set(72, 104, 100);   // high enough to show the wings
   camera.lookAt(-4, 10, 0);
   const out: string[] = [];
   for (const c of cars) {

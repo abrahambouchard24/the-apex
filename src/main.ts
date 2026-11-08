@@ -8,7 +8,7 @@ import { ChaseView, renderCarCards } from './view3d';
 import { loadRecords, loadSettings, saveRecords, saveSettings, type Settings } from './settings';
 import { SettingsUI } from './settingsui';
 import { Tutorial } from './tutorial';
-import { Achievements, skinColors } from './achievements';
+import { Achievements, SKINS, skinColors } from './achievements';
 import { GarageUI } from './garageui';
 import {
   MISSIONS, REPLAY_SHARE, Save, Speaker, loadSave, met, playerMods, rivalMods, writeSave,
@@ -103,6 +103,18 @@ let touchedWall = false;
 let driftCharge = 0;
 /** Each car's skin id (sent to guests in the start message). */
 const carSkin = new Map<Car, string>();
+/** Each skin painted on the player's car, for the Garage (rendered the first time it opens). */
+let skinPics: Record<string, string> | null = null;
+function skinPictures(): Record<string, string> {
+  if (skinPics || !chase) return skinPics ?? {};
+  try {
+    const l = LIVERIES[playerLivery];
+    const urls = renderCarCards(SKINS.map((s) => ({ color: l.color, name: l.name, hue: l.hue, skin: s.colors })), 300, 200);
+    skinPics = Object.fromEntries(SKINS.map((s, i) => [s.id, urls[i]]));
+  } catch { skinPics = {}; }
+  return skinPics;
+}
+
 function openGarage(): void {
   input.release();
   garageUI.open(achievements.p, (skin) => {
@@ -110,7 +122,7 @@ function openGarage(): void {
     if (player) player.skin = skinColors(achievements.equipped);
     if (online?.role === 'guest') online.guest.send({ t: 'skin', skin: achievements.equipped });
     if (online?.role === 'host') broadcastLobby();
-  }, () => input.release());
+  }, () => input.release(), skinPictures());
 }
 
 /** The tutorial lap, while it's running. */

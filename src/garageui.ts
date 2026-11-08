@@ -13,9 +13,11 @@ const CSS = `
   font: inherit; text-align: left; transition: transform 120ms, border-color 120ms; }
 .gr-skin:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(201,162,74,0.8); }
 .gr-skin.on { border-color: #e8c25a; box-shadow: 0 0 0 1px #e8c25a inset, 0 0 22px -6px #e8c25a; }
-.gr-skin:disabled { cursor: default; opacity: 0.55; }
+.gr-skin:disabled { cursor: default; opacity: 0.85; }
 .gr-sw { display: flex; height: 26px; border-radius: 2px; overflow: hidden; margin-bottom: 8px; box-shadow: 0 0 0 1px rgba(201,162,74,0.35); }
 .gr-sw i { flex: 1; }
+.gr-pic { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: contain; margin: -4px 0 4px; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.5)); }
+.gr-skin:disabled .gr-pic { filter: saturate(0.85) brightness(0.8) drop-shadow(0 6px 8px rgba(0,0,0,0.5)); }
 .gr-skin b { display: block; font-size: 12px; letter-spacing: 0.08em; }
 .gr-skin small { display: block; color: #93aba8; font-size: 11px; margin-top: 3px; line-height: 1.3; }
 .gr-ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
@@ -57,14 +59,15 @@ export class GarageUI {
 
   get isOpen(): boolean { return !this.el.classList.contains('hidden'); }
 
-  open(p: Progress, equip: (skin: string) => void, onClose: () => void): void {
+  /** pictures: each skin's 3D picture by skin id (colour swatches are shown where there isn't one). */
+  open(p: Progress, equip: (skin: string) => void, onClose: () => void, pictures: Record<string, string> = {}): void {
     const render = () => {
       const skins = SKINS.map((s) => {
         const owned = skinUnlocked(p, s.id);
         const how = ACHIEVEMENTS.find((a) => a.skin === s.id);
         const sw = s.colors ? [s.colors.body, s.colors.trim, s.colors.accent, s.colors.glow] : ['#ff3d6e', '#3ff0ff', '#2fd16b', '#ff8a1f'];
         return `<button class="gr-skin ${p.equipped === s.id ? 'on' : ''}" data-skin="${s.id}" ${owned ? '' : 'disabled'}>
-          <div class="gr-sw">${sw.map((c) => `<i style="background:${c}"></i>`).join('')}</div>
+          ${pictures[s.id] ? `<img class="gr-pic" src="${pictures[s.id]}" alt="">` : `<div class="gr-sw">${sw.map((c) => `<i style="background:${c}"></i>`).join('')}</div>`}
           <b>${s.name}</b><small>${owned ? (p.equipped === s.id ? 'EQUIPPED' : s.colors ? 'CLICK TO EQUIP' : 'Each car in its own colours') : `🔒 ${how ? how.name : ''}`}</small></button>`;
       }).join('');
       const got = ACHIEVEMENTS.filter((a) => p.unlocked.includes(a.id)).length;

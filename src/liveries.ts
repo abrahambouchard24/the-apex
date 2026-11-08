@@ -195,6 +195,14 @@ const PAINTERS: Record<string, Painter> = {
   },
 };
 
+/** Liveries whose trim metal isn't the usual gold (wing leading edges, intake rings, fairings). */
+const METAL: Record<string, number> = { platinum: 0xe9eef5, vanta: 0x2a2a31, circuit: 0x2a3a42, obsidian: 0xe3b85a };
+
+/** The trim metal for a skin's pattern (undefined = the usual gold). */
+export function liveryMetal(pattern?: string): number | undefined {
+  return pattern ? METAL[pattern] : undefined;
+}
+
 /** The painter for a skin's pattern (undefined = plain colours). */
 export function liveryPainter(pattern?: string): Painter | undefined {
   return pattern ? PAINTERS[pattern] : undefined;
