@@ -163,6 +163,12 @@ let mode: 'menu' | 'racing' | 'paused' | 'results' = 'menu';
 let playerLivery = 0;
 let pausedAt = 0;             // performance.now() when the pause menu opened
 let raceLaps = 3;
+/** Laps in this race: a sprint is one run, start to finish, whatever the laps setting. */
+function laps(): number { return track.sprint ? 1 : raceLaps; }
+/** A sprint's length in km, as the speedo counts it (km/h = px/s / 4). */
+function sprintKm(t: Track): string { return (t.totalLength / 4 / 3600).toFixed(1); }
+/** Seasons rotate through the lap circuits only (the sprints come after them in TRACKS). */
+const CIRCUITS = TRACKS.filter((t) => !t.sprint).length;
 /** Time Trial: alone on track, chasing the ghost of the best lap. */
 let trial = false;
 /** The daily challenge being raced (null otherwise), and how today's latest attempt went. */
@@ -176,7 +182,9 @@ const dailyUI = new DailyUI();
 function openDaily(): void {
   const d = dailyChallenge(TRACKS.length, LIVERIES.length, AI_SKILL_MIN, AI_SKILL_MAX);
   menus.hide();
-  dailyUI.open(d, TRACKS[d.track].name, LIVERIES[d.car].name, carPicture(d.car, true), formatTime, {
+  const dt0 = tracks[d.track];
+  dailyUI.open(d, TRACKS[d.track].name, dt0.sprint ? `SPRINT · ${sprintKm(dt0)} KM · ${LIVERIES[d.car].name}` : `${d.laps} LAPS · ${LIVERIES[d.car].name}`,
+    carPicture(d.car, true), formatTime, {
     start() {
       endTutorial();
       mission = null;
@@ -443,7 +451,7 @@ const trackChoices: TrackChoice[] = tracks.map((t, i) => {
   const ox = 60 - ((b.minX + b.maxX) / 2) * scale, oy = 40 - ((b.minY + b.maxY) / 2) * scale;
   const outline = t.pts.filter((_, k) => k % 6 === 0)
     .map((p) => `${(p.x * scale + ox).toFixed(1)},${(p.y * scale + oy).toFixed(1)}`).join(' ');
-  return { name: TRACKS[i].name, blurb: TRACKS[i].blurb, outline, color: t.theme.wall };
+  return { name: TRACKS[i].name, blurb: TRACKS[i].blurb, outline, color: t.theme.wall, sprint: t.sprint ? sprintKm(t) : undefined };
 });
 
 const menus = new Menus(LIVERIES, trackChoices, {
@@ -502,8 +510,8 @@ const menus = new Menus(LIVERIES, trackChoices, {
     if (act === 'next' && season) {
       scoreRound(season);
       season.round++;
-      if (online?.role === 'host') onlineRound((season.openingTrack + season.round) % tracks.length);
-      else startRound((season.openingTrack + season.round) % tracks.length);
+      if (online?.role === 'host') onlineRound((season.openingTrack + season.round) % CIRCUITS);
+      else startRound((season.openingTrack + season.round) % CIRCUITS);
     }
     if (act === 'newseason' && season) {
       season = { ...season, round: 0, points: new Map() };
@@ -786,12 +794,12 @@ function ghostLapStep(lap: 'lap' | 'best' | null): void {
     ghostDelta = ghostLap ? t - ghostLap.time : null;
     // A standing-start first lap only becomes the ghost when there's nothing to chase yet.
     if ((player.race.lap > 1 || !saved) && (!saved || t < saved.time - 1e-6) && frames.length >= 6) {
-      const g: GhostLap = { time: t, livery: carLivery.get(player) ?? 0, skin: achievements.equipped, frames, sig: trackSig(track.pts) };
+      const g: GhostLap = { time: t, livery: carLivery.get(player) ?? 0, skin: achievements.equipped, frames, sig: trackSig(track.pts), stride: 4 };
       saveGhost(track.name, g);
       if (trial) { ghostLap = g; ghostCar = makeGhostCar(g); }
     }
   }
-  ghostRec.step(pc.pos.x, pc.pos.y, pc.heading, 1 / STEP);
+  ghostRec.step(pc.pos.x, pc.pos.y, pc.heading, pc.alt, 1 / STEP);
 }
 
 /** Put the ghost where it was this far into its lap (false before the start or once its lap is over). */
@@ -802,11 +810,43 @@ function placeGhost(drawTime: number): boolean {
   const c = ghostCar.craft;
   c.pos.x = pose.x; c.pos.y = pose.y; c.heading = pose.heading;
   c.vel.x = pose.vx; c.vel.y = pose.vy;
+  c.alt = pose.alt;
   return true;
 }
 
 /** Online with CONTACT set to OFF in the lobby: cars pass through each other. */
 function noContact(): boolean { return online?.lobby?.contact === false; }
+
+/** DRS opens from lap 2 on a circuit, and after the first 10% of the route on a sprint. */
+function drsAllowed(car: Car): boolean {
+  if (!track.sprint) return car.race.lap >= DRS_FROM_LAP;
+  return car.race.lapStart >= 0 && car.race.lap === 0 && track.dist[car.race.index] > track.totalLength * 0.1;
+}
+
+/** How far along a sprint each car is (0 before the start, 1 at the finish), for the HUD strip. */
+function sprintDone(car: Car): number {
+  if (car.race.lap >= 1) return 1;
+  if (car.race.lapStart < 0) return 0;
+  const d = track.dist[car.race.index] / track.totalLength;
+  return d > 0.97 && car.race.nextSector <= 1 ? 0 : d;   // still behind the line at the start
+}
+function sprintHud(): NonNullable<RaceHud['sprint']> {
+  return {
+    km: Number(sprintKm(track)),
+    cars: cars.map((c) => ({ f: sprintDone(c), color: c.color, me: c === player })),
+  };
+}
+
+/** A craft touching down after a jump: sparks for anyone, and a jolt and a thud for the player. */
+function landing(car: Car): void {
+  const hit = car.craft.landed;
+  if (!hit) return;
+  if (hit > 150) emitSparks(car.craft.pos.x, car.craft.pos.y, car.craft);
+  if (car === player) {
+    cam.shake = Math.max(cam.shake, clamp((hit - 200) / 40, 1, 9));   // a normal landing (about 390) is a firm bump
+    sound.thud(clamp(hit * 0.6, 90, 400));
+  }
+}
 
 function showToast(text: string, color: string): void { toast = { text, color, t: 1.6 }; }
 
@@ -825,7 +865,7 @@ function update(dt: number): void {
     tutorial.update({ racing, speed: pc.speed, steer: input.steer, brake: input.brake, deploying: pc.deploying,
       energy: pc.energy, cooling: pc.cooling, lap: player.race.lap }, dt);
     if (tutorial.finished && !achievements.p.unlocked.includes('graduate')) {
-      achievements.raceFinished({ track: track.name, place: 1, racers: 1, laps: raceLaps, online: false, tutorial: true, special: true, touchedWall, driftCharge });
+      achievements.raceFinished({ track: track.name, place: 1, racers: 1, laps: laps(), online: false, tutorial: true, special: true, touchedWall, driftCharge });
     }
     if (tutorial.finished && !settings.tutorialDone) {
       applySettings({ ...settings, tutorialDone: true });
@@ -876,14 +916,14 @@ function update(dt: number): void {
   for (const car of cars) {
     const lap = car.race.update(track, car.craft, time, racing);
     if (lap) car.craft.harvested = 0;   // a fresh ERS harvest allowance each lap
-    if (lap && car.race.lap === raceLaps && !finishOrder.includes(car)) {
+    if (lap && car.race.lap === laps() && !finishOrder.includes(car)) {
       finishOrder.push(car);
       finishTimes.set(car, time - goTime);
       if (car === player) {
         showToast(`FINISHED ${ordinal(finishOrder.length)}`, '#ffd23f');
         sound.chime(true);
         if (!online && !tutorial) {
-          achievements.raceFinished({ track: track.name, place: finishOrder.length, racers: cars.length, laps: raceLaps,
+          achievements.raceFinished({ track: track.name, place: finishOrder.length, racers: cars.length, laps: laps(),
             online: false, tutorial: false, special: mission !== null || !!daily, touchedWall, driftCharge });
         }
         if (daily) {
@@ -898,17 +938,18 @@ function update(dt: number): void {
       }
     }
     if (car === player && racing && (!finishOrder.includes(player) || finishTimes.get(player) === time - goTime) && !online && mission === null && !tutorial && !daily) ghostLapStep(lap);
-    if (lap && car === player && car.race.lap <= raceLaps && (raceBestLap === 0 || player.race.lastLap < raceBestLap)) {
+    if (lap && car === player && car.race.lap <= laps() && (raceBestLap === 0 || player.race.lastLap < raceBestLap)) {
       raceBestLap = player.race.lastLap;
     }
     if (car === player && !finishOrder.includes(player) && car.craft.overheated) overheatedThisRace = true;
-    if (lap && car === player && !autopilot && car.race.lap < raceLaps) {
+    if (lap && car === player && !autopilot && car.race.lap < laps()) {
       sound.chime(lap === 'best');
       const vsGhost = ghostDelta === null ? '' : `   ${ghostDelta <= 0 ? '−' : '+'}${Math.abs(ghostDelta).toFixed(2)}`;
       if (lap === 'best') showToast(`BEST LAP  ${formatTime(player.race.lastLap)}${vsGhost}`, '#c77dff');
       else showToast(`LAP  ${formatTime(player.race.lastLap)}${vsGhost}`, '#ffffff');
     }
     const contact = collideWalls(track, car.craft, car.race, dt);
+    landing(car);
     if (contact) {
       emitSparks(contact.x, contact.y, car.craft);
       if (car === player) {
@@ -1017,7 +1058,7 @@ function resultsView(): ResultsView {
     if (totals.get(names.get(player) ?? '') === top) achievements.unlock('champion');
   }
   const rows = resultRows();
-  const subtitle = `${TRACKS[trackIndex].name}  ·  ${raceLaps} ${raceLaps === 1 ? 'LAP' : 'LAPS'}`;
+  const subtitle = `${TRACKS[trackIndex].name}  ·  ${track.sprint ? `SPRINT · ${sprintKm(track)} KM` : `${raceLaps} ${raceLaps === 1 ? 'LAP' : 'LAPS'}`}`;
   if (online && !season) {
     return {
       title: 'RESULTS', subtitle, rows,
@@ -1089,7 +1130,7 @@ function resultRows(): ResultRow[] {
     return {
       name: names.get(car) ?? '',
       color: car.color,
-      time: t === undefined ? `LAP ${Math.min(car.race.lap + 1, raceLaps)}/${raceLaps}` : formatTime(t),
+      time: t === undefined ? `LAP ${Math.min(car.race.lap + 1, laps())}/${laps()}` : formatTime(t),
       gap: t === undefined ? 'RUNNING' : t === winner ? '' : `+${(t - winner).toFixed(3)}`,
       best: car.race.bestLap ? formatTime(car.race.bestLap) : '-',
       player: car === player,
@@ -1108,7 +1149,7 @@ function updateDrs(ranked: Car[], racing: boolean): void {
     if (zone !== st.zone) {
       const ahead = ranked[place - 1];
       const gap = ahead ? car.race.gapBehind(ahead.race, track, time) : NaN;
-      st.earned = zone >= 0 && car.race.lap >= DRS_FROM_LAP && !finishOrder.includes(car) && gap < DRS_GAP;
+      st.earned = zone >= 0 && drsAllowed(car) && !finishOrder.includes(car) && gap < DRS_GAP;
       st.zone = zone;
       if (st.earned && car === player) showToast('DRS OPEN', '#4dff9a');
     }
@@ -1168,10 +1209,11 @@ function raceHud(): RaceHud {
   const place = finishOrder.indexOf(player);
   const banner = place < 0 || mode === 'results' ? null : place === 0 ? 'YOU WIN!' : `FINISHED ${ordinal(place + 1)}`;
   return {
-    position: ranked.indexOf(player) + 1, racers: cars.length, laps: raceLaps, countdown, banner,
+    position: ranked.indexOf(player) + 1, racers: cars.length, laps: laps(), countdown, banner,
     catchUp: player.craft.catchUp, launchHint,
     ...(mode === 'racing' || mode === 'paused' ? gaps(ranked) : { ahead: null, behind: null }),
-    drsAvailable: player.race.lap >= DRS_FROM_LAP,
+    drsAvailable: drsAllowed(player),
+    sprint: track.sprint ? sprintHud() : undefined,
     restart: online || mode !== 'racing' ? 0 : input.resetProgress(),
   };
 }
@@ -1250,7 +1292,7 @@ function celebrate(dt: number): void {
   const r = player.race;
   const finished = finishOrder.includes(player);
   // Distance raced, in laps (the grid counts as just before 0, not the end of a lap).
-  const lastStretch = r.progress(track) / track.length > raceLaps - 1 + FIREWORK_STRETCH;
+  const lastStretch = r.progress(track) / track.length > laps() - 1 + FIREWORK_STRETCH;
   if (!(lastStretch || (finished && mode === 'racing'))) return;
   fireworkClock += dt;
   if (fireworkClock < 1 / FIREWORK_RATE) return;
@@ -1546,7 +1588,7 @@ function onlineRound(trackNo: number): void {
     name: names.get(c) ?? '', livery: carLivery.get(c) ?? 0, peer: c === player ? 'host' : peerOf.get(c) ?? null, skin: carSkin.get(c),
   }));
   sessionRaceOpen = true;
-  online.host.send({ t: 'start', track: trackIndex, laps: raceLaps, entrants, title });
+  online.host.send({ t: 'start', track: trackIndex, laps: laps(), entrants, title });
   lobbyUI.hide();
   play();
   if (title) showToast(title, '#ffd23f');
@@ -1640,7 +1682,7 @@ function snapshot(): Snapshot {
       x: r1(c.craft.pos.x), y: r1(c.craft.pos.y), h: r3(c.craft.heading), vx: r1(c.craft.vel.x), vy: r1(c.craft.vel.y),
       gear: c.craft.gear, rev: 0, thrust: r3(c.craft.thrust), heat: r3(c.craft.heat), over: c.craft.overheated,
       energy: r3(c.craft.energy), dep: c.craft.deploying, slip: r3(c.craft.slipstream), drs: c.craft.drsOpen,
-      cool: c.craft.cooling, drift: c.craft.drifting,
+      cool: c.craft.cooling, drift: c.craft.drifting, alt: r1(c.craft.alt),
       lap: c.race.lap, idx: c.race.index, next: c.race.nextSector, lapStart: r3(c.race.lapStart), last: r3(c.race.lastLap), best: r3(c.race.bestLap),
     })),
     finish: finishOrder.map((c) => cars.indexOf(c)),
@@ -1819,6 +1861,7 @@ function applySnap(car: Car, a: CarSnap, b: CarSnap, t: number, raceOnly = false
   c.heading = a.h + dh * t;
   c.vel.x = lerp(a.vx, b.vx, t);
   c.vel.y = lerp(a.vy, b.vy, t);
+  c.alt = lerp(a.alt ?? 0, b.alt ?? 0, t);
   c.gear = b.gear; c.thrust = b.thrust; c.heat = b.heat; c.overheated = b.over; c.energy = b.energy;
   c.deploying = b.dep; c.slipstream = b.slip; c.drsOpen = b.drs; c.cooling = b.cool; c.drifting = b.drift;
   r.lap = b.lap; r.index = b.idx; r.nextSector = b.next; r.lapStart = b.lapStart; r.lastLap = b.last; r.bestLap = b.best;
@@ -1833,32 +1876,33 @@ let acc = 0;
  * between the state before the latest step and after it (by how far we are into the next step)
  * keeps motion even at any refresh rate.
  */
-const before = new Map<Craft, { x: number; y: number; heading: number }>();
+const before = new Map<Craft, { x: number; y: number; heading: number; alt: number }>();
 const camBefore = { x: 0, y: 0, zoom: 1 };
 function rememberBefore(): void {
   before.clear();
-  for (const car of cars) before.set(car.craft, { x: car.craft.pos.x, y: car.craft.pos.y, heading: car.craft.heading });
+  for (const car of cars) before.set(car.craft, { x: car.craft.pos.x, y: car.craft.pos.y, heading: car.craft.heading, alt: car.craft.alt });
   camBefore.x = cam.x; camBefore.y = cam.y; camBefore.zoom = cam.zoom;
 }
 
 /** Move crafts and the camera to the blended state for drawing; returns how to put them back. */
 function blendForDrawing(alpha: number): () => void {
-  const saved: [Craft, number, number, number][] = [];
+  const saved: [Craft, number, number, number, number][] = [];
   for (const car of cars) {
     const c = car.craft, b = before.get(c);
     // Skip new crafts and teleports (a restart): just draw them where they are.
     if (!b || Math.hypot(c.pos.x - b.x, c.pos.y - b.y) > 200) continue;
-    saved.push([c, c.pos.x, c.pos.y, c.heading]);
+    saved.push([c, c.pos.x, c.pos.y, c.heading, c.alt]);
     c.pos.x = b.x + (c.pos.x - b.x) * alpha;
     c.pos.y = b.y + (c.pos.y - b.y) * alpha;
     c.heading = b.heading + wrapAngle(c.heading - b.heading) * alpha;
+    c.alt = b.alt + (c.alt - b.alt) * alpha;
   }
   const cx = cam.x, cy = cam.y, cz = cam.zoom;
   if (Math.hypot(cx - camBefore.x, cy - camBefore.y) < 400) {
     cam.x = lerp(camBefore.x, cx, alpha); cam.y = lerp(camBefore.y, cy, alpha); cam.zoom = lerp(camBefore.zoom, cz, alpha);
   }
   return () => {
-    for (const [c, x, y, h] of saved) { c.pos.x = x; c.pos.y = y; c.heading = h; }
+    for (const [c, x, y, h, al] of saved) { c.pos.x = x; c.pos.y = y; c.heading = h; c.alt = al; }
     cam.x = cx; cam.y = cy; cam.zoom = cz;
   };
 }

@@ -134,7 +134,7 @@ export class LobbyUI {
       ${rows.map((r, i) => `<tr class="${r.name === meName ? 'me' : ''}"><td class="${i === 0 ? 'lead' : ''}">${i + 1}</td><td>${esc(r.name)}</td>
         <td>${r.races}</td><td>${r.wins}</td><td>${r.podiums}</td><td class="${i === 0 ? 'lead' : ''}">${r.points}</td><td>${r.best ? lapTime(r.best) : '-'}</td></tr>`).join('')}
       </tbody></table>` : '';
-    const tracks = this.tracks.map((t, i) => `<button data-track="${i}" class="${lobby.track === i ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${t.name}</button>`).join('');
+    const tracks = this.tracks.map((t, i) => `<button data-track="${i}" class="${lobby.track === i ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${t.name}${t.sprint ? ' ◆' : ''}</button>`).join('');
     const seg = (name: string, values: number[], cur: number) => `<div class="hr-seg" data-seg="${name}">${values.map((v) =>
       `<button data-v="${v}" class="${v === cur ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${v}</button>`).join('')}</div>`;
     this.render(`
@@ -160,7 +160,9 @@ export class LobbyUI {
             <div class="ol-label">${lobby.races > 1 ? 'OPENING TRACK' : 'TRACK'}${isHost ? '' : ' (HOST PICKS)'}</div>
             <div class="ol-tracks">${tracks}</div>
             <div class="ol-row" style="margin-top:12px;gap:22px">
-              <div><div class="ol-label">LAPS</div>${seg('laps', LAP_CHOICES, lobby.laps)}</div>
+              ${this.tracks[lobby.track]?.sprint
+                ? `<div><div class="ol-label">SPRINT ◆ ONE RUN</div><div style="font:800 15px system-ui;letter-spacing:0.12em;color:#e8c25a;padding:8px 0">${this.tracks[lobby.track].sprint} KM</div></div>`
+                : `<div><div class="ol-label">LAPS</div>${seg('laps', LAP_CHOICES, lobby.laps)}</div>`}
               <div><div class="ol-label">AI CARS</div>${seg('ai', Array.from({ length: maxAi + 1 }, (_, i) => i), Math.min(lobby.ai, maxAi))}</div>
               <div><div class="ol-label">CONTACT</div><div class="hr-seg" data-seg="contact">
                 <button data-v="on" class="${lobby.contact !== false ? 'on' : ''}" ${isHost ? '' : 'disabled'}>ON</button>

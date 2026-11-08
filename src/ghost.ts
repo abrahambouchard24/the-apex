@@ -4,8 +4,11 @@
 const KEY = 'the-apex-ghosts';
 export const GHOST_RATE = 30;   // frames per second
 
-/** One recorded lap. frames is flat [x, y, heading, x, y, heading, ...] from the lap's start. */
-export interface GhostLap { time: number; livery: number; skin?: string; frames: number[]; sig?: string }
+/**
+ * One recorded lap. frames is flat [x, y, heading, alt, x, y, heading, alt, ...] from the lap's start
+ * (stride 4; ghosts saved before sprint jumps have no alt, stride 3).
+ */
+export interface GhostLap { time: number; livery: number; skin?: string; frames: number[]; sig?: string; stride?: number }
 
 function loadAll(): Record<string, GhostLap> {
   try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}; } catch { return {}; }
@@ -36,20 +39,21 @@ export class GhostRecorder {
   private steps = 0;
   reset(): void { this.frames = []; this.steps = 0; }
   /** stepRate = physics steps per second (60); keeps every (stepRate / GHOST_RATE)th step. */
-  step(x: number, y: number, heading: number, stepRate: number): void {
+  step(x: number, y: number, heading: number, alt: number, stepRate: number): void {
     if (this.steps++ % Math.round(stepRate / GHOST_RATE) === 0) {
-      this.frames.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(heading * 1000) / 1000);
+      this.frames.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(heading * 1000) / 1000, Math.round(alt * 10) / 10);
     }
   }
   take(): number[] { const f = this.frames; this.reset(); return f; }
 }
 
 /** Where the ghost is t seconds into its lap (null once the lap is over). */
-export function ghostPose(g: GhostLap, t: number): { x: number; y: number; heading: number; vx: number; vy: number } | null {
-  const n = g.frames.length / 3;
+export function ghostPose(g: GhostLap, t: number): { x: number; y: number; heading: number; vx: number; vy: number; alt: number } | null {
+  const st = g.stride ?? 3;
+  const n = g.frames.length / st;
   const f = t * GHOST_RATE;
   if (f < 0 || f >= n - 1) return null;
-  const i = Math.floor(f), k = f - i, a = i * 3, b = a + 3, fr = g.frames;
+  const i = Math.floor(f), k = f - i, a = i * st, b = a + st, fr = g.frames;
   let dh = fr[b + 2] - fr[a + 2];
   dh = Math.atan2(Math.sin(dh), Math.cos(dh));
   return {
@@ -58,5 +62,6 @@ export function ghostPose(g: GhostLap, t: number): { x: number; y: number; headi
     heading: fr[a + 2] + dh * k,
     vx: (fr[b] - fr[a]) * GHOST_RATE,
     vy: (fr[b + 1] - fr[a + 1]) * GHOST_RATE,
+    alt: st >= 4 ? fr[a + 3] + (fr[b + 3] - fr[a + 3]) * k : 0,
   };
 }

@@ -66,6 +66,8 @@ export interface RaceHud {
   drsAvailable: boolean;
   /** How far through holding R to restart, 0..1 (0 = not held). */
   restart?: number;
+  /** A sprint (one run, no laps): its length, and how far along each car is (0..1). */
+  sprint?: { km: number; cars: { f: number; color: string; me: boolean }[] };
 }
 
 export interface Scene {
@@ -130,6 +132,7 @@ function drawHudLayers(ctx: CanvasRenderingContext2D, w: number, h: number, s: S
   drawGapPanel(ctx, s.hud);
   ctx.restore();
   drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud, !!s.touch);
+  if (s.hud.sprint) drawSprintStrip(ctx, w, s.hud.sprint, s.touch ? 62 : 24);
   drawRaceBanners(ctx, w, h, s.hud);
   if (s.hud.restart) drawRestartHold(ctx, w, h, s.hud.restart);
   drawSteerBar(ctx, w, h, s.steer ?? 0);
@@ -559,10 +562,12 @@ function drawLapPanel(ctx: CanvasRenderingContext2D, race: RaceState, now: numbe
   ctx.fill();
   ctx.font = '600 13px system-ui, sans-serif';
   ctx.fillStyle = '#8a93c0';
-  ctx.fillText('LAP', x + 16, y + 28);
+  const sprintMe = hud.sprint?.cars.find((c) => c.me);
+  ctx.fillText(hud.sprint ? 'KM' : 'LAP', x + 16, y + 28);
   ctx.font = '800 24px system-ui, sans-serif';
   ctx.fillStyle = '#fff';
-  ctx.fillText(`${Math.min(race.lap + 1, hud.laps)}/${hud.laps}`, x + 50, y + 30);
+  ctx.fillText(hud.sprint ? `${(hud.sprint.km * (sprintMe?.f ?? 0)).toFixed(1)}/${hud.sprint.km.toFixed(1)}` : `${Math.min(race.lap + 1, hud.laps)}/${hud.laps}`,
+    x + (hud.sprint ? 46 : 50), y + 30);
   ctx.textAlign = 'right';
   ctx.fillStyle = hud.position === 1 ? '#ffd23f' : '#fff';
   ctx.fillText(`P${hud.position}`, x + 204, y + 30);
@@ -579,9 +584,41 @@ function drawLapPanel(ctx: CanvasRenderingContext2D, race: RaceState, now: numbe
   ctx.fillText(formatTime(race.current(now)), x + 16, y + 66);
   ctx.font = '600 14px ui-monospace, Consolas, monospace';
   ctx.fillStyle = '#8a93c0';
-  ctx.fillText(`LAST ${race.lastLap ? formatTime(race.lastLap) : '-:--.---'}`, x + 16, y + 90);
+  if (hud.sprint) {
+    // A sprint has no laps to compare: show the best run instead, and how far along this one is.
+    ctx.fillText(`${Math.round((sprintMe?.f ?? 0) * 100)}% DONE`, x + 16, y + 90);
+  } else {
+    ctx.fillText(`LAST ${race.lastLap ? formatTime(race.lastLap) : '-:--.---'}`, x + 16, y + 90);
+  }
   ctx.fillStyle = race.bestLap ? '#c77dff' : '#8a93c0';
   ctx.fillText(`BEST ${race.bestLap ? formatTime(race.bestLap) : '-:--.---'}`, x + 16, y + 110);
+  ctx.restore();
+}
+
+/** A sprint's progress strip across the top: the route from start to finish, with every car on it. */
+function drawSprintStrip(ctx: CanvasRenderingContext2D, w: number, sp: NonNullable<RaceHud['sprint']>, y: number): void {
+  const half = Math.min(260, w * 0.2), x0 = w / 2 - half, x1 = w / 2 + half;
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,10,22,0.7)';
+  roundRect(ctx, x0 - 14, y - 12, half * 2 + 28, 24, 12);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(201,162,74,0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+  // Gold ticks every kilometre, and the finish as a diamond.
+  ctx.fillStyle = 'rgba(201,162,74,0.8)';
+  for (let k = 1; k < sp.km; k++) ctx.fillRect(x0 + (k / sp.km) * half * 2 - 1, y - 4, 2, 8);
+  ctx.beginPath(); ctx.moveTo(x1, y - 6); ctx.lineTo(x1 + 6, y); ctx.lineTo(x1, y + 6); ctx.lineTo(x1 - 6, y); ctx.closePath();
+  ctx.fillStyle = '#e8c25a'; ctx.fill();
+  // Rivals first, the player on top.
+  for (const c of [...sp.cars].sort((a, b) => Number(a.me) - Number(b.me))) {
+    const cx = x0 + c.f * half * 2;
+    ctx.beginPath();
+    ctx.arc(cx, y, c.me ? 7 : 5, 0, Math.PI * 2);
+    ctx.fillStyle = c.color;
+    ctx.fill();
+    if (c.me) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
+  }
   ctx.restore();
 }
 
