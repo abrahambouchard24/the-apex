@@ -60,6 +60,8 @@ export interface RaceHud {
   behind: { name: string; color: string; gap: number } | null;
   /** DRS is enabled for the player this lap (from lap 2). */
   drsAvailable: boolean;
+  /** How far through holding R to restart, 0..1 (0 = not held). */
+  restart?: number;
 }
 
 export interface Scene {
@@ -118,6 +120,7 @@ function drawHudLayers(ctx: CanvasRenderingContext2D, w: number, h: number, s: S
   drawGapPanel(ctx, s.hud);
   drawHud(ctx, w, h, s.player.craft, s.toast, s.locked, s.hud);
   drawRaceBanners(ctx, w, h, s.hud);
+  if (s.hud.restart) drawRestartHold(ctx, w, h, s.hud.restart);
   drawSteerBar(ctx, w, h, s.steer ?? 0);
 }
 
@@ -600,6 +603,24 @@ function drawRaceBanners(ctx: CanvasRenderingContext2D, w: number, h: number, hu
   ctx.restore();
 }
 
+/** Holding R: a slim bar that fills, so a stray tap never restarts the race. */
+function drawRestartHold(ctx: CanvasRenderingContext2D, w: number, h: number, k: number): void {
+  const bw = 260, bh = 8, x = (w - bw) / 2, y = h * 0.34;
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,10,22,0.75)';
+  roundRect(ctx, x - 16, y - 34, bw + 32, bh + 50, 12);
+  ctx.fill();
+  ctx.font = '800 13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e8ecff';
+  ctx.fillText(k >= 1 ? 'RESTARTING' : 'HOLD R TO RESTART', w / 2, y - 12);
+  ctx.fillStyle = '#252b52';
+  ctx.fillRect(x, y, bw, bh);
+  ctx.fillStyle = '#ffd23f';
+  ctx.fillRect(x, y, bw * k, bh);
+  ctx.restore();
+}
+
 export function formatTime(t: number): string {
   const m = Math.floor(t / 60), s = t - m * 60;
   return `${m}:${s.toFixed(3).padStart(6, '0')}`;
@@ -1016,7 +1037,7 @@ function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number, c: Craft, 
 
   ctx.font = '500 13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(200,210,255,0.7)';
-  const help = 'A / D or ← / →: steer   S / ↓ / Space: brake   W / ↑ / Shift: boost   V: view   R: restart   Esc: pause';
+  const help = 'A / D or ← / →: steer   S / ↓ / Space: brake   W / ↑ / Shift: boost   V: view   Hold R: restart   Esc: pause';
   ctx.fillText(help, 16, h - 16);
   ctx.restore();
 }

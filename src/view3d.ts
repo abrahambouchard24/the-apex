@@ -98,6 +98,11 @@ export class ChaseView {
   private drafts = new Slipstreams();
   private hemi = new THREE.HemisphereLight(0xc8d8ff, 0x261c34, 1.5);
   private sun = new THREE.DirectionalLight(0xffffff, 1.7);
+  /** Unit vector toward the sun (the shadow light follows the player from this direction). */
+  private sunDir = new THREE.Vector3(-0.5, 1, 0.35).normalize();
+  private quality: 'high' | 'medium' | 'low' = 'high';
+  private speedLines = new SpeedLines();
+  private boostK = 0;            // eases toward 1 while boosting: the camera lunge
   /** Dev only: orbit the player's car instead of chasing it (yaw relative to its heading). */
   debugCam: { yaw: number; dist: number; h: number } | null = null;
 
@@ -110,9 +115,40 @@ export class ChaseView {
     this.scene.add(this.hemi);
     this.sun.position.set(-0.5, 1, 0.35);
     this.scene.add(this.sun);
+    // Cars cast real shadows from the track's sun. The shadow box is small and follows the player,
+    // so it stays sharp and cheap.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.sun.castShadow = true;
+    const sc = this.sun.shadow.camera;
+    sc.left = -460; sc.right = 460; sc.top = 460; sc.bottom = -460; sc.near = 10; sc.far = 2400;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.bias = -0.0006;
+    this.sun.shadow.normalBias = 1.5;
+    this.scene.add(this.sun.target);
+    this.camera.add(this.speedLines.lines);
+    this.scene.add(this.camera);
     this.sparks = new Sparks();
     this.scene.add(this.sparks.points);
     this.scene.add(this.drafts.mesh);
+  }
+
+  /** Graphics quality from Settings: shadow sharpness, and on Low no shadows or speed lines. */
+  setQuality(q: 'high' | 'medium' | 'low'): void {
+    if (q === this.quality) return;
+    this.quality = q;
+    const shadows = q !== 'low';
+    this.sun.castShadow = shadows;
+    const size = q === 'high' ? 2048 : 1024;
+    if (this.sun.shadow.mapSize.x !== size) {
+      this.sun.shadow.mapSize.set(size, size);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
+    if (this.renderer.shadowMap.enabled !== shadows) {
+      this.renderer.shadowMap.enabled = shadows;
+      this.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) m.needsUpdate = true; });
+    }
   }
 
   set visible(on: boolean) { this.canvas.style.display = on ? 'block' : 'none'; }
@@ -137,7 +173,8 @@ export class ChaseView {
       this.scene.fog = new THREE.Fog(a.fog, a.fogNear, a.fogFar);
       this.hemi.color.set(a.hemi[0]); this.hemi.groundColor.set(a.hemi[1]); this.hemi.intensity = a.hemi[2];
       this.sun.color.set(a.sun.color); this.sun.intensity = a.sun.light;
-      this.sun.position.set(Math.cos(a.sun.azim) * Math.cos(a.sun.elev), Math.max(0.25, Math.sin(a.sun.elev)), Math.sin(a.sun.azim) * Math.cos(a.sun.elev));
+      // Shadows read best from a sun a little higher than the one painted in the sky.
+      this.sunDir.set(Math.cos(a.sun.azim) * Math.cos(a.sun.elev), Math.max(0.45, Math.sin(a.sun.elev)), Math.sin(a.sun.azim) * Math.cos(a.sun.elev)).normalize();
     }
     this.world.animate(s.time);
 
@@ -155,6 +192,10 @@ export class ChaseView {
     this.sparks.update(s.particles);
     this.drafts.update(s.cars, s.time);
     this.updateCamera(s, dt);
+    const pc = s.player.craft;
+    this.sun.target.position.set(pc.pos.x, 0, pc.pos.y);
+    this.sun.position.set(pc.pos.x + this.sunDir.x * 1200, this.sunDir.y * 1200, pc.pos.y + this.sunDir.z * 1200);
+    this.speedLines.update(this.quality === 'low' ? 0 : pc.speed, pc.deploying, dt);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -166,13 +207,18 @@ export class ChaseView {
     if (jumped) this.camHeading = c.heading;
     else this.camHeading += wrapAngle(c.heading - this.camHeading) * (1 - Math.exp(-5.5 * dt));
     this.camFor = s.player;
-    const back = 175 + speedFrac * 45, up = 62 + speedFrac * 8;
+    // Boosting: the camera eases back and the view widens, a lunge you can feel.
+    this.boostK += ((c.deploying ? 1 : 0) - this.boostK) * (1 - Math.exp(-6 * dt));
+    const back = 175 + speedFrac * 45 + this.boostK * 24, up = 62 + speedFrac * 8 - this.boostK * 4;
     const fx = Math.cos(this.camHeading), fy = Math.sin(this.camHeading);
     const shake = s.cam.shake * 0.5;
+    // A smooth high-speed rumble from about 180 km/h (layered sines, not random jitter).
+    const t = s.time, hum = this.quality === 'low' ? 0 : clamp((c.speed - 720) / 220, 0, 1) * 1.4;
+    const rx = (Math.sin(t * 37) + Math.sin(t * 23.3) * 0.6) * hum, ry = (Math.sin(t * 41.7) + Math.sin(t * 29.1) * 0.5) * hum;
     this.camera.position.set(
-      c.pos.x - fx * back + (Math.random() - 0.5) * shake,
-      up + (Math.random() - 0.5) * shake,
-      c.pos.y - fy * back + (Math.random() - 0.5) * shake);
+      c.pos.x - fx * back + (Math.random() - 0.5) * shake - fy * rx,
+      up + (Math.random() - 0.5) * shake + ry,
+      c.pos.y - fy * back + (Math.random() - 0.5) * shake + fx * rx);
     this.camPos.set(c.pos.x, 0, c.pos.y);
     this.camera.lookAt(c.pos.x + fx * 150, 14, c.pos.y + fy * 150);
     if (this.debugCam) {
@@ -180,8 +226,52 @@ export class ChaseView {
       this.camera.position.set(c.pos.x + Math.cos(a) * this.debugCam.dist, this.debugCam.h, c.pos.y + Math.sin(a) * this.debugCam.dist);
       this.camera.lookAt(c.pos.x, 10, c.pos.y);
     }
-    this.camera.fov = 66 + speedFrac * 14;   // a little wider at speed, for the sense of pace
+    this.camera.fov = 66 + speedFrac * 14 + this.boostK * 8;   // wider at speed, and more on boost, for the sense of pace
     this.camera.updateProjectionMatrix();
+  }
+}
+
+/**
+ * Wind streaks: thin lines rushing past the camera, fading in from about 150 km/h and stronger
+ * on boost. They live in camera space (the camera looks down -z), in a ring around the view centre
+ * so they never cross the car.
+ */
+class SpeedLines {
+  readonly lines: THREE.LineSegments;
+  private n = 46;
+  private pos: Float32Array;
+  private seeds: { x: number; y: number; z: number }[] = [];
+  private mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+
+  constructor() {
+    this.pos = new Float32Array(this.n * 6);
+    for (let i = 0; i < this.n; i++) this.seeds.push(this.spawn(-60 - Math.random() * 900));
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    this.lines = new THREE.LineSegments(g, this.mat);
+    this.lines.frustumCulled = false;
+    this.lines.renderOrder = 10;
+  }
+
+  private spawn(z: number) {
+    const a = Math.random() * Math.PI * 2, r = 90 + Math.random() * 170;
+    return { x: Math.cos(a) * r * 1.6, y: Math.sin(a) * r, z };
+  }
+
+  update(speed: number, boosting: boolean, dt: number): void {
+    const k = clamp((speed - 600) / 300, 0, 1);
+    this.mat.opacity = k * (boosting ? 0.42 : 0.16);
+    this.lines.visible = k > 0;
+    if (!k) return;
+    const len = 20 + k * 70 + (boosting ? 50 : 0);
+    for (let i = 0; i < this.n; i++) {
+      const sd = this.seeds[i];
+      sd.z += speed * 1.4 * dt;
+      if (sd.z > -30) this.seeds[i] = this.spawn(-700 - Math.random() * 300);
+      const q = this.seeds[i];
+      this.pos.set([q.x, q.y, q.z, q.x, q.y, q.z - len], i * 6);
+    }
+    (this.lines.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
   }
 }
 
@@ -258,6 +348,23 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     for (const u of [256 / 3, 512 / 3]) { g.fillRect(u - 1.5, 30, 3, 70); g.fillRect(u - 1.5, 158, 3, 70); }
   });
   add(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0, 0, 128), basic({ map: tex(road) }));
+  {
+    // The deck faces straight up (normals for lighting the two layers below).
+    const up = (g: THREE.BufferGeometry) => {
+      const n = new Float32Array(g.getAttribute('position').count * 3);
+      for (let k = 1; k < n.length; k += 3) n[k] = 1;
+      g.setAttribute('normal', new THREE.BufferAttribute(n, 3));
+      return g;
+    };
+    // Shadows of the cars, cast onto the road.
+    const catcher = add(up(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0.15, 0.15, 128)), new THREE.ShadowMaterial({ opacity: 0.38 }), 1);
+    catcher.receiveShadow = true;
+    // A glossy sheen: only the sun's specular highlight, added on top, so the deck reads polished.
+    add(up(ribbon(0, m, HALF_WIDTH, -HALF_WIDTH, 0.3, 0.3, 128)), new THREE.MeshPhongMaterial({
+      color: 0x000000, specular: new THREE.Color(atmos.sun.color).multiplyScalar(0.55), shininess: 26,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    }), 1);
+  }
 
   // Kerbs through the corners: lit and dark blocks in turn, slightly raised.
   {
@@ -814,8 +921,8 @@ class CarRig {
       intake: new THREE.Color(0xdff6ff), nozzle: new THREE.Color(0xbff4ff),
     };
     // Grid x 0..19 is centred on the car; the wing's pivot sits above the tail.
-    for (const m of voxelMeshes(hullVoxels(), colors, [9.5, 0, 0])) this.body.add(m);
-    for (const m of voxelMeshes(wingVoxels(), colors, [0, 0, 0])) this.wing.add(m);
+    for (const m of voxelMeshes(hullVoxels(), colors, [9.5, 0, 0])) { m.castShadow = true; this.body.add(m); }
+    for (const m of voxelMeshes(wingVoxels(), colors, [0, 0, 0])) { m.castShadow = true; this.wing.add(m); }
     this.wing.position.set((1 - 9.5) * VOX, 5 * VOX, 0);
     this.body.add(this.wing);
 

@@ -5,6 +5,9 @@ import { Input } from './input';
 import { Menus, RaceSetup, ResultRow, ResultsView, StandingRow, TrackChoice } from './menu';
 import { Camera, Car, NOZZLE_BACK, NOZZLE_SIDE, Particle, RaceHud, Toast, drawFrame, formatTime, loadSprite } from './render';
 import { ChaseView } from './view3d';
+import { loadRecords, loadSettings, saveRecords, saveSettings, type Settings } from './settings';
+import { SettingsUI } from './settingsui';
+import { Tutorial } from './tutorial';
 import {
   MISSIONS, REPLAY_SHARE, Save, Speaker, loadSave, met, playerMods, rivalMods, writeSave,
 } from './story';
@@ -66,6 +69,27 @@ function steerAim(c: Craft, brake: boolean): number {
 
 const input = new Input(canvas);
 const sound = new Sound();
+
+/** Settings (volume, graphics, keys): applied at once on every change and saved. */
+let settings: Settings = loadSettings();
+sound.muted = settings.muted;
+function applySettings(next: Settings): void {
+  settings = next;
+  saveSettings(settings);
+  input.setBindings(settings.keys);
+  sound.setVolumes(settings.music, settings.sfx);
+  chase?.setQuality(settings.quality);
+}
+applySettings(settings);
+const settingsUI = new SettingsUI((fn) => { input.capture = fn; });
+function openSettings(): void {
+  input.release();
+  settingsUI.open(settings, applySettings, () => input.release());
+}
+
+/** The tutorial lap, while it's running. */
+let tutorial: Tutorial | null = null;
+function endTutorial(): void { tutorial?.remove(); tutorial = null; }
 
 const tracks = TRACKS.map((def) => new Track(def));
 let trackIndex = 0;
@@ -179,6 +203,9 @@ function raceConfig(): RaceConfig {
       playerName: lb.players[0].name, playerMods: setupMods(carSetup), grid: 'random', startHeat: 0,
     };
   }
+  if (tutorial) {
+    return { field: [], playerName: LIVERIES[playerLivery].name, playerMods: setupMods(carSetup), grid: 'pole', startHeat: 0 };
+  }
   if (mission !== null && save) {
     const m = MISSIONS[mission];
     return {
@@ -202,7 +229,9 @@ let player: Car;
 let rivals: { car: Car; driver: Driver }[] = [];
 let cars: Car[] = [];
 const names = new Map<Car, string>();
-const bestLaps = TRACKS.map(() => 0);   // the player's best lap per track, kept across restarts
+/** The player's best lap per track (Quick Race and Season), saved in the browser. */
+const records = loadRecords();
+const bestLaps = TRACKS.map((d) => records[d.name] ?? 0);
 const particles: Particle[] = [];
 const cam: Camera = { x: 0, y: 0, zoom: 1, shake: 0 };
 let toast: Toast | null = null;
@@ -230,6 +259,7 @@ function livery(i: number) {
 
 /** Line everyone up on the grid and start the countdown. */
 function startRace(): void {
+  if (tutorial) { tutorial.remove(); tutorial = new Tutorial(settings.keys); }   // a restart starts the lesson over
   const cfg = raceConfig();
   names.clear();
   whoDrives.clear();
@@ -309,18 +339,31 @@ const trackChoices: TrackChoice[] = tracks.map((t, i) => {
 });
 
 const menus = new Menus(LIVERIES, trackChoices, {
+  settings: openSettings,
+  tutorial() {
+    endTutorial();
+    mission = null;
+    season = null;
+    menus.setSeason(false);
+    raceLaps = 2;
+    tutorial = new Tutorial(settings.keys);
+    startRound(0);   // Apex Grand Prix
+  },
   tune(car) {
     tuneUI.open(carSetup, LIVERIES[car].url, (s) => { carSetup = s; saveSetup(s); }, () => {});
   },
   online() {
+    endTutorial();
     menus.hide();
     lobbyUI.showMenu(playerName());
   },
   story() {
+    endTutorial();
     menus.hide();
     storyUI.open(save);
   },
   start(setup: RaceSetup) {
+    endTutorial();
     mission = null;
     playerLivery = setup.car;
     raceLaps = setup.laps;
@@ -365,6 +408,7 @@ const menus = new Menus(LIVERIES, trackChoices, {
       return;
     }
     season = null;
+    endTutorial();
     menus.setSeason(false);
     mode = 'menu';
     sound.menu();
@@ -374,6 +418,8 @@ const menus = new Menus(LIVERIES, trackChoices, {
     menus.showStart();
   },
 });
+refreshRecords();
+menus.setNewPlayer(!settings.tutorialDone);
 
 /** Set a mission up: its track, laps and field. */
 function loadMission(i: number): void {
@@ -472,7 +518,7 @@ function play(): void {
   menus.hide();
   input.release();
   input.takePause();   // drop keys pressed while in a menu
-  input.takeReset();
+  input.clearReset();
   input.lock();
 }
 
@@ -530,7 +576,8 @@ function watchFrameRate(dt: number): void {
 }
 
 function fitCanvas(): void {
-  const dpr = Math.min(devicePixelRatio || 1, Math.sqrt(MAX_PIXELS / (innerWidth * innerHeight))) * perf.quality;
+  const maxPixels = settings.quality === 'low' ? 0.75e6 : settings.quality === 'medium' ? 1.3e6 : MAX_PIXELS;
+  const dpr = Math.min(devicePixelRatio || 1, Math.sqrt(maxPixels / (innerWidth * innerHeight))) * perf.quality;
   renderScale = dpr;
   const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) {
@@ -580,6 +627,15 @@ function update(dt: number): void {
   time += dt;
   if (input.takeReset() && mode === 'racing' && !online) startRace();
   const racing = time >= goTime;
+  if (tutorial) {
+    const pc = player.craft;
+    tutorial.update({ racing, speed: pc.speed, steer: input.steer, brake: input.brake, deploying: pc.deploying,
+      energy: pc.energy, cooling: pc.cooling, lap: player.race.lap }, dt);
+    if (tutorial.finished && !settings.tutorialDone) {
+      applySettings({ ...settings, tutorialDone: true });
+      menus.setNewPlayer(false);
+    }
+  }
 
   // Countdown beeps: 3, 2, 1, then a long one for GO.
   const count = Math.max(0, Math.ceil(goTime - time));
@@ -657,7 +713,15 @@ function update(dt: number): void {
     }
   }
   sound.scrape(scraping);
-  bestLaps[trackIndex] = player.race.bestLap;
+  // A new track record (not in Story, online or the tutorial, where the car or the race differ).
+  if (!online && mission === null && !tutorial && player.race.bestLap > 0
+      && (bestLaps[trackIndex] === 0 || player.race.bestLap < bestLaps[trackIndex] - 1e-6)) {
+    bestLaps[trackIndex] = player.race.bestLap;
+    records[track.name] = player.race.bestLap;
+    saveRecords(records);
+    refreshRecords();
+  }
+  heardPasses(dt);
 
   for (let i = 0; i < cars.length; i++) {
     for (let j = i + 1; j < cars.length; j++) {
@@ -830,6 +894,36 @@ function gaps(ranked: Car[]): Pick<RaceHud, 'ahead' | 'behind'> {
   };
 }
 
+/** The best lap on each track card. */
+function refreshRecords(): void {
+  menus.setRecords(TRACKS.map((_, i) => (bestLaps[i] ? formatTime(bestLaps[i]) : '')));
+}
+
+/**
+ * Cars going past the player: when one changes from behind to ahead (or the other way) close by,
+ * play a pass-by whoosh on that side. One per car per second at most.
+ */
+const passState = new Map<Car, { ahead: boolean; quietUntil: number }>();
+function heardPasses(dt: number): void {
+  void dt;
+  if (time < goTime || finishOrder.includes(player)) { passState.clear(); return; }
+  const pc = player.craft, mine = player.race.progress(track);
+  const rx = -Math.sin(pc.heading), ry = Math.cos(pc.heading);   // the player's right-hand side
+  for (const car of cars) {
+    if (car === player) continue;
+    const ahead = car.race.progress(track) > mine;
+    const st = passState.get(car);
+    passState.set(car, { ahead, quietUntil: st?.quietUntil ?? 0 });
+    if (!st || st.ahead === ahead || time < st.quietUntil) continue;
+    const dx = car.craft.pos.x - pc.pos.x, dy = car.craft.pos.y - pc.pos.y;
+    if (Math.hypot(dx, dy) > 260) continue;
+    const closing = Math.hypot(car.craft.vel.x - pc.vel.x, car.craft.vel.y - pc.vel.y);
+    if (closing < 70) continue;   // just running side by side, not a real pass
+    sound.passBy(closing, Math.sign(dx * rx + dy * ry) || 1);
+    passState.set(car, { ahead, quietUntil: time + 1 });
+  }
+}
+
 function raceHud(): RaceHud {
   const ranked = rankCars();
   const left = goTime - time;
@@ -842,6 +936,7 @@ function raceHud(): RaceHud {
     catchUp: player.craft.catchUp, launchHint,
     ...(mode === 'racing' || mode === 'paused' ? gaps(ranked) : { ahead: null, behind: null }),
     drsAvailable: player.race.lap >= DRS_FROM_LAP,
+    restart: online || mode !== 'racing' ? 0 : input.resetProgress(),
   };
 }
 
@@ -1474,7 +1569,13 @@ function frame(now: number): void {
   acc += Math.min(0.25, (now - last) / 1000);
   watchFrameRate((now - last) / 1000);
   last = now;
-  if (input.takeMute()) showToast(sound.toggleMute() ? 'SOUND OFF' : 'SOUND ON', '#ffffff');
+  if (input.takeMute()) {
+    const muted = sound.toggleMute();
+    applySettings({ ...settings, muted });
+    showToast(muted ? 'SOUND OFF' : 'SOUND ON', '#ffffff');
+  }
+  // Esc on the Settings screen closes it (rather than resuming the race underneath).
+  if (settingsUI.isOpen && input.takePause()) settingsUI.close();
   if (input.takeView()) toggleView();
   if (online?.role === 'guest') {
     acc = 0;

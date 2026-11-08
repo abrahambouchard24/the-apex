@@ -1,11 +1,17 @@
 // Mouse + keyboard. The mouse drives a virtual cursor so steering keeps working under pointer lock.
 
+import { DEFAULT_KEYS, type Action } from './settings';
+
 const THROTTLE_KEYS = new Set<string>();   // the throttle is always on
-// Mouse buttons count as held keys too: left click brakes, right click deploys ERS.
-const BRAKE_KEYS = new Set(['KeyS', 'ArrowDown', 'Space', 'Mouse0']);
-const LEFT_KEYS = new Set(['KeyA', 'ArrowLeft']);
-const RIGHT_KEYS = new Set(['KeyD', 'ArrowRight']);
-const DEPLOY_KEYS = new Set(['KeyW', 'ArrowUp', 'ShiftLeft', 'ShiftRight', 'KeyE', 'Mouse2']);
+// The driving keys come from Settings (rebindable). Mouse buttons count as held keys too:
+// left click brakes, right click deploys ERS.
+const BRAKE_KEYS = new Set<string>();
+const LEFT_KEYS = new Set<string>();
+const RIGHT_KEYS = new Set<string>();
+const DEPLOY_KEYS = new Set<string>();
+
+/** How long R must be held to restart, so a stray tap doesn't wipe a race. */
+export const RESTART_HOLD = 0.8;
 
 export class Input {
   /** Virtual cursor in canvas CSS pixels. */
@@ -17,7 +23,10 @@ export class Input {
   /** Steering keys: -1 left, +1 right, 0 none (or both). */
   steer = 0;
   locked = false;
-  private resetQueued = false;
+  private resetSince = 0;       // performance.now() R went down (0 = not held)
+  private resetFired = false;
+  /** While set, the next key press is handed to it instead of driving (rebinding a control). */
+  capture: ((code: string) => void) | null = null;
   private pauseQueued = false;
   private muteQueued = false;
   private viewQueued = false;
@@ -26,6 +35,7 @@ export class Input {
   private held = new Set<string>();
 
   constructor(private canvas: HTMLCanvasElement) {
+    this.setBindings(DEFAULT_KEYS);
     this.cursor.x = innerWidth / 2;
     this.cursor.y = innerHeight / 2 - 150;
 
@@ -47,17 +57,25 @@ export class Input {
       }
     });
     addEventListener('keydown', (e) => {
+      if (this.capture) {
+        e.preventDefault();
+        const take = this.capture;
+        this.capture = null;
+        take(e.code);
+        return;
+      }
       if (THROTTLE_KEYS.has(e.code) || BRAKE_KEYS.has(e.code) || DEPLOY_KEYS.has(e.code) || LEFT_KEYS.has(e.code) || RIGHT_KEYS.has(e.code)) {
         this.held.add(e.code);
         e.preventDefault();
       }
-      if (e.code === 'KeyR') this.resetQueued = true;
+      if (e.code === 'KeyR' && !e.repeat && !this.resetSince) { this.resetSince = performance.now(); this.resetFired = false; }
       if (e.code === 'KeyM' && !e.repeat) this.muteQueued = true;
       if (e.code === 'KeyV' && !e.repeat) this.viewQueued = true;
       if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) this.pauseQueued = true;
       this.refresh();
     });
     addEventListener('keyup', (e) => {
+      if (e.code === 'KeyR') this.resetSince = 0;
       this.held.delete(e.code);
       this.refresh();
     });
@@ -84,7 +102,33 @@ export class Input {
     this.steer = ([...RIGHT_KEYS].some((k) => this.held.has(k)) ? 1 : 0) - ([...LEFT_KEYS].some((k) => this.held.has(k)) ? 1 : 0);
   }
 
-  takeReset(): boolean { const r = this.resetQueued; this.resetQueued = false; return r; }
+  /** How far through the hold-R-to-restart the player is, 0..1 (0 when R isn't held). */
+  resetProgress(): number {
+    return this.resetSince ? Math.min(1, (performance.now() - this.resetSince) / 1000 / RESTART_HOLD) : 0;
+  }
+  /** True once per hold, when R has been held long enough. */
+  takeReset(): boolean {
+    if (this.resetFired || this.resetProgress() < 1) return false;
+    this.resetFired = true;
+    return true;
+  }
+  /** Forget any R press in progress (e.g. after a restart or leaving a menu). */
+  clearReset(): void { this.resetSince = 0; this.resetFired = false; }
+
+  /** Use these keys for the driving controls (the mouse buttons stay on brake and boost). */
+  setBindings(keys: Record<Action, string[]>): void {
+    const fill = (set: Set<string>, codes: string[], extra?: string) => {
+      set.clear();
+      for (const c of codes) set.add(c);
+      if (extra) set.add(extra);
+    };
+    fill(LEFT_KEYS, keys.left);
+    fill(RIGHT_KEYS, keys.right);
+    fill(BRAKE_KEYS, keys.brake, 'Mouse0');
+    fill(DEPLOY_KEYS, keys.boost, 'Mouse2');
+    this.held.clear();
+    this.refresh();
+  }
   takePause(): boolean { const p = this.pauseQueued; this.pauseQueued = false; return p; }
   takeMute(): boolean { const m = this.muteQueued; this.muteQueued = false; return m; }
   takeView(): boolean { const v = this.viewQueued; this.viewQueued = false; return v; }

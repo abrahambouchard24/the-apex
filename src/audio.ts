@@ -11,6 +11,10 @@ export class Sound {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
   private sfx!: GainNode;
+  /** The player's volume settings (Settings menu), separate from the scene switching on sfx. */
+  private sfxVol!: GainNode;
+  private musicVol!: GainNode;
+  private volumes = { music: 0.8, sfx: 0.9 };
   private music: Music | null = null;
   /** What the music should be doing; applied as soon as audio is unlocked. */
   private scene: 'menu' | 'race' | 'paused' = 'menu';
@@ -43,6 +47,54 @@ export class Sound {
     this.sfx.gain.setTargetAtTime(this.scene === 'race' ? 1 : 0, t, 0.05);
     this.music.play(this.scene === 'menu' ? 'menu' : 'race');
     this.music.setMuffled(this.scene === 'paused');
+  }
+
+  /** Music and effects volume, 0..1 each (from Settings). */
+  setVolumes(music: number, sfx: number): void {
+    this.volumes = { music, sfx };
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.musicVol.gain.setTargetAtTime(music, t, 0.03);
+    this.sfxVol.gain.setTargetAtTime(sfx, t, 0.03);
+  }
+
+  /**
+   * A car going past: a rush of air that rises then falls in pitch (the Doppler drop),
+   * panned to the side it passes on. closing = how fast it passes (px/s), side -1 left .. +1 right.
+   */
+  passBy(closing: number, side: number): void {
+    const ctx = this.live();
+    if (!ctx) return;
+    const t = ctx.currentTime, k = Math.min(1, closing / 400);
+    const pan = ctx.createStereoPanner();
+    pan.pan.setValueAtTime(Math.max(-1, Math.min(1, side * 0.8)), t);
+    pan.pan.linearRampToValueAtTime(Math.max(-1, Math.min(1, side * 0.3)), t + 0.5);
+    // Air: noise through a band-pass that sweeps down as it passes.
+    const src = this.noiseSource();
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 1.4;
+    band.frequency.setValueAtTime(1800 + k * 900, t);
+    band.frequency.exponentialRampToValueAtTime(500, t + 0.55);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.1 + k * 0.14, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    src.connect(band).connect(g).connect(pan).connect(this.sfx);
+    src.start(t); src.stop(t + 0.65);
+    // Its engine: a short buzz whose pitch drops as it goes by.
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150 + k * 40, t);
+    osc.frequency.exponentialRampToValueAtTime(90, t + 0.5);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 900;
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.05 + k * 0.05, t + 0.1);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    osc.connect(lp).connect(og).connect(pan);
+    osc.start(t); osc.stop(t + 0.6);
   }
 
   toggleMute(): boolean {
@@ -173,9 +225,15 @@ export class Sound {
     this.master = ctx.createGain();
     this.master.gain.value = this.muted ? 0 : MASTER_VOLUME;
     this.master.connect(ctx.destination);
+    this.sfxVol = ctx.createGain();
+    this.sfxVol.gain.value = this.volumes.sfx;
+    this.sfxVol.connect(this.master);
+    this.musicVol = ctx.createGain();
+    this.musicVol.gain.value = this.volumes.music;
+    this.musicVol.connect(this.master);
     this.sfx = ctx.createGain();
     this.sfx.gain.value = 0;
-    this.sfx.connect(this.master);
+    this.sfx.connect(this.sfxVol);
 
     // One second of white noise, reused by the scrape loop and the whooshes.
     this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -212,6 +270,6 @@ export class Sound {
     scrapeSrc.connect(scrapeBand).connect(this.scrapeGain).connect(this.sfx);
     scrapeSrc.start();
 
-    this.music = new Music(ctx, this.master, this.noise);
+    this.music = new Music(ctx, this.musicVol, this.noise);
   }
 }

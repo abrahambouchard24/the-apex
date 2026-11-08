@@ -34,6 +34,10 @@ export interface MenuHandlers {
   online(): void;
   /** Open the TUNE CAR screen for the selected car. */
   tune(car: number): void;
+  /** The Settings screen (front menu and pause menu). */
+  settings(): void;
+  /** The tutorial lap (HOW TO PLAY on the front menu). */
+  tutorial(): void;
   resume(): void;
   restart(): void;
   changeCar(): void;
@@ -77,6 +81,9 @@ const CSS = `
 .hr-btn:hover { filter: brightness(1.12); }
 .hr-btn.secondary { background: #1d2346; color: #e8ecff; }
 .hr-keys { margin-top: 18px; color: #8a93c0; font-size: 13px; }
+.hr-front-actions .hr-btn { min-width: 180px; padding: 11px 22px; font-size: 15px; }
+.hr-front-actions .hr-btn.fresh { background: linear-gradient(90deg, #4fe3ff, #7dffb0); color: #07080f; box-shadow: 0 0 24px -6px #4fe3ff; }
+.hr-track .hr-rec { color: #ffd23f; font-weight: 800; letter-spacing: 0.06em; }
 .hr-h2 { margin: 0 0 22px; font-size: 44px; font-weight: 900; letter-spacing: 0.1em; }
 .hr-tracks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
 @media (max-width: 760px) { .hr-tracks { grid-template-columns: repeat(2, 1fr); } }
@@ -261,6 +268,10 @@ export class Menus {
             <div class="label"><b>SEASON</b><small>A championship across the circuits. Points for every finish, a title for the best.</small></div>
           </button>
         </div>
+        <div class="hr-btns row hr-front-actions">
+          <button class="hr-btn secondary" data-act="tutorial">HOW TO PLAY</button>
+          <button class="hr-btn secondary" data-act="settings">SETTINGS</button>
+        </div>
         <p class="hr-keys">A / D or ← / →: steer &nbsp;·&nbsp; Accelerates on its own &nbsp;·&nbsp; S / ↓ / Space: brake &nbsp;·&nbsp; W / ↑ / Shift: boost &nbsp;·&nbsp; Esc: pause &nbsp;·&nbsp; M: mute</p>
       </div>`);
 
@@ -302,7 +313,7 @@ export class Menus {
       b.className = 'hr-track';
       b.style.setProperty('--c', t.color);
       b.innerHTML = `<svg viewBox="0 0 120 80"><polygon points="${t.outline}" fill="none" stroke="${t.color}"
-        stroke-width="3" stroke-linejoin="round"/></svg><b>${t.name}</b><small>${t.blurb}</small>`;
+        stroke-width="3" stroke-linejoin="round"/></svg><b>${t.name}</b><small>${t.blurb}</small><small class="hr-rec"></small>`;
       b.addEventListener('click', () => this.selectTrack(i));
       b.addEventListener('dblclick', () => this.on.start(this.setup()));
       trackGrid.append(b);
@@ -331,6 +342,7 @@ export class Menus {
           <button class="hr-btn" data-act="resume">RESUME</button>
           <button class="hr-btn secondary" data-act="restart">RESTART RACE</button>
           <button class="hr-btn secondary" data-act="change">CHANGE CAR</button>
+          <button class="hr-btn secondary" data-act="settings">SETTINGS</button>
         </div>
       </div>`);
     this.pause.classList.add('hidden');
@@ -343,6 +355,8 @@ export class Menus {
         const act = (e.target as HTMLElement).closest('[data-act]')?.getAttribute('data-act');
         if (!act) return;
         if (act === 'story') this.on.story();
+        else if (act === 'settings') this.on.settings();
+        else if (act === 'tutorial') this.on.tutorial();
         else if (act === 'online') this.on.online();
         else if (act === 'quick') this.showSetup('single');
         else if (act === 'season') this.showSetup('season');
@@ -380,6 +394,16 @@ export class Menus {
     this.start.querySelector('[data-track-head]')!.textContent = this.races > 1 ? 'CHOOSE THE OPENING TRACK' : 'CHOOSE YOUR TRACK';
     this.start.querySelector('[data-act="start"]')!.textContent = this.races > 1 ? 'START SEASON' : 'START RACE';
     this.start.querySelector('[data-setup-title]')!.textContent = this.races > 1 ? 'SEASON' : 'QUICK RACE';
+  }
+
+  /** Show the player's best lap on each track card ('' where there isn't one yet). */
+  setRecords(text: string[]): void {
+    this.trackCards.forEach((c, i) => { c.querySelector('.hr-rec')!.textContent = text[i] ? `BEST ${text[i]}` : ''; });
+  }
+
+  /** Make HOW TO PLAY stand out for someone who hasn't done the tutorial yet. */
+  setNewPlayer(fresh: boolean): void {
+    this.front.querySelector('[data-act="tutorial"]')!.classList.toggle('fresh', fresh);
   }
 
   selectTrack(i: number): void {
