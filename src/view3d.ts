@@ -10,6 +10,7 @@ import { CRAFT_LENGTH, type Camera, type Car, type Particle } from './render';
 import { COOL_LANE, HALF_WIDTH, KERB_WIDTH, Track, WALL_DIST, WALL_THICKNESS } from './track';
 import { groundCanvas, groundMoves, sceneryFor, type Prop } from './scenery';
 import { liveryMetal, liveryPainter, type Face, type Kind, type Painted } from './liveries';
+import * as LIVERIES_MOD from './liveries';
 
 const WALL_H = 24;            // barrier height
 const KERB_CURVE = 1 / 900;   // corners tighter than this get kerbs (as in render.ts)
@@ -639,7 +640,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   // meshes for the whole map); moving parts, signs and see-through effects stay as they are.
   const spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 'z'; rate: number }[] = [];
   const sc = sceneryFor(track);
-  const voxels = new PropVoxels();
+  const voxels = MAP_STYLE === 'origami' ? new PropFolds() : new PropVoxels();
   for (const p of [...sc.props, ...sc.overlays]) {
     const obj = propObject(p, spinners, atmos, theme.wall);
     if (!obj) continue;
@@ -1519,6 +1520,127 @@ function windowsMaterial(base: string, lit: string, w: number, h: number): THREE
   return mat;
 }
 
+// --- origami scenery --------------------------------------------------------------------------------
+
+/** How map props are drawn: folded paper (now), or the earlier voxel cubes (kept). */
+const MAP_STYLE: 'origami' | 'voxel' = 'origami';
+
+/**
+ * Folds props made of simple shapes into paper: each shape is rebuilt with few facets (spheres as
+ * faceted balls, cylinders and cones as 6–7 sided paper tubes), every facet gets its own tone,
+ * folds are drawn as fine crease lines, and building windows become rows of glowing paper-lantern
+ * strips. Everything on the map ends up in three meshes (lit paper, glowing paper, creases).
+ */
+class PropFolds {
+  private lit = { pos: [] as number[], col: [] as number[] };
+  private glow = { pos: [] as number[], col: [] as number[] };
+  private creases: number[] = [];
+  private tri = 0;
+
+  absorb(obj: THREE.Object3D, moving: THREE.Object3D[]): void {
+    obj.updateMatrixWorld(true);
+    const parts: THREE.Mesh[] = [];
+    obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !solidShape(m)) return;
+      for (let a: THREE.Object3D | null = m; a; a = a.parent) if (moving.includes(a)) return;
+      parts.push(m);
+    });
+    for (const m of parts) {
+      const geo = foldedShape(m.geometry);
+      geo.applyMatrix4(m.matrixWorld);
+      const mat = m.material as THREE.MeshPhongMaterial;
+      const win = mat.userData.windows as { base: string; lit: string } | undefined;
+      const glowing = !win && mat.type === 'MeshBasicMaterial';
+      const base = win ? new THREE.Color(win.base) : mat.color.clone();
+      if (!glowing && !win && mat.emissive) base.add(mat.emissive.clone().multiplyScalar(0.6));
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+      const into = glowing ? this.glow : this.lit;
+      for (let v = 0; v < pos.count; v++) {
+        if (v % 3 === 0) this.tri++;
+        const tone = glowing ? 1 : 0.84 + ((this.tri * 2654435761) >>> 0) % 1000 / 1000 * 0.22;
+        into.pos.push(pos.getX(v), pos.getY(v), pos.getZ(v));
+        into.col.push(base.r * tone, base.g * tone, base.b * tone);
+      }
+      if (!glowing) {
+        const edges = new THREE.EdgesGeometry(geo, 25);
+        const ep = edges.getAttribute('position') as THREE.BufferAttribute;
+        for (let v = 0; v < ep.count; v++) this.creases.push(ep.getX(v), ep.getY(v), ep.getZ(v));
+        edges.dispose();
+      }
+      if (win) this.lanterns(m, new THREE.Color(win.lit));
+      geo.dispose();
+      m.removeFromParent();
+    }
+  }
+
+  /** Rows of glowing strips around a windowed box, every storey. */
+  private lanterns(m: THREE.Mesh, lit: THREE.Color): void {
+    const pr = (m.geometry as THREE.BoxGeometry).parameters;
+    const strip = new THREE.BoxGeometry(1, 1, 1);
+    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), at = new THREE.Vector3();
+    for (let y = -pr.height / 2 + 14; y < pr.height / 2 - 8; y += 18) {
+      for (const [x, z, w, d] of [[0, pr.depth / 2 + 0.6, pr.width * 0.84, 1], [0, -pr.depth / 2 - 0.6, pr.width * 0.84, 1],
+        [pr.width / 2 + 0.6, 0, 1, pr.depth * 0.84], [-pr.width / 2 - 0.6, 0, 1, pr.depth * 0.84]]) {
+        mtx.compose(at.set(x, y, z), q, sc.set(w, 5, d)).premultiply(m.matrixWorld);
+        const g = strip.clone().applyMatrix4(mtx).toNonIndexed();
+        const pos = g.getAttribute('position') as THREE.BufferAttribute;
+        for (let v = 0; v < pos.count; v++) { this.glow.pos.push(pos.getX(v), pos.getY(v), pos.getZ(v)); this.glow.col.push(lit.r, lit.g, lit.b); }
+        g.dispose();
+      }
+    }
+    strip.dispose();
+  }
+
+  build(): THREE.Object3D[] {
+    const out: THREE.Object3D[] = [];
+    const make = (src: { pos: number[]; col: number[] }, mat: THREE.Material) => {
+      if (!src.pos.length) return;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(src.pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(src.col, 3));
+      g.computeVertexNormals();
+      out.push(new THREE.Mesh(g, mat));
+    };
+    make(this.lit, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }));
+    make(this.glow, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    if (this.creases.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(this.creases, 3));
+      out.push(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x14182a, transparent: true, opacity: 0.28 })));
+    }
+    return out;
+  }
+}
+
+/** A shape rebuilt with few facets (paper-folded), non-indexed so each facet shades flat on its own. */
+function foldedShape(src: THREE.BufferGeometry): THREE.BufferGeometry {
+  const pr = (src as THREE.BufferGeometry & { parameters: Record<string, number> }).parameters;
+  let g: THREE.BufferGeometry;
+  switch (src.type) {
+    case 'SphereGeometry': {
+      const half = (pr.thetaLength ?? Math.PI) < Math.PI - 0.01;
+      g = half ? new THREE.SphereGeometry(pr.radius, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2) : new THREE.IcosahedronGeometry(pr.radius, 1);
+      break;
+    }
+    case 'CylinderGeometry':
+      g = new THREE.CylinderGeometry(pr.radiusTop, pr.radiusBottom, pr.height, Math.min(7, Math.max(5, pr.radialSegments)), 1);
+      break;
+    case 'ConeGeometry':
+      g = new THREE.ConeGeometry(pr.radius, pr.height, Math.min(7, Math.max(4, pr.radialSegments)), 1);
+      break;
+    default:
+      g = src.clone();
+  }
+  // Keep any offset the original shape was built with.
+  src.computeBoundingBox(); g.computeBoundingBox();
+  const shift = src.boundingBox!.getCenter(new THREE.Vector3()).sub(g.boundingBox!.getCenter(new THREE.Vector3()));
+  if (src.type !== 'BoxGeometry' && src.type !== 'OctahedronGeometry' && src.type !== 'DodecahedronGeometry') g.translate(shift.x, shift.y, shift.z);
+  const flat = g.index ? g.toNonIndexed() : g;
+  if (flat !== g) g.dispose();
+  return flat;
+}
+
 // --- voxel scenery ----------------------------------------------------------------------------------
 
 /**
@@ -1768,7 +1890,7 @@ function sampleVoxels(shape: (x: number, y: number, z: number) => VoxKind | null
  * The craft the game uses: 'fighter' (a starfighter-style body flying with its wings closed) or
  * 'car' (the earlier F1-style hovercar, kept in the code).
  */
-const CRAFT_MODEL: 'fighter' | 'car' = 'fighter';
+const CRAFT_MODEL: 'origami' | 'fighter' | 'car' = 'origami';
 
 /**
  * The fighter: a long tapered nose with ivory bands, a framed glass canopy, a gold spine fairing,
@@ -1834,6 +1956,162 @@ function plateVoxel(x: number, y: number, z: number): VoxKind | null {
   return 'white';
 }
 
+/**
+ * The origami starfighter: folded paper instead of cubes. A diamond-section fuselage creased into
+ * facets (gold nose tip, ivory nose bands, dark keel), a glass canopy folded like a tent, a gold
+ * spine fin, hexagonal engine pods with gold intakes and glowing nozzles, and on each side two
+ * stacked wing sheets (ivory panel, livery panel, gold leading edge, glowing tip) creased along
+ * their length. Each facet gets its own tone, edges are drawn as fine creases, and a livery's
+ * pattern prints onto the painted panels. World px, nose along +x.
+ */
+type V3 = [number, number, number];
+class Fold {
+  pos: number[] = [];
+  kinds: VoxKind[] = [];
+  tri(a: V3, b: V3, c: V3, kind: VoxKind): void { this.pos.push(...a, ...b, ...c); this.kinds.push(kind); }
+  quad(a: V3, b: V3, c: V3, d: V3, kind: VoxKind): void { this.tri(a, b, c, kind); this.tri(a, c, d, kind); }
+  /** A fan closing a ring of points around its centre. */
+  cap(ring: V3[], kind: VoxKind): void {
+    const c: V3 = [0, 0, 0];
+    for (const q of ring) { c[0] += q[0] / ring.length; c[1] += q[1] / ring.length; c[2] += q[2] / ring.length; }
+    ring.forEach((q, k) => this.tri(c, q, ring[(k + 1) % ring.length], kind));
+  }
+}
+
+/** Fuselage cross-sections: x, half-width, height above and below the centreline. */
+const FUSELAGE: [number, number, number, number][] = [
+  [-44, 6, 5, 4], [-30, 7.5, 6.5, 5], [-10, 7.5, 6.5, 5], [6, 6.5, 8, 4.5], [22, 4.5, 4.8, 3.5], [34, 2.8, 3, 2.2],
+];
+
+function origamiHull(): Fold {
+  const f = new Fold();
+  const ring = ([x, hw, up, dn]: [number, number, number, number]): V3[] => [[x, FY + up, 0], [x, FY, hw], [x, FY - dn, 0], [x, FY, -hw]];
+  for (let k = 0; k < FUSELAGE.length - 1; k++) {
+    const a = ring(FUSELAGE[k]), b = ring(FUSELAGE[k + 1]);
+    const band = FUSELAGE[k][0] >= 22;   // the ivory band toward the nose
+    for (let e = 0; e < 4; e++) {
+      const upper = e === 0 || e === 3;
+      f.quad(a[e], b[e], b[(e + 1) % 4], a[(e + 1) % 4], upper ? (band ? 'white' : 'paint') : 'dark');
+    }
+  }
+  // The nose: a gold point.
+  const last = ring(FUSELAGE[FUSELAGE.length - 1]), tip: V3 = [47, FY - 0.4, 0];
+  for (let e = 0; e < 4; e++) f.tri(last[e], tip, last[(e + 1) % 4], 'metal');
+  // The tail: closed off in carbon.
+  f.cap(ring(FUSELAGE[0]).reverse(), 'carbon');
+  // Canopy: a tent of glass on the spine, with a bright pane catching the light.
+  const r1: V3 = [-2, FY + 12, 0], r2: V3 = [13, FY + 9.4, 0];
+  const b1l: V3 = [-6, FY + 6.8, -3.8], b1r: V3 = [-6, FY + 6.8, 3.8], b2l: V3 = [17, FY + 6.2, -3], b2r: V3 = [17, FY + 6.2, 3];
+  f.quad(b1l, b2l, r2, r1, 'glass');
+  f.quad(r1, r2, b2r, b1r, 'shine');
+  f.tri(b1l, r1, b1r, 'glass');
+  f.tri(b2r, r2, b2l, 'glass');
+  // Spine fin behind the canopy.
+  f.tri([-32, FY + 6.4, 0], [-10, FY + 6.6, 0], [-27, FY + 13, 0], 'metal');
+  // Engine pods: hexagonal paper tubes with gold intakes and glowing nozzles.
+  for (const zc of [-12, 12]) {
+    const hex = (x: number, r: number): V3[] => Array.from({ length: 6 }, (_, k) => {
+      const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+      return [x, FY + Math.sin(a) * r, zc + Math.cos(a) * r] as V3;
+    });
+    const back = hex(-44, 4.6), front = hex(-21, 4.6), lip = hex(-17, 3.4);
+    for (let k = 0; k < 6; k++) {
+      const n = (k + 1) % 6, top = k === 1;
+      f.quad(back[k], back[n], front[n], front[k], top ? 'paint' : 'dark');
+      f.quad(front[k], front[n], lip[n], lip[k], 'metal');
+    }
+    f.cap(lip, 'carbon');
+    f.cap([...back].reverse(), 'nozzle');
+  }
+  // A glowing seam along the keel (the hover glow).
+  f.quad([-26, FY - 5.1, -1.6], [26, FY - 4, -1.2], [26, FY - 4, 1.2], [-26, FY - 5.1, 1.6], 'neon');
+  return f;
+}
+
+/** One wing sheet, root at z = 0 out to z = 24, creased along its length. */
+function origamiPlate(): Fold {
+  const f = new Fold();
+  const rootLE: V3 = [12, 0, 0], rootTE: V3 = [-14, 0, 0], tipTE: V3 = [-6.8, 0, 24], tipLE: V3 = [-2.4, 0, 24];
+  const rootMid: V3 = [-1, 1.4, 0], tipMid: V3 = [-4.6, 0.8, 22];
+  f.quad(rootLE, tipLE, tipMid, rootMid, 'white');
+  f.quad(rootMid, tipMid, tipTE, rootTE, 'paint');
+  // Gold leading edge, folded over the front.
+  f.quad([12.5, 0.4, 0], [-1.9, 0.4, 24], tipLE, rootLE, 'metal');
+  f.quad(rootLE, tipLE, [-1.9, -0.6, 24], [13, -0.6, 0], 'metal');
+  // A glowing tip.
+  f.tri(tipLE, [-1.6, 0.5, 26.5], tipTE, 'neon');
+  return f;
+}
+
+/** Turn a fold into meshes: matte facets with per-facet tones, glowing parts, crease lines, a printed livery. */
+function foldMeshes(f: Fold, colors: Record<VoxKind, THREE.Color>, pattern?: THREE.Texture | null): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  const groups: { lit: boolean; printed: boolean }[] = [
+    { lit: true, printed: false }, { lit: true, printed: true }, { lit: false, printed: false },
+  ];
+  for (const gdef of groups) {
+    const pos: number[] = [], col: number[] = [], uv: number[] = [];
+    f.kinds.forEach((kind, t) => {
+      const glowing = GLOWING.includes(kind);
+      if (glowing === gdef.lit) return;
+      const printed = !!pattern && kind === 'paint';
+      if (gdef.lit && printed !== gdef.printed) return;
+      // Each facet a slightly different tone, as light catches a fold.
+      const tone = glowing ? 1 : 0.86 + ((t * 2654435761) >>> 0) % 1000 / 1000 * 0.2;
+      const c = printed ? new THREE.Color(1, 1, 1).multiplyScalar(tone) : colors[kind].clone().multiplyScalar(tone);
+      for (let v = 0; v < 3; v++) {
+        const o = t * 9 + v * 3;
+        pos.push(f.pos[o], f.pos[o + 1], f.pos[o + 2]);
+        col.push(c.r, c.g, c.b);
+        uv.push((f.pos[o] + 48) / 96, (f.pos[o + 2] + 34) / 68);
+      }
+    });
+    if (!pos.length) continue;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.computeVertexNormals();
+    const mat = gdef.lit
+      ? new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide, map: gdef.printed ? pattern ?? null : null })
+      : new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.castShadow = true;
+    out.push(mesh);
+  }
+  // Crease lines along every fold.
+  const all = new THREE.BufferGeometry();
+  all.setAttribute('position', new THREE.Float32BufferAttribute(f.pos, 3));
+  const creases = new THREE.LineSegments(new THREE.EdgesGeometry(all, 18),
+    new THREE.LineBasicMaterial({ color: 0x14182a, transparent: true, opacity: 0.4 }));
+  all.dispose();
+  out.push(creases);
+  return out;
+}
+
+/** A livery's printed paper: liveries.ts's own pattern, or its painter sampled over the craft from above. */
+function liveryPaper(pattern: string | undefined, base: THREE.Color): THREE.Texture | null {
+  if (!pattern) return null;
+  const mod = LIVERIES_MOD as { liveryPattern?: (p?: string) => HTMLCanvasElement | undefined };
+  let c = mod.liveryPattern?.(pattern);
+  if (!c) {
+    const painter = liveryPainter(pattern);
+    if (!painter) return null;
+    c = canvas2d(192, 136, (g) => {
+      g.fillStyle = '#' + base.getHexString(); g.fillRect(0, 0, 192, 136);
+      for (let py = 0; py < 136; py++) for (let px = 0; px < 192; px++) {
+        const r = painter(px / 2 - 48, FY + 7, py / 2 - 34, 'paint', 'top');
+        if (!r) continue;
+        g.fillStyle = '#' + new THREE.Color(r[0]).getHexString();
+        g.fillRect(px, 136 - 1 - py, 1, 1);
+      }
+    });
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 let fighterCache: { hull: Voxel[]; plate: Voxel[] } | null = null;
 function fighterVoxels() {
   return fighterCache ??= {
@@ -1850,7 +2128,7 @@ function carVoxels() {
   };
 }
 
-let shared: { cube: THREE.BufferGeometry; flame: THREE.BufferGeometry; aura: THREE.BufferGeometry; glow: THREE.Texture; shadow: THREE.Texture } | null = null;
+let shared: { cube: THREE.BufferGeometry; flame: THREE.BufferGeometry; cone: THREE.BufferGeometry; aura: THREE.BufferGeometry; glow: THREE.Texture; shadow: THREE.Texture } | null = null;
 const sharedRes = new Set<unknown>();
 
 function carShared() {
@@ -1868,6 +2146,8 @@ function carShared() {
     cube: new THREE.BoxGeometry(VOX, VOX, VOX),
     // A block one unit long reaching back along -x from the nozzle (scaled to the flame length).
     flame: new THREE.BoxGeometry(1, 6, 6).translate(-0.5, 0, 0),
+    // A hexagonal cone with its base at the origin and its tip one unit back along -x.
+    cone: new THREE.ConeGeometry(3.6, 1, 6, 1, true).translate(0, 0.5, 0).rotateZ(Math.PI / 2),
     aura: new THREE.BoxGeometry(CRAFT_LENGTH + 12, 30, 52).translate(0, 12, 0),
     glow: radial('rgba(255,255,255,0.9)', 'rgba(255,255,255,0)'),
     shadow: radial('rgba(0,0,0,0.7)', 'rgba(0,0,0,0)'),
@@ -1963,9 +2243,24 @@ class CarRig {
       white: new THREE.Color(sk?.accent ?? 0xf3ead2), intake: new THREE.Color(0xdff6ff), nozzle: new THREE.Color(0xbff4ff),
       neon: sk ? new THREE.Color(sk.glow) : livery.clone().lerp(new THREE.Color(0xffffff), 0.35),
     };
-    const fighter = CRAFT_MODEL === 'fighter';
+    const origami = CRAFT_MODEL === 'origami';
+    const fighter = CRAFT_MODEL === 'fighter' || origami;
     const painter = liveryPainter(sk?.pattern);   // a mythic livery's own pattern, cube by cube
-    if (fighter) {
+    if (origami) {
+      const paper = liveryPaper(sk?.pattern, livery);
+      for (const m of foldMeshes(origamiHull(), colors, paper)) this.body.add(m);
+      const plate = origamiPlate(), left = new Fold();
+      left.pos = plate.pos.map((v, k) => (k % 3 === 2 ? -v : v)); left.kinds = plate.kinds;
+      for (const side of [1, -1]) {
+        for (const upper of [true, false]) {
+          const g = new THREE.Group();
+          g.position.set(-16, upper ? FY + 0.6 : FY - 3.6, side * 6);
+          for (const m of foldMeshes(side > 0 ? plate : left, colors, paper)) g.add(m);
+          this.body.add(g);
+          this.plates.push({ g, sign: (upper ? -1 : 1) * side });
+        }
+      }
+    } else if (fighter) {
       const vox = fighterVoxels();
       const hullPaint = painter && ((v: Voxel) => {
         const [hw, hh] = fuselageHalf(v.x), dy = v.y - FY;
@@ -2003,7 +2298,12 @@ class CarRig {
 
     // The car number on the engine cover, in chunky pixels.
     const num = car.name.match(/^\d+/)?.[0];
-    if (num) {
+    if (num && origami) {
+      const decal = textPlane(num, '#14182a', 12, 8);
+      decal.geometry.rotateY(-Math.PI / 2);
+      decal.position.set(3, 1.6, 13);
+      this.plates[0].g.add(decal);   // on the upper right wing sheet
+    } else if (num) {
       const decal = textPlane(num, '#ffffff', 16, 10);
       const map = (decal.material as THREE.MeshBasicMaterial).map!;
       map.magFilter = THREE.NearestFilter;
@@ -2015,8 +2315,9 @@ class CarRig {
 
     // Blocky flames out of the twin thrusters.
     this.flameMat = new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+    const flameGeo = origami ? s.cone : s.flame;
     for (const z of fighter ? [-12, 12] : [-7, 7]) {
-      const f = mesh(s.flame, this.flameMat, this.body);
+      const f = mesh(flameGeo, this.flameMat, this.body);
       f.position.set(fighter ? -46 : -44, fighter ? FY : 7, z);
       this.flames.push(f);
     }
