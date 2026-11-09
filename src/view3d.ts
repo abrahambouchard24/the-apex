@@ -76,7 +76,7 @@ const ATMOS: Record<string, Atmos> = {
     fog: '#f0d2a0', fogNear: 3600, fogFar: 14000, hemi: ['#fff1dc', '#6a5038', 1.8], ground: '#ead2a4',
     road: '#463e38', wall: ['#fff8ec', '#e2c9a2'], skyline: 'dunes', skylineColor: '#d8b483', windows: '#9ff0ff', gates: 3,
   },
-  'FAE FOREST': {          // the fae grove in the sky: a golden noon over a white sea of cloud
+  'AETHER GROVE': {        // the fae grove in the sky: a golden noon over a white sea of cloud
     sky: ['#e9c46a', '#fbe7b0', '#fffaf0'], sun: { color: '#fff4d0', elev: 0.32, azim: 2.0, size: 460, light: 2.1 }, stars: 0,
     fog: '#fbf1dc', fogNear: 2200, fogFar: 11000, hemi: ['#fff8e8', '#c8a868', 1.9], ground: '#fffaf2',
     road: '#5a4c3a', wall: ['#fffdf6', '#e8d6a8'], skyline: 'clouds', skylineColor: '#fff6e2', windows: '#ffe9a8', gates: 4, mist: true,
@@ -1397,7 +1397,7 @@ function propObject(p: Prop, spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 
       put(new THREE.ConeGeometry(r * 0.14, h * 0.12, 6), phong(GOLD_C), 0, h * 0.82 + r * 0.66 + h * 0.05);
       break;
     }
-    // --- Fae Forest (the sky grove) ----------------------------------------------------------------------
+    // --- Aether Grove (the sky grove) --------------------------------------------------------------------
     case 'gold-tree': {
       // A fae tree of the sky: a slender white trunk, a faceted crown of gold leaves, glowing blossoms.
       put(new THREE.CylinderGeometry(p.r * 0.1, p.r * 0.16, h * 0.62, 6), phong(0xfbf6ea), 0, h * 0.31);

@@ -43,7 +43,7 @@ const jog = (r: number, street: number, left = true): Seg[] => {
 /** An S through a fork: lanes swap inside and outside, so their lengths even out. */
 const bendy = (r: number, deg: number, left = true): Seg[] => (left ? [L(deg, r), R(deg * 2, r), L(deg, r)] : [R(deg, r), L(deg * 2, r), R(deg, r)]);
 
-const FAE: Course = [
+const AETHER: Course = [
   S(2000),
   ...esses(600, 80, 4), S(400),
   // The grove: a jump off the cloud bank at the end of the winding ride, or the long way round on a charging strip.
@@ -165,7 +165,7 @@ const sprint = (name: string, blurb: string, course: Course, theme: TrackDef['th
   ({ name, blurb, sprint: true, course, control: [], theme });
 
 export const SPRINTS: TrackDef[] = [
-  sprint('FAE FOREST', 'The fae grove in the golden sky: winding esses over a white sea of cloud, golden trees and sun-gates', FAE,
+  sprint('AETHER GROVE', 'The fae grove in the golden sky: winding esses over a white sea of cloud, golden trees and sun-gates', AETHER,
     { wall: '#ffd66b', wallFace: '#fffaf0', lights: '255, 236, 180', kerb: '#fff6e0', surface: '#4a4032' }),
   sprint('AVALON', 'Misty isle sprint: a spiral round the lake through the fog, standing stones and causeway jumps', AVALON,
     { wall: '#b9f0e6', wallFace: '#eef6f2', lights: '200, 240, 230', kerb: '#9a8cd8', surface: '#262c30' }),

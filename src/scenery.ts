@@ -247,7 +247,7 @@ function build(track: Track): Scenery {
       break;
     }
     // --- sprints: long routes, so landmarks line the way at intervals -------------------------------
-    case 'FAE FOREST': {
+    case 'AETHER GROVE': {
       // The fae grove in the golden sky: the road runs over a white sea of cloud between groves of
       // golden trees, floating isles, gold spires and ivory sun-gates, with fairy lights drifting.
       ground = 'snow';
@@ -335,7 +335,7 @@ function build(track: Track): Scenery {
   }
   // Sprints: landmarks stand on the island at every split, between the jump lane and the bypass.
   const ISLE_MARK: Record<string, (r: number) => Omit<Prop, 'seed' | 'x' | 'y'>> = {
-    'FAE FOREST': (r) => ({ kind: 'gold-tree', r, h: 280 }),
+    'AETHER GROVE': (r) => ({ kind: 'gold-tree', r, h: 280 }),
     'AVALON': (r) => ({ kind: 'stone-ring', r: r * 0.85, h: 90 }),
     'ZOROPERSIA': (r) => ({ kind: 'fire-temple', r: r * 0.85, h: 170 }),
     'BIFROST': (r) => ({ kind: 'gold-tower', r: r * 0.5, h: 460 }),
