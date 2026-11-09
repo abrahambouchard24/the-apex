@@ -248,17 +248,18 @@ function build(track: Track): Scenery {
     }
     // --- sprints: long routes, so landmarks line the way at intervals -------------------------------
     case 'FAE FOREST': {
-      // An enchanted forest: ancient trees crowding the route, giant glowing mushrooms, fairy lights
-      // drifting in the glades, rings of standing stones.
-      ground = 'garden';
-      const cap = () => pick(['#ff6bd8', '#4fe3ff', '#b98cff', '#7dffb0']);
-      row(0, m - 1, 52, -1, WALL_DIST + 110, () => ({ kind: 'ancient-tree', r: between(80, 120), h: between(200, 300) }));
-      row(26, m - 1, 52, 1, WALL_DIST + 110, () => ({ kind: 'ancient-tree', r: between(80, 120), h: between(200, 300) }));
-      row(13, m - 1, 61, -1, WALL_DIST + 60, () => { const c = cap(); return { kind: 'mushroom', r: between(40, 70), h: between(70, 130), color: c, accent: c }; });
-      row(40, m - 1, 67, 1, WALL_DIST + 60, () => { const c = cap(); return { kind: 'mushroom', r: between(40, 70), h: between(70, 130), color: c, accent: c }; });
-      scatter(40, (x, y) => ({ kind: 'ancient-tree', x, y, r: between(90, 140), h: between(220, 340) }), 900, 1400);
-      scatter(60, (x, y) => { const c = cap(); return { kind: 'wisp', x, y, r: 10, h: between(30, 110), color: c, accent: c }; }, 400);
-      scatter(4, (x, y) => ({ kind: 'stone-ring', x, y, r: 150, h: 70 }), 500);
+      // The fae grove in the golden sky: the road runs over a white sea of cloud between groves of
+      // golden trees, floating isles, gold spires and ivory sun-gates, with fairy lights drifting.
+      ground = 'snow';
+      row(0, m - 1, 46, -1, WALL_DIST + 100, () => ({ kind: 'gold-tree', r: between(70, 100), h: between(170, 240) }));
+      row(23, m - 1, 46, 1, WALL_DIST + 100, () => ({ kind: 'gold-tree', r: between(70, 100), h: between(170, 240) }));
+      row(11, m - 1, 37, -1, WALL_DIST + 300, () => ({ kind: 'cloud-puff', r: between(120, 200), h: between(60, 100) }));
+      row(30, m - 1, 41, 1, WALL_DIST + 300, () => ({ kind: 'cloud-puff', r: between(120, 200), h: between(60, 100) }));
+      scatter(34, (x, y) => ({ kind: 'sky-isle', x, y, r: between(90, 160), h: between(160, 480) }), 1200, 1600);
+      scatter(12, (x, y) => ({ kind: 'gold-tower', x, y, r: 55, h: between(320, 520) }), 900);
+      scatter(8, (x, y) => ({ kind: 'sun-gate', x, y, r: 150, h: 330, rot: rand() * Math.PI }), 800);
+      clumps(10, 6, 360, (x, y) => ({ kind: 'gold-tree', x, y, r: between(60, 90), h: between(150, 210) }));
+      scatter(60, (x, y) => ({ kind: 'wisp', x, y, r: 9, h: between(30, 130), color: pick(['#fff4c0', '#ffffff', '#ffd86a']) }), 400);
       break;
     }
     case 'AVALON': {
@@ -334,7 +335,7 @@ function build(track: Track): Scenery {
   }
   // Sprints: landmarks stand on the island at every split, between the jump lane and the bypass.
   const ISLE_MARK: Record<string, (r: number) => Omit<Prop, 'seed' | 'x' | 'y'>> = {
-    'FAE FOREST': (r) => ({ kind: 'ancient-tree', r, h: 260 }),
+    'FAE FOREST': (r) => ({ kind: 'gold-tree', r, h: 280 }),
     'AVALON': (r) => ({ kind: 'stone-ring', r: r * 0.85, h: 90 }),
     'ZOROPERSIA': (r) => ({ kind: 'fire-temple', r: r * 0.85, h: 170 }),
     'BIFROST': (r) => ({ kind: 'gold-tower', r: r * 0.5, h: 460 }),

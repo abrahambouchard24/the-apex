@@ -76,10 +76,10 @@ const ATMOS: Record<string, Atmos> = {
     fog: '#f0d2a0', fogNear: 3600, fogFar: 14000, hemi: ['#fff1dc', '#6a5038', 1.8], ground: '#ead2a4',
     road: '#463e38', wall: ['#fff8ec', '#e2c9a2'], skyline: 'dunes', skylineColor: '#d8b483', windows: '#9ff0ff', gates: 3,
   },
-  'FAE FOREST': {          // fae twilight: a mint-green sky, mist between the ancient trees
-    sky: ['#06121c', '#14404a', '#c8f0d0'], sun: { color: '#d8fff0', elev: 0.1, azim: 2.0, size: 200, light: 1.1 }, stars: 200,
-    fog: '#1a3a3a', fogNear: 1500, fogFar: 7500, hemi: ['#b8ffe0', '#10201a', 1.6], ground: '#2f5a46',
-    road: '#202a28', wall: ['#e8fff4', '#9cc8b4'], skyline: 'dunes', skylineColor: '#0f2a28', windows: '#fff0a0', gates: 3,
+  'FAE FOREST': {          // the fae grove in the sky: a golden noon over a white sea of cloud
+    sky: ['#e9c46a', '#fbe7b0', '#fffaf0'], sun: { color: '#fff4d0', elev: 0.32, azim: 2.0, size: 460, light: 2.1 }, stars: 0,
+    fog: '#fbf1dc', fogNear: 2200, fogFar: 11000, hemi: ['#fff8e8', '#c8a868', 1.9], ground: '#fffaf2',
+    road: '#5a4c3a', wall: ['#fffdf6', '#e8d6a8'], skyline: 'clouds', skylineColor: '#fff6e2', windows: '#ffe9a8', gates: 4, mist: true,
   },
   'AVALON': {              // a pale, foggy dawn over the lake: mist on the water, the isle a shadow in it
     sky: ['#5c6f7c', '#a9bcc0', '#e8e4f0'], sun: { color: '#f4eef8', elev: 0.12, azim: 2.2, size: 520, light: 1.25 }, stars: 0,
@@ -1395,6 +1395,47 @@ function propObject(p: Prop, spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 
       for (const f of [0.3, 0.6]) put(new THREE.CylinderGeometry(r * 0.74 - f * 0.2 * r + 2, r * 0.74 - f * 0.2 * r + 2, h * 0.04, 8), phong(GOLD_C), 0, h * 0.82 * f);
       put(new THREE.SphereGeometry(r * 0.66, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), phong(GOLD_C, 0x3a2a08), 0, h * 0.82);
       put(new THREE.ConeGeometry(r * 0.14, h * 0.12, 6), phong(GOLD_C), 0, h * 0.82 + r * 0.66 + h * 0.05);
+      break;
+    }
+    // --- Fae Forest (the sky grove) ----------------------------------------------------------------------
+    case 'gold-tree': {
+      // A fae tree of the sky: a slender white trunk, a faceted crown of gold leaves, glowing blossoms.
+      put(new THREE.CylinderGeometry(p.r * 0.1, p.r * 0.16, h * 0.62, 6), phong(0xfbf6ea), 0, h * 0.31);
+      put(new THREE.IcosahedronGeometry(p.r * 0.62, 0), phong(0xe8b84a, 0x3a2a08), 0, h * 0.7);
+      put(new THREE.IcosahedronGeometry(p.r * 0.42, 0), phong(0xf4d27a, 0x3a2a08), p.r * 0.38, h * 0.6, p.r * 0.1);
+      for (let k = 0; k < 4; k++) {
+        const a = k * 1.7;
+        put(new THREE.OctahedronGeometry(p.r * 0.07, 0), glowing('#fff4c0'), Math.cos(a) * p.r * 0.6, h * (0.55 + (k % 2) * 0.2), Math.sin(a) * p.r * 0.6);
+      }
+      break;
+    }
+    case 'cloud-puff': {
+      // A bank of cloud sitting on the cloud sea: a few soft white lumps.
+      for (const [x, y, z, s2] of [[0, 0.3, 0, 1], [p.r * 0.6, 0.2, p.r * 0.2, 0.7], [-p.r * 0.55, 0.22, -p.r * 0.15, 0.75], [p.r * 0.1, 0.5, -p.r * 0.3, 0.6]]) {
+        put(new THREE.SphereGeometry(p.r * 0.5 * s2, 8, 6), phong(0xffffff, 0x2a2620), x, h * y, z);
+      }
+      break;
+    }
+    case 'sky-isle': {
+      // A floating isle of white stone with a golden tree on it and a gold crystal hanging below.
+      const y0 = p.h, r = p.r;
+      put(new THREE.CylinderGeometry(r, r * 0.92, 16, 9), phong(0xf6f0e2), 0, y0);
+      put(new THREE.CylinderGeometry(r * 1.01, r * 1.01, 3, 9), phong(GOLD_C), 0, y0 + 8);
+      put(new THREE.ConeGeometry(r * 0.95, r * 1.2, 7), phong(0xe2d6bc), 0, y0 - 8 - r * 0.6).rotation.x = Math.PI;
+      put(new THREE.OctahedronGeometry(r * 0.16, 0), glowing('#ffd86a'), 0, y0 - r * 1.3);
+      put(new THREE.CylinderGeometry(r * 0.06, r * 0.09, r * 0.7, 6), phong(0xfbf6ea), r * 0.2, y0 + 8 + r * 0.35);
+      put(new THREE.IcosahedronGeometry(r * 0.38, 0), phong(0xe8b84a, 0x3a2a08), r * 0.2, y0 + 8 + r * 0.8);
+      break;
+    }
+    case 'sun-gate': {
+      // An ivory ring standing on the clouds, a gold sunburst in its crown.
+      put(new THREE.TorusGeometry(p.r, p.r * 0.12, 8, 24), phong(0xfbf6ea), 0, p.r * 1.1).rotation.y = p.rot ?? 0;
+      for (let k = 0; k < 7; k++) {
+        const a = Math.PI * (0.2 + 0.1 * k);
+        const ray = put(new THREE.BoxGeometry(p.r * 0.06, p.r * 0.5, p.r * 0.06), phong(GOLD_C), Math.cos(a) * p.r * 1.25, p.r * 1.1 + Math.sin(a) * p.r * 1.25, 0);
+        ray.rotation.z = a - Math.PI / 2;
+      }
+      put(new THREE.CylinderGeometry(p.r * 0.3, p.r * 0.4, p.r * 0.2, 8), phong(MARBLE), 0, p.r * 0.1);
       break;
     }
     // --- Fae Forest ------------------------------------------------------------------------------------

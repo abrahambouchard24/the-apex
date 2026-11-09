@@ -46,14 +46,14 @@ const bendy = (r: number, deg: number, left = true): Seg[] => (left ? [L(deg, r)
 const FAE: Course = [
   S(2000),
   ...esses(600, 80, 4), S(400),
-  // The glade: a jump at the end of the winding ride, or the long way round on a charging strip.
+  // The grove: a jump off the cloud bank at the end of the winding ride, or the long way round on a charging strip.
   fork(jump(0.9), sweeper('charge', 250), S(500), ...bendy(1300, 25), S(2700)),
   S(1400), R(90, 420), S(300), L(150, 380), S(300), L(30, 500), S(400),
   // A long left: the tight inside line, or wide round the hill with a jump on the way out.
   fork(inside(1050, 520), wide('jump', 0.85), S(500), L(100, 1050), S(2700)),
   R(50, 450), L(40, 450), R(90, 380), S(400),
   ...esses(500, 90, 4), S(400),
-  // Through the trunks (a cool, shaded chicane), or the long charging loop.
+  // Through the golden trunks (a cool, shaded chicane), or the long charging loop.
   fork(chicane('cool'), sweeper('charge', 250), S(500), ...bendy(1400, 20, false), S(900)),
   S(300), L(70, 400), R(140, 350), L(100, 400), S(300),
   fork(wide('charge'), inside(1100), S(900), R(120, 1100), S(1200)),
@@ -165,8 +165,8 @@ const sprint = (name: string, blurb: string, course: Course, theme: TrackDef['th
   ({ name, blurb, sprint: true, course, control: [], theme });
 
 export const SPRINTS: TrackDef[] = [
-  sprint('FAE FOREST', 'Enchanted forest sprint: flowing esses, glade jumps, chicanes through the trunks', FAE,
-    { wall: '#9dffb8', wallFace: '#eaf7e6', lights: '210, 255, 190', kerb: '#c8a0ff', surface: '#1e2622' }),
+  sprint('FAE FOREST', 'The fae grove in the golden sky: winding esses over a white sea of cloud, golden trees and sun-gates', FAE,
+    { wall: '#ffd66b', wallFace: '#fffaf0', lights: '255, 236, 180', kerb: '#fff6e0', surface: '#4a4032' }),
   sprint('AVALON', 'Misty isle sprint: a spiral round the lake through the fog, standing stones and causeway jumps', AVALON,
     { wall: '#b9f0e6', wallFace: '#eef6f2', lights: '200, 240, 230', kerb: '#9a8cd8', surface: '#262c30' }),
   sprint('ZOROPERSIA', 'Desert fire-temple sprint: endless straights, hairpin turns, big jumps', ZORO,
