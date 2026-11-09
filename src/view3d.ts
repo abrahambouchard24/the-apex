@@ -2233,6 +2233,9 @@ function voxelMeshes(voxels: Voxel[], colors: Record<VoxKind, THREE.Color>, pain
   return out;
 }
 
+/** The craft's wings: fully open in an X (radians each sheet tilts) below WING_OPEN_BELOW px/s, closed by WING_CLOSED_AT. */
+const WING_X = 0.42, WING_OPEN_BELOW = 120, WING_CLOSED_AT = 760;
+
 /** Make a car a Time Trial ghost: a faint sea-teal hologram (its own copies of the materials), no shadow. */
 const GHOST_TINT = new THREE.Color(0x7fe6da);
 function ghostly(root: THREE.Object3D): void {
@@ -2270,7 +2273,6 @@ class CarRig {
   private roll = 0;
   private pitch = 0;
   private wingTilt = 0;
-  private lastSpeed: number | null = null;
   private shadow!: THREE.Mesh;
   private under!: THREE.Mesh;
   /** The fighter's four wing plates, each hinged at its root (sign: which way it opens). */
@@ -2419,12 +2421,11 @@ class CarRig {
     for (const f of this.flames) f.scale.set(len, 1, 1);
 
     if (this.plates.length) {
-      // Slowing down spreads the stacked wings like an airbrake: fully under braking, and a little
-      // whenever the craft is shedding speed fast (a wall, a tight corner), closing again as it pulls away.
-      const sp = c.speed, decel = this.lastSpeed === null || dt <= 0 ? 0 : (this.lastSpeed - sp) / dt;
-      this.lastSpeed = sp;
-      const spread = c.braking ? 1 : clamp((decel - 150) / 500, 0, 1);
-      this.wingTilt += (spread * 0.3 - this.wingTilt) * (1 - Math.exp(-(spread * 0.3 > this.wingTilt ? 12 : 5) * dt));
+      // The wings rest open in an X and fold together as speed builds: wide open when slow or
+      // stopped, closed flat at top speed. So braking (or a big hit) opens them again on its own.
+      const t = clamp((c.speed - WING_OPEN_BELOW) / (WING_CLOSED_AT - WING_OPEN_BELOW), 0, 1);
+      const spread = 1 - t * t * (3 - 2 * t);   // smoothstep
+      this.wingTilt += (spread * WING_X - this.wingTilt) * (1 - Math.exp(-6 * dt));
       for (const p of this.plates) p.g.rotation.x = p.sign * this.wingTilt;
     } else {
       this.wingTilt += ((c.drsOpen ? -0.45 : 0) - this.wingTilt) * (1 - Math.exp(-12 * dt));
