@@ -261,20 +261,22 @@ function build(track: Track): Scenery {
       scatter(4, (x, y) => ({ kind: 'stone-ring', x, y, r: 150, h: 70 }), 500);
       break;
     }
-    case 'NOVA CAMELOT': {
-      // A futurist Camelot: curtain walls and round towers along the route, banners, a great keep,
-      // and the sword in the stone by the start.
-      ground = 'garden';
-      for (let i = 0; i < m; i += 70) {
-        const t = beside(i, -1, WALL_DIST + 140);
-        place({ kind: 'castle-tower', ...t, r: 60, h: between(220, 340) }, 0);
-        const w = beside(i + 35, -1, WALL_DIST + 110);
-        place({ kind: 'castle-wall', ...w, r: 95, h: 90, w: 180 }, 0);
+    case 'AVALON': {
+      // The misty lake of Avalon: the road runs on causeways over still water, past willows,
+      // standing stones and apple orchards, spiralling in to the isle and its tor.
+      ground = 'water';
+      row(0, m - 1, 44, -1, WALL_DIST + 90, () => ({ kind: 'willow', r: between(70, 100), h: between(130, 180) }));
+      row(22, m - 1, 58, 1, WALL_DIST + 80, () => ({ kind: 'standing-stone', r: 50, h: between(90, 150), rot: rand() * Math.PI }));
+      clumps(14, 6, 380, (x, y) => ({ kind: 'apple-tree', x, y, r: between(40, 60), h: between(80, 110) }));
+      scatter(24, (x, y) => ({ kind: 'willow', x, y, r: between(80, 120), h: between(140, 200) }), 900, 1400);
+      scatter(6, (x, y) => ({ kind: 'stone-ring', x, y, r: 170, h: 90 }), 700);
+      scatter(50, (x, y) => ({ kind: 'wisp', x, y, r: 9, h: between(30, 120), color: pick(['#c8fff0', '#d8c8ff', '#fff4d0']) }), 400);
+      // The isle at the heart of the spiral, by the finish; the sword in the lake by the start.
+      {
+        const f = track.pts[track.finishIndex], q = beside(track.finishIndex, 1, WALL_DIST + 520);
+        place({ kind: 'tor', x: q.x, y: q.y, r: 380, h: 420 }, 0) || place({ kind: 'tor', x: f.x - f.nx * 700, y: f.y - f.ny * 700, r: 380, h: 420 }, 0);
       }
-      row(20, m - 1, 45, 1, WALL_DIST + 60, () => ({ kind: 'banner', r: 26, h: 150, color: pick(['#3d7bff', '#ff3d6e', '#ffd23f', '#f3ead2']) }));
-      place({ kind: 'keep', x: cx, y: cy, r: 300, h: 360 }) || scatter(1, (x, y) => ({ kind: 'keep', x, y, r: 300, h: 360 }), 600);
-      { const q = beside(30, 1, WALL_DIST + 200); place({ kind: 'sword-stone', ...q, r: 80, h: 200 }, 0); }
-      scatter(70, (x, y) => ({ kind: 'cypress', x, y, r: 18, h: 110 }), 900, 1400);
+      { const q = beside(30, -1, WALL_DIST + 220); place({ kind: 'lake-sword', ...q, r: 90, h: 260 }, 0); }
       break;
     }
     case 'ZOROPERSIA': {
@@ -333,7 +335,7 @@ function build(track: Track): Scenery {
   // Sprints: landmarks stand on the island at every split, between the jump lane and the bypass.
   const ISLE_MARK: Record<string, (r: number) => Omit<Prop, 'seed' | 'x' | 'y'>> = {
     'FAE FOREST': (r) => ({ kind: 'ancient-tree', r, h: 260 }),
-    'NOVA CAMELOT': (r) => ({ kind: 'castle-tower', r: r * 0.55, h: 300 }),
+    'AVALON': (r) => ({ kind: 'stone-ring', r: r * 0.85, h: 90 }),
     'ZOROPERSIA': (r) => ({ kind: 'fire-temple', r: r * 0.85, h: 170 }),
     'BIFROST': (r) => ({ kind: 'gold-tower', r: r * 0.5, h: 460 }),
     'EL DORADO': (r) => ({ kind: 'meso-temple', r: r * 0.75, h: 260 }),

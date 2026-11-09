@@ -37,6 +37,7 @@ interface Atmos {
   gates: number;                   // light gates arching over the track
   aurora?: boolean;                // northern lights rippling across the sky
   lightning?: boolean;             // a storm: bolts in the distance and flashes of light
+  mist?: boolean;                  // low banks of mist drifting over the ground
 }
 
 const ATMOS: Record<string, Atmos> = {
@@ -80,10 +81,10 @@ const ATMOS: Record<string, Atmos> = {
     fog: '#1a3a3a', fogNear: 1500, fogFar: 7500, hemi: ['#b8ffe0', '#10201a', 1.6], ground: '#2f5a46',
     road: '#202a28', wall: ['#e8fff4', '#9cc8b4'], skyline: 'dunes', skylineColor: '#0f2a28', windows: '#fff0a0', gates: 3,
   },
-  'NOVA CAMELOT': {        // a bright morning over the castle city
-    sky: ['#2a6fd0', '#8fc4f0', '#fff4d8'], sun: { color: '#fff8e8', elev: 0.35, azim: 2.6, size: 220, light: 2.0 }, stars: 0,
-    fog: '#dfe8f0', fogNear: 2600, fogFar: 12000, hemi: ['#f4f8ff', '#5a6a48', 1.9], ground: '#7fa060',
-    road: '#33363f', wall: ['#fffaf0', '#d8ccb0'], skyline: 'towers', skylineColor: '#9fb6d8', windows: '#ffe8a0', gates: 3,
+  'AVALON': {              // a pale, foggy dawn over the lake: mist on the water, the isle a shadow in it
+    sky: ['#5c6f7c', '#a9bcc0', '#e8e4f0'], sun: { color: '#f4eef8', elev: 0.12, azim: 2.2, size: 520, light: 1.25 }, stars: 0,
+    fog: '#aebfc2', fogNear: 700, fogFar: 5200, hemi: ['#e4eef0', '#3a4a52', 1.7], ground: '#5f7f86',
+    road: '#2a3236', wall: ['#eef4f2', '#b4c4c2'], skyline: 'peaks', skylineColor: '#8a9ea4', windows: '#c8fff0', gates: 3, mist: true,
   },
   'ZOROPERSIA': {          // a fire-lit dusk over the temples
     sky: ['#160c2a', '#8a3a3a', '#ffb070'], sun: { color: '#ffc080', elev: 0.06, azim: 0.6, size: 380, light: 1.6 }, stars: 60,
@@ -747,13 +748,16 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   if (aurora) group.add(aurora.group);
   const storm = atmos.lightning ? lightningStorm(0, 0) : null;
   if (storm) group.add(storm.group);
+  const mist = atmos.mist ? mistBanks(atmos.fog) : null;
+  if (mist) group.add(mist.group);
 
   const water = groundMoves(track);
   return {
     track, group, atmos, flash: 0,
-    skyFollow: [aurora?.group, storm?.group, follow ? skyGroup : null].filter((o): o is THREE.Group => !!o),
+    skyFollow: [aurora?.group, storm?.group, mist?.group, follow ? skyGroup : null].filter((o): o is THREE.Group => !!o),
     animate(time: number) {
       aurora?.animate(time);
+      mist?.animate(time);
       if (storm) this.flash = storm.animate(time);
       pulseTex.offset.y = -(time * 1100) / 376;
       lampMat.opacity = 0.55 + 0.45 * Math.sin(time * 4);
@@ -761,6 +765,50 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       for (const t2 of stripTex) t2.offset.y = -time * (t2.userData.speed as number);
       if (water) groundTex.offset.set(-(time * 18) / 512, (time * 7) / 512);
       for (const s of spinners) s.obj.rotation[s.axis] = time * s.rate;
+    },
+  };
+}
+
+/**
+ * Mist: three wide sheets of soft, patchy fog low over the ground, drifting slowly at different
+ * speeds, so the cars race in and out of it. They follow the camera like the sky does.
+ */
+function mistBanks(color: string): { group: THREE.Group; animate(time: number): void } {
+  const group = new THREE.Group();
+  const puff = canvas2d(256, 256, (g) => {
+    // Soft blobs that wrap at the edges, so the sheet tiles without seams.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let k = 0; k < 40; k++) {
+      const x = rnd() * 256, y = rnd() * 256, r = 20 + rnd() * 50, a = 0.25 + rnd() * 0.35;
+      for (const dx of [-256, 0, 256]) for (const dy of [-256, 0, 256]) {
+        const grd = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+        grd.addColorStop(0, `rgba(255,255,255,${a})`); grd.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = grd; g.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+      }
+    }
+  });
+  const sheets: THREE.Texture[] = [];
+  for (const [y, opacity, rep] of [[10, 0.5, 9], [26, 0.34, 7], [46, 0.2, 5]] as const) {
+    const t = new THREE.CanvasTexture(puff);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(rep, rep);
+    sheets.push(t);
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ map: t, color, transparent: true, opacity, depthWrite: false, fog: true }));
+    sheet.position.y = y;
+    sheet.renderOrder = 3;
+    group.add(sheet);
+  }
+  return {
+    group,
+    animate(time: number) {
+      // Drift, and slide the pattern against the camera's own movement so the mist stays put in the world.
+      const x = group.position.x, z = group.position.z;
+      sheets.forEach((t, k) => {
+        const size = 9000 / t.repeat.x;
+        t.offset.set((x / size) + time * (0.004 + k * 0.003), -(z / size) + time * (0.002 + k * 0.002));
+      });
     },
   };
 }
@@ -1373,6 +1421,43 @@ function propObject(p: Prop, spinners: { obj: THREE.Object3D; axis: 'x' | 'y' | 
         st.rotation.y = -a;
       }
       put(new THREE.CylinderGeometry(p.r * 0.35, p.r * 0.35, 4, 12), glowing('#7dffb0'), 0, 2);
+      break;
+    }
+    // --- Avalon ----------------------------------------------------------------------------------------
+    case 'willow': {
+      // A weeping willow: a leaning trunk and a drooping crown that falls to the water.
+      put(new THREE.CylinderGeometry(p.r * 0.12, p.r * 0.2, h * 0.7, 7), phong(0x4a4038), 0, h * 0.35).rotation.z = 0.12;
+      put(new THREE.SphereGeometry(p.r * 0.7, 9, 6, 0, Math.PI * 2, 0, Math.PI / 2), phong(0x7fa08a), 0, h * 0.62);
+      put(new THREE.CylinderGeometry(p.r * 0.7, p.r, h * 0.55, 10, 1, true), phong(0x6f9480), 0, h * 0.36);
+      break;
+    }
+    case 'standing-stone':
+      put(new THREE.BoxGeometry(p.r * 0.7, h, p.r * 0.45), phong(0x8c9296), 0, h / 2).rotation.set(0.05, p.rot ?? 0, -0.06);
+      put(new THREE.BoxGeometry(p.r * 0.3, h * 0.08, 2), glowing('#9ff0dc'), 0, h * 0.62, p.r * 0.24);
+      break;
+    case 'apple-tree': {
+      put(new THREE.CylinderGeometry(p.r * 0.12, p.r * 0.16, h * 0.5, 6), phong(0x5a4636), 0, h * 0.25);
+      put(new THREE.SphereGeometry(p.r * 0.7, 9, 7), phong(0x6f9a6a), 0, h * 0.68);
+      for (let k = 0; k < 5; k++) {
+        const a = k * 1.3;
+        put(new THREE.SphereGeometry(p.r * 0.1, 6, 4), phong(0xf0d8e0), Math.cos(a) * p.r * 0.55, h * (0.6 + (k % 3) * 0.08), Math.sin(a) * p.r * 0.55);
+      }
+      break;
+    }
+    case 'tor': {
+      // The isle's tor: a green mound terraced in rings, a roofless tower on top, a glow inside it.
+      put(new THREE.CylinderGeometry(p.r * 0.35, p.r, h * 0.45, 12), phong(0x5f8068), 0, h * 0.225);
+      for (const f of [0.3, 0.6]) put(new THREE.CylinderGeometry(p.r * (1 - f * 0.65) + 4, p.r * (1 - f * 0.65) + 4, 4, 12), phong(0x4f6e58), 0, h * 0.45 * f);
+      put(new THREE.BoxGeometry(p.r * 0.22, h * 0.5, p.r * 0.22), phong(0xc8ccc4), 0, h * 0.7);
+      put(new THREE.BoxGeometry(p.r * 0.1, h * 0.14, p.r * 0.23), glowing('#c8fff0'), 0, h * 0.78);
+      break;
+    }
+    case 'lake-sword': {
+      // The sword held up from the lake: an arm of white samite, a long blade, a gold hilt.
+      put(new THREE.CylinderGeometry(p.r * 0.1, p.r * 0.14, h * 0.3, 8), phong(0xf2f4f6), 0, h * 0.15);
+      put(new THREE.BoxGeometry(p.r * 0.1, h * 0.6, p.r * 0.03), glowing('#e8fffa'), 0, h * 0.62);
+      put(new THREE.BoxGeometry(p.r * 0.5, p.r * 0.08, p.r * 0.1), phong(GOLD_C), 0, h * 0.33);
+      put(new THREE.CylinderGeometry(p.r * 0.5, p.r * 0.5, 2, 16), glowing('#9ff0dc'), 0, 1);
       break;
     }
     // --- Nova Camelot ---------------------------------------------------------------------------------

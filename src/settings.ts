@@ -31,8 +31,8 @@ const DEFAULTS: Settings = { music: 0.8, sfx: 0.9, muted: false, quality: 'high'
 const SETTINGS_KEY = 'the-apex-settings';
 const RECORDS_KEY = 'the-apex-records';
 const SPRINTS_KEY = 'the-apex-sprint-layouts';   // which sprint layouts the saved records are for
-const SPRINTS_VERSION = '2';
-const OLD_SPRINTS = ['FAE FOREST', 'NOVA CAMELOT', 'ZOROPERSIA', 'BIFROST', 'EL DORADO'];
+const SPRINTS_VERSION = '3';
+const OLD_SPRINTS = ['FAE FOREST', 'NOVA CAMELOT', 'AVALON', 'ZOROPERSIA', 'BIFROST', 'EL DORADO'];
 
 export function loadSettings(): Settings {
   try {
