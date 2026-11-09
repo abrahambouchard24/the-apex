@@ -398,8 +398,8 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
    * after it. Ribbons built over the whole track have two vertices per sample (2i, 2i+1).
    */
   /** Offsets that follow the road's width and the island at splits. */
-  const OUT = (side: number, plus = 0) => (i: number) => side * (track.outer[i] + plus);
-  const ISL = (side: number, plus = 0) => (i: number) => side * (track.island[i] + plus);
+  const OUT = (side: number, plus = 0) => (i: number) => side * (track.outer(i, side) + plus);
+  const ISL = (side: number, plus = 0) => (i: number) => side * (track.inner(i, side) + plus);
   /** Drop the triangles of a whole-track strip where `skip(sample)` (by the sample each segment starts at). */
   const cut = <G extends THREE.BufferGeometry>(g: G, skip: (seg: number) => boolean): G => {
     const idx = g.getIndex()!, keep: number[] = [];
@@ -447,7 +447,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
         for (let i = j.from, k = 0; i <= j.lip; i++, k++) pos.setY(2 * k, rampLift(i, j));
         add(g, sideMat);
       }
-      const p = pts[j.lip], li = sd * track.island[j.lip], lo = sd * track.outer[j.lip];
+      const p = pts[j.lip], li = sd * track.inner(j.lip, sd), lo = sd * track.outer(j.lip, sd);
       const lipFace = new THREE.BufferGeometry();
       lipFace.setAttribute('position', new THREE.Float32BufferAttribute([
         p.x + p.nx * li, 0, p.y + p.ny * li, p.x + p.nx * lo, 0, p.y + p.ny * lo,
@@ -489,13 +489,13 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     }
   }
   if (track.forks.length) {
-    const NAME: Record<string, string> = { jump: 'JUMP', boost: 'BOOST', charge: 'CHARGE', cool: 'COOL', fire: 'FIRE' };
     for (const f of track.forks) {
-      const nameOf = (kind: string, side: number) => NAME[kind] ?? (f.curve ? (side === f.sign ? 'INSIDE' : 'WIDE') : 'ROAD');
+      // On the island's nose, once it's wide enough to stand on.
       let i = f.from;
-      while (i < f.to && track.island[i] < 70) i++;
-      const p = pts[i], dir = track.direction(i);
-      const sign = textPlane(`◀ ${nameOf(f.left, 1)}     ${nameOf(f.right, -1)} ▶`, '#ffffff', 300, 40, theme.wall);
+      while (i < f.to && track.inL[i] + track.inR[i] < 140) i++;
+      const p0 = pts[i], mid = (track.inL[i] - track.inR[i]) / 2, dir = track.direction(i);
+      const p = { x: p0.x + p0.nx * mid, y: p0.y + p0.ny * mid };
+      const sign = textPlane(`◀ ${f.labels[0]}     ${f.labels[1]} ▶`, '#ffffff', 360, 40, theme.wall);
       sign.geometry.rotateX(Math.PI / 2).rotateY(Math.PI / 2);
       const holder = new THREE.Group();
       holder.add(bothWays(sign));
@@ -537,7 +537,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
         const base = pos.length / 3;
         if (track.isBreak(i)) continue;
         for (const [j, inset] of [[i, KERB_WIDTH], [i + 1, KERB_WIDTH], [i + 1, 0], [i, 0]] as const) {
-          const p = pts[j % m], d = track.outer[j % m] - inset;
+          const p = pts[j % m], d = track.outer(j % m, side) - inset;
           pos.push(p.x + p.nx * d * side, 0.8, p.y + p.ny * d * side);
           col.push(c.r, c.g, c.b);
         }
@@ -594,11 +594,11 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     add(whole(ribbon(0, m, OUT(side, -0.6), OUT(side, -0.6), WALL_H - 1, WALL_H - 6, 376)), pulseMat, 2);
     add(whole(ribbon(0, m, OUT(side, WALL_THICKNESS / 2 - 3), OUT(side, WALL_THICKNESS / 2 + 3), WALL_H + 0.3, WALL_H + 0.3, 110)), lampMat, 2);
   }
-  if (track.island.some((v) => v > 1)) {
+  if (track.forks.length) {
     // Islands: a raised block between the two lanes of a split, its walls in the barrier style and
     // its top in the track's colour, with a line of lights along each edge.
     const ISLAND_H = 40;
-    const noIsland = (seg: number) => track.isBreak(seg) || (track.island[seg] < 1 && track.island[(seg + 1) % m] < 1);
+    const noIsland = (seg: number) => track.isBreak(seg) || (!track.split(seg) && !track.split((seg + 1) % m));
     for (const side of [1, -1]) {
       const fg = cut(ribbon(0, m, ISL(side), ISL(side), ISLAND_H, 0, 1e9), noIsland); fg.setAttribute('uv', wallUv(m)); add(fg, faceMat);
       add(cut(ribbon(0, m, ISL(side, -6), ISL(side, -2), ISLAND_H + 0.3, ISLAND_H + 0.3, 110), noIsland), lampMat, 2);
@@ -626,8 +626,9 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
   // DRS zones: a dashed green line across the track where each starts, fainter where it ends.
   for (const z of track.drsZones) {
     for (const [i, start] of [[z.from, true], [z.to, false]] as const) {
+      if (track.split(i)) continue;
       const p = pts[i];
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(start ? 5 : 3, track.outer[i] * 2 - 12).rotateX(-Math.PI / 2),
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(start ? 5 : 3, track.outer(i, 1) * 2 - 12).rotateX(-Math.PI / 2),
         basic({ map: tex(canvas2d(4, 64, (g) => { for (let k = 0; k < 64; k += 11) { g.fillStyle = '#4dff9a'; g.fillRect(0, k, 4, 6); } }), false),
           transparent: true, opacity: start ? 0.9 : 0.4, depthWrite: false }));
       line.position.set(p.x, 0.9, p.y);
@@ -700,7 +701,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
     const gates = track.open ? atmos.gates * 3 : atmos.gates;
     for (let k = 1; k <= gates; k++) {
       let i = Math.floor((k / (gates + 1)) * (track.open ? track.finishIndex : m));
-      while (track.island[i] > 0 && i < m - 1) i++;
+      while (track.reach(i) > HALF_WIDTH + 1 && i < m - 1) i++;
       const p = pts[i], dir = track.direction(i);
       const gate = new THREE.Group();
       gate.add(new THREE.Mesh(new THREE.TorusGeometry(span, 6, 10, 48, Math.PI), gateMat));

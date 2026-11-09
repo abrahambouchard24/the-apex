@@ -2,6 +2,7 @@
 // centerline polyline. Everything else (edges, kerbs, walls, laps) is measured from that line.
 
 import type { Craft, Vec } from './craft';
+import { SPRINTS } from './sprints';
 
 /** Colors a track is drawn in: the barrier neon, its pulsing lights and the kerb stripe. */
 export interface TrackTheme { wall: string; wallFace: string; lights: string; kerb: string; surface: string }
@@ -16,21 +17,26 @@ export interface TrackDef {
   /** Layout scale: tracks with tight bends are spread out so the wide road still fits through them. */
   scale?: number;
   /**
-   * Sprint: a point-to-point route raced once, start to finish (control points run from the start
-   * line to the end of the run-off past the finish). At every jump the road splits into two lanes
-   * around an island: one lane has the jump, the other is a ground bypass. Sprints set how many
-   * samples each control segment gets and how many jumps (splits) to place.
+   * Sprint: a point-to-point route raced once, start to finish, hand-built from straights and arcs
+   * (`course`, which replaces `control`). Forks in it split the road into two separate lanes, each
+   * with its own line, around an island.
    */
   sprint?: boolean;
-  samples?: number;
-  jumps?: number;
-  /**
-   * Sprints: what the two lanes offer at each fork on a straight, taken in turn ([left, right] lanes
-   * alternate sides), and at each fork on a sweeping turn ([inside, outside]).
-   */
-  forks?: [LaneKind, LaneKind][];
-  curveForks?: [LaneKind, LaneKind][];
+  course?: Course;
 }
+
+/** A piece of a sprint route: a straight of `s` px, or a turn of `t` degrees (+ = left) at radius `r`. */
+export type Seg = { s: number } | { t: number; r: number };
+/** A sprint route: pieces in order; a fork wraps the pieces it spans. */
+export type Course = (Seg | { fork: ForkDef; segs: Seg[] })[];
+/**
+ * One lane of a fork: what it offers, how far its centre sits from the route's centreline (px) at
+ * full split, its half-width, and its shape: `wave` weaves it side to side ([amplitude, period]
+ * px: a chicane run), `bulge` swings it out and back in a long arc (px further out at the middle).
+ * A jump sits `at` this fraction along the full split (the lane must be straight there).
+ */
+export interface LaneDef { kind: LaneKind; c: number; w?: number; wave?: [number, number]; bulge?: number; at?: number; label?: string }
+export interface ForkDef { left: LaneDef; right: LaneDef }
 
 /**
  * What a fork lane offers: a jump (a glide that charges the boost), boost pads, a charging strip
@@ -38,8 +44,17 @@ export interface TrackDef {
  * up), or a plain road (at a turn, the inside line is shorter but tighter).
  */
 export type LaneKind = 'jump' | 'boost' | 'charge' | 'cool' | 'fire' | 'plain';
-/** A fork: the road splits around an island from `from` to `to`; `left` / `right` lanes (side +1 / -1). */
-export interface Fork { from: number; to: number; curve: boolean; left: LaneKind; right: LaneKind; sign: number }
+/**
+ * A fork: the road splits around an island from `from` to `to`; `left` / `right` lanes (side +1 /
+ * -1). `curve` when it's on a bend (`sign` = the inside); `labels` name each lane on the fork sign;
+ * `length` is each lane's length (px), measured along its centre.
+ */
+export interface Fork {
+  from: number; to: number; curve: boolean; left: LaneKind; right: LaneKind; sign: number;
+  labels: [string, string]; length: [number, number];
+  /** A rough time for each lane (s), from its length and how tight it is, for the AI's choice. */
+  time: [number, number];
+}
 /** A strip of lane surface with an effect, on one side of a fork. */
 export interface Strip { side: number; kind: 'boost' | 'charge' | 'cool' | 'fire'; from: number; to: number }
 const CHARGE_RATE = 0.45;         // battery per second on a charging strip
@@ -54,12 +69,14 @@ export interface Jump { from: number; lip: number; land: number; height: number;
 export const RAMP_LENGTH = 260;   // px of ramp
 export const RAMP_HEIGHT = 70;    // px high at the lip
 export const JUMP_GAP = 600;      // px of open air after the lip
-// Splits: the road widens into two lanes around an island; each lane is a bit narrower than the road.
-export const ISLAND_HALF = 150;   // island half-width at full split
-export const LANE_WIDTH = 280;    // each lane at full split
-const SPLIT_EASE = 900;           // px over which the road splits apart (and joins again)
-const SPLIT_BEFORE = 320;         // full split this far before the ramp
-const SPLIT_AFTER = 1100;         // ... and this far after the gap (the landing run)
+// Forks: each lane eases out to its line over a distance that keeps it within about 30 degrees of
+// the route, holds it, and eases back.
+const LANE_HALF = 140;            // a lane's half-width unless its LaneDef says otherwise
+const EASE_SLOPE = 2.7;           // ease length per px of sideways move
+const EASE_MIN = 700;
+const SAMPLE_PX = 20;             // spacing of a course's samples
+const LANE_TOP = 820;             // px/s, for rough lane times
+const LANE_GRIP = 480;            // px/s² of cornering, for rough lane times
 const LEAD_IN = 70;               // samples of straight before the start line (the grid)
 const RUNOFF = 1600;              // px of road past the finish line
 
@@ -306,162 +323,7 @@ export const TRACKS: TrackDef[] = [
       [-1600, 1300],
     ],
   },
-  // --- sprints: one long route each, no laps, with jumps ---------------------------------------
-  {
-    name: 'FAE FOREST',
-    blurb: 'Enchanted forest sprint: flowing sweepers and glade jumps',
-    sprint: true, samples: 26, jumps: 20,
-    forks: [['jump', 'charge'], ['plain', 'cool'], ['jump', 'plain'], ['charge', 'cool']],
-    curveForks: [['plain', 'charge'], ['plain', 'cool']],
-    theme: { wall: '#9dffb8', wallFace: '#eaf7e6', lights: '210, 255, 190', kerb: '#c8a0ff', surface: '#1e2622' },
-    // Generated route: rows across the world joined by sweeping U-turns, start to finish.
-    control: [
-      [0, 0], [520, 0], [1040, 0], [1560, 0], [2100, 0], [2620, 0], [3140, 0], [3660, 0],
-      [4220, 0], [4740, 0], [5260, 0], [5780, 0], [6300, 0], [6835, -83], [7353, -179], [7872, -8],
-      [8402, -1], [8922, -1], [9442, -1], [9962, -1], [10482, -1], [11002, -1], [11522, -1], [12042, -1],
-      [12562, -15], [13042, -209], [13388, -593], [13530, -1091], [13441, -1600], [13136, -2019], [12680, -2262], [12153, -2301],
-      [11622, -2301], [11102, -2301], [10582, -2301], [10062, -2301], [9542, -2301], [9022, -2301], [8502, -2301], [7982, -2301],
-      [7462, -2301], [6935, -2463], [6412, -2422], [5880, -2302], [5360, -2302], [4840, -2302], [4320, -2302], [3800, -2302],
-      [3280, -2302], [2760, -2302], [2240, -2302], [1720, -2302], [1206, -2364], [767, -2639], [493, -3077], [438, -3592],
-      [615, -4078], [988, -4438], [1480, -4597], [2017, -4602], [2540, -4602], [3060, -4602], [3580, -4602], [4140, -4602],
-      [4660, -4602], [5180, -4602], [5700, -4602], [6220, -4602], [6755, -4651], [7271, -4789], [7787, -4626], [8322, -4603],
-      [8842, -4603], [9362, -4603], [9882, -4603], [10402, -4603], [10922, -4603], [11442, -4603], [11962, -4603], [12482, -4607],
-      [12974, -4767], [13346, -5126], [13523, -5612], [13469, -6127], [13195, -6566], [12756, -6840], [12237, -6903], [11702, -6903],
-      [11182, -6903], [10662, -6903], [10142, -6903], [9622, -6903], [9102, -6903], [8582, -6903], [8062, -6903], [7542, -6903],
-      [7013, -7039], [6489, -7053], [5960, -6904], [5440, -6904], [4920, -6904], [4400, -6904], [3880, -6904], [3360, -6904],
-      [2840, -6904], [2320, -6904], [1800, -6904], [1282, -6943], [825, -7186], [521, -7604], [431, -8114], [574, -8611],
-      [920, -8996], [1400, -9189], [1933, -9203], [2460, -9203], [2980, -9203], [3500, -9203], [4020, -9203], [4540, -9203],
-      [5060, -9203], [5580, -9203], [6100, -9203], [6629, -9217], [7148, -9387], [7663, -9270], [8202, -9204], [8722, -9204],
-      [9242, -9204], [9762, -9204], [10282, -9204], [10802, -9204], [11322, -9204], [11842, -9204], [12362, -9204], [12882, -9204],
-      [13402, -9204], [13922, -9204], [14442, -9204], [14962, -9204], [15002, -9204],
-    ],
-  },
-  {
-    name: 'NOVA CAMELOT',
-    blurb: 'Castle-city sprint: long straights and tight castle ramps',
-    sprint: true, samples: 26, jumps: 20,
-    forks: [['jump', 'plain'], ['plain', 'charge'], ['jump', 'cool']],
-    curveForks: [['plain', 'cool'], ['plain', 'charge']],
-    theme: { wall: '#e8c25a', wallFace: '#ece6da', lights: '255, 230, 170', kerb: '#3d6fd8', surface: '#262a33' },
-    // Generated route: rows across the world joined by sweeping U-turns, start to finish.
-    control: [
-      [0, 0], [520, 0], [1040, 0], [1560, 0], [2094, 0], [2620, 0], [3140, 0], [3660, 0],
-      [4180, 0], [4700, 0], [5220, 0], [5740, 0], [6260, 0], [6781, -7], [7278, -180], [7783, -65],
-      [8300, 0], [8820, 0], [9340, 0], [9860, 0], [10380, 0], [10900, 0], [11420, 0], [11940, 0],
-      [12460, 0], [12967, -99], [13391, -395], [13659, -837], [13726, -1350], [13578, -1846], [13243, -2240], [12777, -2464],
-      [12254, -2500], [11720, -2500], [11200, -2500], [10680, -2500], [10160, -2500], [9640, -2500], [9120, -2500], [8600, -2500],
-      [8080, -2500], [7560, -2500], [7048, -2583], [6539, -2673], [6041, -2502], [5520, -2500], [5000, -2500], [4480, -2500],
-      [3960, -2500], [3440, -2500], [2920, -2500], [2400, -2500], [1880, -2500], [1361, -2519], [881, -2713], [522, -3085],
-      [343, -3570], [376, -4086], [615, -4545], [1020, -4867], [1520, -4998], [2053, -5000], [2580, -5000], [3100, -5000],
-      [3620, -5000], [4140, -5000], [4660, -5000], [5180, -5000], [5700, -5000], [6220, -5000], [6741, -5002], [7238, -5173],
-      [7747, -5083], [8260, -5000], [8780, -5000], [9300, -5000], [9820, -5000], [10340, -5000], [10860, -5000], [11380, -5000],
-      [11900, -5000], [12420, -5000], [12930, -5083], [13363, -5366], [13646, -5799], [13728, -6310], [13597, -6810], [13275, -7214],
-      [12816, -7453], [12295, -7499], [11760, -7499], [11240, -7499], [10720, -7499], [10200, -7499], [9680, -7499], [9160, -7499],
-      [8640, -7499], [8120, -7499], [7600, -7499], [7084, -7565], [6579, -7680], [6082, -7506], [5560, -7499], [5040, -7499],
-      [4520, -7499], [4000, -7499], [3480, -7499], [2960, -7499], [2440, -7499], [1920, -7499], [1400, -7512], [915, -7691],
-      [543, -8051], [349, -8530], [366, -9047], [590, -9513], [984, -9848], [1480, -9995], [2012, -9999], [2540, -9999],
-      [3060, -9999], [3580, -9999], [4100, -9999], [4620, -9999], [5140, -9999], [5660, -9999], [6180, -9999], [6700, -9999],
-      [7198, -10163], [7712, -10103], [8220, -9999], [8740, -9999], [9260, -9999], [9780, -9999], [10300, -9999], [10820, -9999],
-      [11340, -9999], [11860, -9999], [12380, -9999], [12900, -9999], [13420, -9999], [13940, -9999], [14460, -9999], [14980, -9999],
-      [15100, -9999],
-    ],
-  },
-  {
-    name: 'ZOROPERSIA',
-    blurb: 'Persian fire-temple sprint: long straights and big jumps',
-    sprint: true, samples: 26, jumps: 20,
-    forks: [['plain', 'cool'], ['jump', 'charge'], ['charge', 'cool']],
-    curveForks: [['plain', 'charge'], ['plain', 'cool']],
-    theme: { wall: '#ff9a3d', wallFace: '#f6e2c4', lights: '255, 180, 90', kerb: '#2fb5a8', surface: '#2c2420' },
-    // Generated route: rows across the world joined by sweeping U-turns, start to finish.
-    control: [
-      [0, 0], [520, 0], [1040, 0], [1560, 0], [2080, 0], [2600, 0], [3120, 0], [3640, 0],
-      [4160, 0], [4680, 0], [5200, 0], [5720, 0], [6240, 0], [6769, -18], [7288, -145], [7803, -39],
-      [8338, -1], [8858, -1], [9378, -1], [9898, -1], [10418, -1], [10938, -1], [11458, -1], [11978, -1],
-      [12498, -1], [13026, -127], [13545, -95], [14076, -2], [14596, -2], [15116, -2], [15636, -2], [16156, -2],
-      [16716, -2], [17236, -2], [17756, -2], [18276, -2], [18790, -69], [19237, -327], [19549, -740], [19675, -1242],
-      [19596, -1752], [19324, -2192], [18902, -2491], [18396, -2601], [17876, -2601], [17356, -2601], [16836, -2601], [16316, -2601],
-      [15796, -2601], [15276, -2601], [14756, -2601], [14236, -2601], [13716, -2601], [13187, -2620], [12668, -2747], [12153, -2640],
-      [11618, -2602], [11098, -2602], [10578, -2602], [10058, -2602], [9538, -2602], [9018, -2602], [8498, -2602], [7978, -2602],
-      [7458, -2602], [6930, -2728], [6412, -2697], [5880, -2603], [5360, -2603], [4840, -2603], [4320, -2603], [3800, -2603],
-      [3280, -2603], [2760, -2603], [2240, -2603], [1720, -2603], [1205, -2658], [749, -2903], [425, -3306], [284, -3803],
-      [347, -4316], [606, -4764], [1018, -5076], [1520, -5202], [2040, -5203], [2560, -5203], [3080, -5203], [3600, -5203],
-      [4120, -5203], [4640, -5203], [5160, -5203], [5680, -5203], [6200, -5203], [6727, -5214], [7248, -5346], [7762, -5254],
-      [8298, -5204], [8818, -5204], [9338, -5204], [9858, -5204], [10378, -5204], [10898, -5204], [11418, -5204], [11938, -5204],
-      [12458, -5204], [12987, -5321], [13506, -5310], [14036, -5205], [14556, -5205], [15076, -5205], [15596, -5205], [16116, -5205],
-      [16636, -5205], [17156, -5205], [17676, -5205], [18196, -5205], [18713, -5249], [19176, -5479], [19512, -5872], [19669, -6365],
-      [19621, -6880], [19377, -7335], [18974, -7659], [18476, -7801], [17956, -7804], [17436, -7804], [16916, -7804], [16396, -7804],
-      [15876, -7804], [15356, -7804], [14836, -7804], [14316, -7804], [13796, -7804], [13271, -7810], [12749, -7943], [12234, -7870],
-      [11698, -7805], [11178, -7805], [10658, -7805], [10138, -7805], [9618, -7805], [9098, -7805], [8578, -7805], [8058, -7805],
-      [7538, -7805], [7009, -7912], [6489, -7922], [5960, -7806], [5440, -7806], [4920, -7806], [4400, -7806], [3880, -7806],
-      [3360, -7806], [2840, -7806], [2320, -7806], [1800, -7806], [1280, -7806], [760, -7806], [240, -7806], [-280, -7806],
-      [-800, -7806], [-1040, -7806],
-    ],
-  },
-  {
-    name: 'BIFROST',
-    blurb: 'Rainbow bridge between floating islands: jump after jump',
-    sprint: true, samples: 26, jumps: 20,
-    forks: [['jump', 'plain'], ['jump', 'charge'], ['cool', 'charge'], ['jump', 'cool']],
-    curveForks: [['plain', 'charge']],
-    theme: { wall: '#c9a6ff', wallFace: '#f3eaff', lights: '230, 210, 255', kerb: '#7fe8ff', surface: '#232036' },
-    // Generated route: rows across the world joined by sweeping U-turns, start to finish.
-    control: [
-      [0, 0], [520, 0], [1040, 0], [1560, 0], [2080, 0], [2600, 0], [3120, 0], [3640, 0],
-      [4160, 0], [4680, 0], [5200, 0], [5720, 0], [6241, -39], [6748, -182], [7257, -51], [7778, 0],
-      [8298, 0], [8818, 0], [9338, 0], [9858, 0], [10378, 0], [10898, 0], [11418, 0], [11938, 0],
-      [12446, -131], [12969, -154], [13474, -2], [13996, 0], [14516, 0], [15036, 0], [15556, 0], [16076, 0],
-      [16596, 0], [17116, 0], [17636, 0], [18155, -19], [18634, -213], [18994, -585], [19173, -1070], [19140, -1586],
-      [18900, -2045], [18496, -2367], [17996, -2499], [17476, -2500], [16956, -2500], [16436, -2500], [15916, -2500], [15396, -2500],
-      [14876, -2500], [14356, -2500], [13836, -2500], [13304, -2530], [12799, -2727], [12278, -2667], [11759, -2501], [11236, -2501],
-      [10716, -2501], [10196, -2501], [9676, -2501], [9156, -2501], [8636, -2501], [8116, -2501], [7596, -2501], [7077, -2528],
-      [6605, -2737], [6257, -3120], [6094, -3611], [6143, -4125], [6397, -4576], [6812, -4885], [7316, -5001], [7836, -5001],
-      [8356, -5001], [8876, -5001], [9396, -5001], [9916, -5001], [10436, -5001], [10956, -5001], [11476, -5001], [11997, -5039],
-      [12504, -5183], [13013, -5052], [13534, -5001], [14054, -5001], [14574, -5001], [15094, -5001], [15614, -5001], [16134, -5001],
-      [16694, -5001], [17214, -5001], [17734, -5001], [18241, -5144], [18764, -5144], [19271, -5001], [19792, -5001], [20312, -5001],
-      [20832, -5001], [21352, -5001], [21872, -5001], [22392, -5001], [22912, -5001], [23432, -5001], [23950, -5027], [24423, -5237],
-      [24771, -5620], [24934, -6110], [24884, -6625], [24630, -7076], [24216, -7385], [23712, -7500], [23192, -7500], [22672, -7500],
-      [22152, -7500], [21632, -7500], [21112, -7500], [20592, -7500], [20072, -7500], [19552, -7500], [19019, -7543], [18515, -7734],
-      [17997, -7650], [17472, -7501], [16952, -7501], [16432, -7501], [15912, -7501], [15392, -7501], [14872, -7501], [14352, -7501],
-      [13832, -7501], [13312, -7501], [12794, -7537], [12328, -7761], [11993, -8155], [11846, -8651], [11912, -9164], [12180, -9606],
-      [12604, -9902], [13112, -10001], [13632, -10001], [14152, -10001], [14672, -10001], [15192, -10001], [15712, -10001], [16232, -10001],
-      [16752, -10001], [17272, -10001], [17792, -10052], [18301, -10183], [18808, -10040], [19330, -10001], [19850, -10001], [20370, -10001],
-      [20890, -10001], [21410, -10001], [21930, -10001], [22450, -10001], [22970, -10001], [23490, -10001], [23997, -10145], [24520, -10145],
-      [25027, -10001], [25548, -10001], [26068, -10001], [26588, -10001], [27108, -10001], [27628, -10001], [28148, -10001], [28668, -10001],
-      [29188, -10001], [29708, -10001], [30228, -10001], [30748, -10001], [31268, -10001], [31788, -10001], [32068, -10001],
-    ],
-  },
-  {
-    name: 'EL DORADO',
-    blurb: 'Golden jungle city: tight switchbacks and waterfall jumps',
-    sprint: true, samples: 26, jumps: 20,
-    forks: [['cool', 'charge'], ['jump', 'plain'], ['plain', 'cool'], ['jump', 'charge']],
-    curveForks: [['plain', 'cool'], ['plain', 'charge']],
-    theme: { wall: '#f2c24a', wallFace: '#f4e6c0', lights: '255, 220, 140', kerb: '#2fae6b', surface: '#24271e' },
-    // Generated route: rows across the world joined by sweeping U-turns, start to finish.
-    control: [
-      [0, 0], [520, 0], [1040, 0], [1560, 0], [2080, 0], [2600, 0], [3120, 0], [3640, 0],
-      [4160, 0], [4680, 0], [5200, 0], [5720, 0], [6240, 0], [6758, -111], [7241, -298], [7723, -113],
-      [8249, 14], [8727, 255], [9240, 240], [9720, 8], [10247, 0], [10767, 0], [11287, 0], [11807, 0],
-      [12327, 0], [12847, 0], [13367, 0], [13887, 0], [14407, -14], [14886, -208], [15232, -592], [15375, -1090],
-      [15285, -1599], [14981, -2018], [14524, -2261], [14007, -2300], [13487, -2300], [12967, -2300], [12447, -2300], [11927, -2300],
-      [11407, -2300], [10887, -2300], [10367, -2300], [9847, -2300], [9323, -2307], [8840, -2541], [8328, -2556], [7851, -2316],
-      [7325, -2189], [6842, -2003], [6360, -2188], [5840, -2300], [5320, -2300], [4800, -2300], [4280, -2300], [3760, -2300],
-      [3240, -2300], [2720, -2300], [2200, -2300], [1680, -2300], [1168, -2376], [739, -2665], [480, -3113], [444, -3630],
-      [638, -4109], [1022, -4456], [1520, -4598], [2040, -4600], [2560, -4600], [3080, -4600], [3600, -4600], [4120, -4600],
-      [4640, -4600], [5160, -4600], [5680, -4600], [6200, -4600], [6722, -4689], [7201, -4896], [7688, -4736], [8207, -4593],
-      [8690, -4359], [9202, -4345], [9679, -4584], [10207, -4600], [10727, -4600], [11247, -4600], [11767, -4600], [12287, -4600],
-      [12807, -4600], [13327, -4600], [13847, -4600], [14367, -4608], [14853, -4785], [15212, -5157], [15372, -5649], [15300, -6162],
-      [15011, -6591], [14563, -6849], [14047, -6899], [13527, -6899], [13007, -6899], [12487, -6899], [11967, -6899], [11447, -6899],
-      [10927, -6899], [10407, -6899], [9887, -6899], [9364, -6902], [8877, -7124], [8366, -7168], [7892, -6926], [7361, -6811],
-      [6882, -6604], [6395, -6764], [5880, -6899], [5360, -6899], [4840, -6899], [4320, -6899], [3800, -6899], [3280, -6899],
-      [2760, -6899], [2240, -6899], [1720, -6899], [1206, -6962], [767, -7236], [493, -7675], [438, -8189], [615, -8676],
-      [988, -9035], [1480, -9195], [2000, -9199], [2520, -9199], [3040, -9199], [3560, -9199], [4080, -9199], [4600, -9199],
-      [5120, -9199], [5640, -9199], [6160, -9199], [6685, -9269], [7161, -9492], [7656, -9360], [8165, -9198], [8653, -8976],
-      [9164, -8932], [9638, -9174], [10167, -9199], [10687, -9199], [11207, -9199], [11727, -9199], [12247, -9199], [12767, -9199],
-      [13287, -9199], [13807, -9199], [14327, -9199], [14847, -9199], [15367, -9199], [15887, -9199], [16447, -9199], [16847, -9199],
-    ],
-  },
+  ...SPRINTS,
 ];
 
 export const HALF_WIDTH = 195;     // half the racing surface width, px
@@ -506,9 +368,17 @@ export class Track {
   /** Forks on a sprint, and the effect strips on their lanes. */
   forks: Fork[] = [];
   strips: Strip[] = [];
-  /** Half-width of the drivable road at each sample, and of the island in its middle (0 = none). */
-  outer: Float32Array = new Float32Array(0);
-  island: Float32Array = new Float32Array(0);
+  /**
+   * The drivable road at each sample, as distances from the centerline on each side: the left lane
+   * runs from `inL` to `outL` (toward the normal), the right lane from -`inR` to -`outR`. Outside a
+   * fork the inner edges are 0 (one road); inside one, the island fills -inR..inL.
+   */
+  inL: Float32Array = new Float32Array(0);
+  outL: Float32Array = new Float32Array(0);
+  inR: Float32Array = new Float32Array(0);
+  outR: Float32Array = new Float32Array(0);
+  /** Curvature of each lane's centre line ([left, right]), for the AI's braking in a fork. */
+  laneCurve: [Float32Array, Float32Array] = [new Float32Array(0), new Float32Array(0)];
 
   constructor(def: TrackDef = TRACKS[0]) {
     this.name = def.name;
@@ -517,9 +387,16 @@ export class Track {
     const CONTROL = def.control.map(([x, y]) => [x * k, y * k] as [number, number]);
     const n = CONTROL.length;
     const raw: Vec[] = [];
-    const per = def.samples ?? SAMPLES_PER_SEGMENT;
+    const per = SAMPLES_PER_SEGMENT;
     this.open = !!def.sprint;
-    if (this.open) {
+    let forkSpans: { def: ForkDef; d0: number; d1: number; turn: number }[] = [];
+    if (def.course) {
+      // A hand-built route: walk it piece by piece, a sample every SAMPLE_PX.
+      forkSpans = walkCourse(def.course, raw);
+      this.routeEnd = raw.length - 1;
+      const dx = raw[1].x - raw[0].x, dy = raw[1].y - raw[0].y, len = Math.hypot(dx, dy) || 1;
+      for (let j = LEAD_IN; j >= 1; j--) raw.push({ x: raw[0].x - (dx / len) * len * j, y: raw[0].y - (dy / len) * len * j });
+    } else if (this.open) {
       // The route from the start line to the end of the run-off, as an open spline...
       const at = (i: number) => CONTROL[Math.max(0, Math.min(n - 1, i))];
       for (let i = 0; i < n - 1; i++) {
@@ -561,8 +438,8 @@ export class Track {
       for (let k2 = -6; k2 <= 6; k2++) sum += turn[this.shift(i, k2, m)];
       this.pts[i].curve = sum / 13;
     }
-    this.outer = new Float32Array(m).fill(HALF_WIDTH);
-    this.island = new Float32Array(m);
+    this.inL = new Float32Array(m); this.inR = new Float32Array(m);
+    this.outL = new Float32Array(m).fill(HALF_WIDTH); this.outR = new Float32Array(m).fill(HALF_WIDTH);
 
     this.bounds = {
       minX: Math.min(...this.pts.map((p) => p.x)) - WALL_DIST, maxX: Math.max(...this.pts.map((p) => p.x)) + WALL_DIST,
@@ -580,11 +457,99 @@ export class Track {
       this.finishIndex = f;
     }
     this.rampAt = new Int16Array(m).fill(-1);
-    if (def.jumps) this.placeJumps(def.jumps, def.forks);
-    if (def.curveForks) this.placeCurveForks(def.curveForks);
-    // Splits make the road wider: grow the bounds to match.
-    const extra = Math.max(...this.outer) - HALF_WIDTH;
-    this.bounds.minX -= extra; this.bounds.minY -= extra; this.bounds.maxX += extra; this.bounds.maxY += extra;
+    for (const f of forkSpans) this.placeFork(f.def, f.d0, f.d1, f.turn);
+    this.laneCurve = [this.curveOf(1), this.curveOf(-1)];
+    for (const f of this.forks) {
+      f.length = [this.laneLength(f.from, f.to, 1), this.laneLength(f.from, f.to, -1)];
+      f.time = [this.laneTime(f.from, f.to, 1), this.laneTime(f.from, f.to, -1)];
+    }
+    // Forks make the road wider: grow the bounds to match.
+    for (let i = 0; i < m; i++) for (const side of [1, -1]) {
+      const p = this.pts[i], d = side * (this.outer(i, side) + WALL_THICKNESS);
+      const x = p.x + p.nx * d, y = p.y + p.ny * d;
+      this.bounds.minX = Math.min(this.bounds.minX, x); this.bounds.maxX = Math.max(this.bounds.maxX, x);
+      this.bounds.minY = Math.min(this.bounds.minY, y); this.bounds.maxY = Math.max(this.bounds.maxY, y);
+    }
+  }
+
+  /** The outer edge of the road on one side (+1 left, -1 right) at sample i, px from the centerline. */
+  outer(i: number, side: number): number { return side > 0 ? this.outL[i] : this.outR[i]; }
+  /** The island's edge on one side (0 outside a fork). */
+  inner(i: number, side: number): number { return side > 0 ? this.inL[i] : this.inR[i]; }
+  /** Whether sample i has an island (the road is split in two). */
+  split(i: number): boolean { return this.inL[i] + this.inR[i] > 1; }
+  /** The widest the road reaches from the centerline at sample i, either side. */
+  reach(i: number): number { return Math.max(this.outL[i], this.outR[i]); }
+  /** Which lane a point `lat` px from the centerline is in (+1 / -1), split at the island's middle. */
+  sideOf(i: number, lat: number): number {
+    return lat >= (this.inL[i] - this.inR[i]) / 2 ? 1 : -1;
+  }
+  /** The centre of the lane on `side` at sample i (the centerline where the road isn't split). */
+  lanePoint(i: number, side: number): { x: number; y: number } {
+    const p = this.pts[i];
+    if (!this.split(i)) return { x: p.x, y: p.y };
+    const d = side * (this.inner(i, side) + this.outer(i, side)) / 2;
+    return { x: p.x + p.nx * d, y: p.y + p.ny * d };
+  }
+  /** Signed offset of a lane's centre from the centerline (0 where the road isn't split). */
+  laneOffset(i: number, side: number): number {
+    return this.split(i) ? side * (this.inner(i, side) + this.outer(i, side)) / 2 : 0;
+  }
+  /** The sample `px` further along than i, measured along the lane on `side` (or the centerline). */
+  aheadBy(i: number, px: number, side = 0): number {
+    let j = i, d = 0;
+    for (let k = 0; k < 400 && d < px; k++) {
+      const n = this.shift(j, 1);
+      if (n === j) break;
+      const a = side ? this.lanePoint(j, side) : this.pts[j], b = side ? this.lanePoint(n, side) : this.pts[n];
+      d += Math.hypot(b.x - a.x, b.y - a.y);
+      j = n;
+    }
+    return j;
+  }
+  /** Curvature to brake for at sample i in the lane on `side` (the centerline's outside forks). */
+  curveAt(i: number, side = 0): number { return side && this.split(i) ? this.laneCurve[side > 0 ? 0 : 1][i] : this.pts[i].curve; }
+
+  /** Rough seconds to drive a lane: each step at the speed its curvature allows. */
+  private laneTime(from: number, to: number, side: number): number {
+    let t = 0;
+    const curve = this.laneCurve[side > 0 ? 0 : 1];
+    for (let i = from; i < to; i++) {
+      const a = this.lanePoint(i, side), b = this.lanePoint(i + 1, side);
+      const k = Math.abs(curve[i]) + 1e-6;
+      t += Math.hypot(b.x - a.x, b.y - a.y) / Math.min(LANE_TOP, Math.sqrt(LANE_GRIP / k));
+    }
+    return t;
+  }
+
+  private laneLength(from: number, to: number, side: number): number {
+    let d = 0;
+    for (let i = from; i < to; i++) { const a = this.lanePoint(i, side), b = this.lanePoint(i + 1, side); d += Math.hypot(b.x - a.x, b.y - a.y); }
+    return d;
+  }
+
+  /** Curvature along one lane's centre line, smoothed like the centerline's. */
+  private curveOf(side: number): Float32Array {
+    const m = this.pts.length, out = new Float32Array(m);
+    if (!this.forks.length) { for (let i = 0; i < m; i++) out[i] = this.pts[i].curve; return out; }
+    const P = this.pts.map((p, i) => {
+      const d = side * (this.inner(i, side) + this.outer(i, side)) / 2;
+      return { x: p.x + p.nx * d, y: p.y + p.ny * d };
+    });
+    const raw = new Float32Array(m);
+    for (let i = 0; i < m; i++) {
+      const a = P[this.shift(i, -2, m)], b = P[i], c = P[this.shift(i, 2, m)];
+      const ax = b.x - a.x, ay = b.y - a.y, bx = c.x - b.x, by = c.y - b.y;
+      const la = Math.hypot(ax, ay) || 1, lb = Math.hypot(bx, by) || 1;
+      // Signed turn per px, same sign convention as TrackPoint.curve (negative = turning left).
+      raw[i] = ((ax * by - ay * bx) / (la * lb)) / ((la + lb) / 2);
+    }
+    for (let i = 0; i < m; i++) {
+      let sum = 0;
+      for (let k = -6; k <= 6; k++) sum += raw[this.shift(i, k, m)];
+      out[i] = this.split(i) || this.inL[i] > 0 ? sum / 13 : this.pts[i].curve;
+    }
+    return out;
   }
 
   get length(): number { return this.pts.length; }
@@ -641,108 +606,48 @@ export class Track {
   get routeLength(): number { return this.open ? this.dist[this.finishIndex] : this.totalLength; }
 
   /**
-   * Splits with jumps along the route, spread out (none near the start or the finish). Each needs
-   * a long, nearly straight stretch: the road eases apart into two lanes around an island, one lane
-   * gets a ramp and a gap, and the lanes ease back together after the landing run.
+   * A fork over the route from d0 to d1 px: each lane eases out to its own line (its centre, a weave
+   * or a long bulge), holds it and eases back, leaving an island between the two. Jump lanes get a
+   * ramp and a gap, charging and cooling lanes a strip along their full split.
    */
-  private placeJumps(count: number, recipe?: [LaneKind, LaneKind][]): void {
-    const m = this.pts.length, end = this.open ? this.routeEnd : m - 1;
-    const need = SPLIT_EASE * 2 + SPLIT_BEFORE + RAMP_LENGTH + JUMP_GAP + SPLIT_AFTER;
-    const spots: number[] = [];
-    let run = -1;
-    for (let i = 0; i <= end + 1; i++) {
-      const ok = i <= end && Math.abs(this.pts[i].curve) < 1 / 1500;
-      if (ok && run < 0) run = i;
-      if ((!ok || i === end + 1) && run >= 0) {
-        // Every stretch long enough gets a split, centred on it.
-        const len = this.dist[Math.min(i, end)] - this.dist[run];
-        if (len >= need) {
-          const mid = this.dist[run] + (len - need) / 2 + SPLIT_EASE + SPLIT_BEFORE;
-          let j = run; while (j < end && this.dist[j] < mid) j++;
-          spots.push(j);
+  private placeFork(def: ForkDef, d0: number, d1: number, turn: number): void {
+    const U = d1 - d0;
+    const idx = (d: number) => { let j = 0; while (j < this.routeEnd && this.dist[j] < d) j++; return j; };
+    const a = idx(d0), b = idx(d1);
+    const curve = Math.abs(turn) >= 45, inside = turn > 0 ? 1 : -1;
+    const labels: [string, string] = ['', ''];
+    for (const side of [1, -1]) {
+      const L = side > 0 ? def.left : def.right, w = L.w ?? LANE_HALF;
+      const E = Math.max(EASE_MIN, EASE_SLOPE * Math.max(L.c + w - HALF_WIDTH, L.c - w));
+      const f0 = E, f1 = Math.max(E + 1, U - E);
+      for (let i = a; i <= b; i++) {
+        const u = this.dist[i] - d0;
+        const t = smooth(Math.min(1, u / E, (U - u) / E));
+        let c = L.c;
+        if (L.bulge) c += L.bulge * Math.sin(Math.PI * clamp01((u - f0) / (f1 - f0))) ** 2;
+        if (L.wave) {
+          const [amp, per] = L.wave;
+          const env = smooth(Math.min(1, Math.max(0, Math.min(u - f0, f1 - u) / (per / 2))));
+          c += amp * env * Math.sin((2 * Math.PI * (u - f0)) / per);
         }
-        run = -1;
+        const inn = t * (c - w), out = HALF_WIDTH + t * (c + w - HALF_WIDTH);
+        if (side > 0) { this.inL[i] = Math.max(this.inL[i], inn); this.outL[i] = Math.max(this.outL[i], out); }
+        else { this.inR[i] = Math.max(this.inR[i], inn); this.outR[i] = Math.max(this.outR[i], out); }
       }
+      if (L.kind === 'jump') {
+        // On the lane's full split, landing before it starts to ease back.
+        const dj = Math.min(d0 + f0 + (L.at ?? 0.3) * (f1 - f0), d0 + f1 - RAMP_LENGTH - JUMP_GAP - 650);
+        const from = idx(dj), lip = idx(dj + RAMP_LENGTH), land = idx(dj + RAMP_LENGTH + JUMP_GAP);
+        this.jumps.push({ from, lip, land, height: RAMP_HEIGHT, side });
+        for (let j = from; j <= lip; j++) this.rampAt[j] = this.jumps.length - 1;
+      } else if (L.kind !== 'plain') {
+        this.strips.push({ side, kind: L.kind, from: idx(d0 + E * 0.7), to: idx(d1 - E * 0.7) });
+      }
+      const shape = L.wave ? 'CHICANE' : L.bulge ? 'SWEEPER' : curve ? (side === inside ? 'INSIDE' : 'WIDE') : '';
+      const kind = L.kind === 'plain' ? '' : L.kind === 'charge' ? 'CHARGE' : L.kind === 'cool' ? 'COOL' : L.kind.toUpperCase();
+      labels[side > 0 ? 0 : 1] = L.label ?? ([shape, kind].filter(Boolean).join(' + ') || 'ROAD');
     }
-    const L = this.open ? this.dist[this.finishIndex] : this.totalLength;
-    const usable = spots.filter((i) => this.dist[i] > L * 0.06 && this.dist[i] < L * 0.92);
-    const pickN = Math.min(count, usable.length);
-    for (let k = 0; k < pickN; k++) {
-      const from = usable[Math.floor(((k + 0.5) / pickN) * usable.length)];
-      const at = (d: number) => {
-        let j = from;
-        if (d < 0) { while (j > 0 && this.dist[from] - this.dist[j] < -d) j--; return j; }
-        while (j < end && this.dist[j] - this.dist[from] < d) j++;
-        return j;
-      };
-      const lip = at(RAMP_LENGTH), land = at(RAMP_LENGTH + JUMP_GAP);
-      // What each lane offers (the recipe in turn; sides alternate so it isn't always the same way).
-      const pair = recipe?.[k % recipe.length] ?? ['jump', 'plain'];
-      const flip = k % 2 === 1;
-      const left = flip ? pair[1] : pair[0], right = flip ? pair[0] : pair[1];
-      const d0 = this.dist[from] - SPLIT_BEFORE, d1 = this.dist[land] + SPLIT_AFTER;
-      const s0 = at(-SPLIT_BEFORE - SPLIT_EASE * 0.5), s1 = at(RAMP_LENGTH + JUMP_GAP + SPLIT_AFTER + SPLIT_EASE * 0.5);
-      this.forks.push({ from: s0, to: s1, curve: false, left, right, sign: 0 });
-      for (const [side, kind] of [[1, left], [-1, right]] as const) {
-        if (kind === 'jump') {
-          this.jumps.push({ from, lip, land, height: RAMP_HEIGHT, side });
-          for (let j = from; j <= lip; j++) this.rampAt[j] = this.jumps.length - 1;
-        } else if (kind !== 'plain') {
-          this.strips.push({ side, kind, from: at(-SPLIT_BEFORE * 0.6), to: at(RAMP_LENGTH + JUMP_GAP + SPLIT_AFTER * 0.8) });
-        }
-      }
-      // The split around it.
-      for (let i = 0; i <= end; i++) {
-        const d = this.dist[i];
-        if (d < d0 - SPLIT_EASE || d > d1 + SPLIT_EASE) continue;
-        const e = d < d0 ? (d - (d0 - SPLIT_EASE)) / SPLIT_EASE : d > d1 ? (d1 + SPLIT_EASE - d) / SPLIT_EASE : 1;
-        const t = e * e * (3 - 2 * e);
-        this.island[i] = Math.max(this.island[i], ISLAND_HALF * t);
-        this.outer[i] = Math.max(this.outer[i], HALF_WIDTH + (ISLAND_HALF + LANE_WIDTH - HALF_WIDTH) * t);
-      }
-    }
-  }
-
-  /**
-   * Forks on the long sweeping turns (the U-turns between rows): the road splits around an island
-   * that follows the bend, so the inside lane is shorter but tighter and the outside lane longer but
-   * faster; the recipe says what each lane offers ([inside, outside]).
-   */
-  private placeCurveForks(recipe: [LaneKind, LaneKind][]): void {
-    if (!this.open) return;
-    const end = this.routeEnd, L = this.dist[this.finishIndex];
-    let run = -1, k = 0;
-    for (let i = 0; i <= end + 1; i++) {
-      const bend = i <= end && Math.abs(this.pts[i].curve) > 1 / 1800;
-      if (bend && run < 0) run = i;
-      if ((!bend || i === end + 1) && run >= 0) {
-        const len = this.dist[Math.min(i, end)] - this.dist[run];
-        const mid = Math.floor((run + i) / 2);
-        if (len >= 2400 && this.dist[mid] > L * 0.05 && this.dist[mid] < L * 0.95 && this.island[mid] === 0) {
-          const pair = recipe[k++ % recipe.length];
-          const inside = Math.sign(this.pts[mid].curve) || 1;
-          const d0 = this.dist[run] + 300, d1 = this.dist[Math.min(i, end)] - 300, ease = 500;
-          let a = run, b = Math.min(i, end);
-          for (let j = run; j <= b; j++) {
-            const d = this.dist[j];
-            if (d < d0 || d > d1) continue;
-            const e = Math.min(1, (d - d0) / ease, (d1 - d) / ease);
-            const t = e * e * (3 - 2 * e);
-            const isl = 120 * t;
-            this.island[j] = Math.max(this.island[j], isl);
-            this.outer[j] = Math.max(this.outer[j], HALF_WIDTH + (120 + 250 - HALF_WIDTH) * t);
-          }
-          while (a < b && this.island[a] < 1) a++;
-          while (b > a && this.island[b] < 1) b--;
-          const left = inside > 0 ? pair[0] : pair[1], right = inside > 0 ? pair[1] : pair[0];
-          this.forks.push({ from: a, to: b, curve: true, left, right, sign: inside });
-          for (const [side, kind] of [[1, left], [-1, right]] as const) {
-            if (kind !== 'plain' && kind !== 'jump') this.strips.push({ side, kind, from: a + 10, to: b - 10 });
-          }
-        }
-        run = -1;
-      }
-    }
+    this.forks.push({ from: a, to: b, curve, left: def.left.kind, right: def.right.kind, sign: inside, labels, length: [0, 0], time: [0, 0] });
   }
 
   /** The fork whose split covers sample i, or null. */
@@ -750,8 +655,8 @@ export class Track {
 
   /** The effect strip under a point on sample i, or null. */
   stripAt(i: number, lat: number): Strip | null {
-    if (!this.strips.length || this.island[i] < 1) return null;
-    const side = lat >= 0 ? 1 : -1;
+    if (!this.strips.length || !this.split(i)) return null;
+    const side = this.sideOf(i, lat);
     return this.strips.find((st) => st.side === side && i >= st.from && i <= st.to) ?? null;
   }
 
@@ -761,7 +666,7 @@ export class Track {
     if (id < 0) return 0;
     const j = this.jumps[id], p = this.pts[index];
     const lat = (pos.x - p.x) * p.nx + (pos.y - p.y) * p.ny;
-    if (lat * j.side <= 0) return 0;
+    if (this.sideOf(index, lat) !== j.side) return 0;
     // How far along the ramp, from the sample plus the point's offset along the track.
     const along = this.dist[index] + (pos.x - p.x) * -p.ny + (pos.y - p.y) * p.nx;
     const t = (along - this.dist[j.from]) / (this.dist[j.lip] - this.dist[j.from]);
@@ -791,7 +696,7 @@ export class Track {
     };
     scan(hint - 60, hint + 60);
     // Far from the hint (e.g. after a reset): fall back to a full search.
-    if (Math.sqrt(bestD) > WALL_DIST * 1.5) scan(0, m - 1);
+    if (Math.sqrt(bestD) > this.reach(best) + WALL_THICKNESS + 110) scan(0, m - 1);
     return { index: best, dist: Math.sqrt(bestD) };
   }
 }
@@ -909,15 +814,19 @@ export function collideWalls(track: Track, craft: Craft, race: RaceState, dt: nu
   }
   const ox = craft.pos.x - p.x, oy = craft.pos.y - p.y;
   const lat = ox * p.nx + oy * p.ny, along = ox * -p.ny + oy * p.nx;
-  const sign = lat >= 0 ? 1 : -1;
-  const outer = track.outer[i] - CRAFT_HALF_WIDTH, isl = track.island[i];
-  let target = lat, nx = 0, ny = 0;
-  if (Math.abs(lat) > outer) {
+  const outL = track.outL[i] - CRAFT_HALF_WIDTH, outR = track.outR[i] - CRAFT_HALF_WIDTH;
+  const inL = track.inL[i], inR = track.inR[i];
+  const side = track.sideOf(i, lat);
+  let target = lat, nx = 0, ny = 0, wallLat = 0;
+  if (lat > outL || lat < -outR) {
     // The outside wall: push back in.
-    target = sign * outer; nx = -sign * p.nx; ny = -sign * p.ny;
-  } else if (isl > 1 && Math.abs(lat) < isl + CRAFT_HALF_WIDTH) {
+    const sign = lat > 0 ? 1 : -1;
+    target = sign > 0 ? outL : -outR; nx = -sign * p.nx; ny = -sign * p.ny;
+    wallLat = sign > 0 ? track.outL[i] : -track.outR[i];
+  } else if (inL + inR > 1 && lat < inL + CRAFT_HALF_WIDTH && lat > -inR - CRAFT_HALF_WIDTH) {
     // The island between two lanes: push out to whichever side we're on.
-    target = sign * (isl + CRAFT_HALF_WIDTH); nx = sign * p.nx; ny = sign * p.ny;
+    target = side > 0 ? inL + CRAFT_HALF_WIDTH : -inR - CRAFT_HALF_WIDTH; nx = side * p.nx; ny = side * p.ny;
+    wallLat = side > 0 ? inL : -inR;
   }
   let hit = target !== lat;
   if (hit) {
@@ -931,7 +840,6 @@ export function collideWalls(track: Track, craft: Craft, race: RaceState, dt: nu
   }
   if (!hit) return null;
   const impact = craft.scrape({ x: nx, y: ny }, dt);
-  const wallLat = Math.abs(lat) > outer ? sign * track.outer[i] : sign * isl;
   return { impact, x: p.x + p.nx * wallLat, y: p.y + p.ny * wallLat };
 }
 
@@ -947,6 +855,40 @@ export function placeOnGrid(track: Track, craft: Craft, slot = 0): number {
   craft.vel = { x: 0, y: 0 };
   craft.heading = track.direction(back);
   return back;
+}
+
+function smooth(e: number): number { const t = Math.max(0, Math.min(1, e)); return t * t * (3 - 2 * t); }
+function clamp01(v: number): number { return Math.max(0, Math.min(1, v)); }
+
+/**
+ * Walk a hand-built course, pushing a sample every SAMPLE_PX (start at the origin heading east).
+ * Returns each fork's span along the route (px) and how far it turns (degrees, + = left).
+ */
+function walkCourse(course: Course, raw: Vec[]): { def: ForkDef; d0: number; d1: number; turn: number }[] {
+  let x = 0, y = 0, a = 0, d = 0;
+  raw.push({ x, y });
+  const spans: { def: ForkDef; d0: number; d1: number; turn: number }[] = [];
+  const walk = (seg: Seg): number => {
+    const len = 's' in seg ? seg.s : (seg.r * Math.abs(seg.t) * Math.PI) / 180;
+    const n = Math.max(1, Math.round(len / SAMPLE_PX)), step = len / n;
+    const turn = 's' in seg ? 0 : (-seg.t * Math.PI) / 180 / n;   // + = left: the heading turns toward the normal
+    for (let k = 0; k < n; k++) {
+      const mid = a + turn / 2;
+      x += Math.cos(mid) * step; y += Math.sin(mid) * step; a += turn;
+      d += step;
+      raw.push({ x, y });
+    }
+    return 's' in seg ? 0 : seg.t;
+  };
+  for (const item of course) {
+    if ('fork' in item) {
+      const d0 = d;
+      let turn = 0;
+      for (const seg of item.segs) turn += walk(seg);
+      spans.push({ def: item.fork, d0, d1: d, turn });
+    } else walk(item);
+  }
+  return spans;
 }
 
 function catmull(p0: number, p1: number, p2: number, p3: number, t: number): number {

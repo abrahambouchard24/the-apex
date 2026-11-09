@@ -4,7 +4,7 @@
 // Pure logic, like craft.ts.
 
 import { Craft, clamp } from './craft';
-import { COOL_LANE, HALF_WIDTH, RaceState, Track, lateral } from './track';
+import { COOL_LANE, Fork, HALF_WIDTH, RaceState, Track, lateral } from './track';
 
 export interface Controls { aim: number; throttle: boolean; brake: boolean; deploy: boolean }
 
@@ -48,11 +48,29 @@ export class Driver {
     const speed = c.speed;
     const myProgress = this.race.progress(track);
 
-    // The tightest bend in the braking zone, and which side its inside is on.
+    // Sprints: a fork coming up (or under us) — pick a lane once, by what each offers.
+    const forkAhead = track.forks.length ? track.forkAt(track.aheadBy(i, 500 + speed * 0.6)) ?? track.forkAt(i) : null;
+    if (forkAhead) {
+      if (this.lane === 0) this.lane = this.chooseLane(track, forkAhead);
+    } else this.lane = 0;
+    // Once the island has started, stay in the lane we're actually in (never cut across its nose).
+    if (this.lane !== 0 && track.split(i)) {
+      const mine = track.sideOf(i, lateral(track, c, i));
+      if (track.inL[i] + track.inR[i] > 24 && mine !== this.lane) this.lane = mine;
+    }
+    const lane = this.lane;
+
+    // The tightest bend in the braking zone (along our lane in a fork), and which side its inside is on.
     let maxCurve = 0, cornerCurve = 0;
-    const zone = 12 + Math.round(speed / 22);
-    for (let k = 4; k < zone; k++) {
-      const cv = track.pts[track.shift(i, k)].curve;
+    const zonePx = (12 + speed / 22) * 20;
+    for (let j = i, d = 0, k = 0; d < zonePx && k < 300; k++) {
+      const n = track.shift(j, 1);
+      if (n === j) break;
+      const a = lane ? track.lanePoint(j, lane) : track.pts[j], b = lane ? track.lanePoint(n, lane) : track.pts[n];
+      d += Math.hypot(b.x - a.x, b.y - a.y);
+      j = n;
+      if (d < 80) continue;
+      const cv = track.curveAt(j, lane);
       if (Math.abs(cv) > maxCurve) { maxCurve = Math.abs(cv); cornerCurve = cv; }
     }
     const insideSign = cornerCurve * this.insideBias > 0 ? 1 : -1;
@@ -60,8 +78,8 @@ export class Driver {
 
     // Base line: aim further ahead the faster we go, nudged toward the inside of the bend,
     // with a slow weave so the AI doesn't drive a robotic perfect line.
-    const look = 10 + Math.round(speed / 45);
-    const aheadIndex = track.shift(i, look);
+    const lookPx = (10 + speed / 45) * 20;
+    const aheadIndex = lane ? track.aheadBy(i, lookPx, lane) : track.aheadBy(i, lookPx);
     const ahead = track.pts[aheadIndex];
     let off = clamp(ahead.curve * this.insideBias, -1, 1) * HALF_WIDTH * 0.45;
     off += Math.sin(time * 0.7 + this.seed * 2.1) * HALF_WIDTH * 0.25 * (1.05 - this.skill);
@@ -115,33 +133,18 @@ export class Driver {
     }
 
     off = clamp(off, -MAX_OFFSET, MAX_OFFSET);
-    // A split ahead (sprints): pick a lane once (the jump most of the time, the bypass now and
-    // then, more often for weaker drivers) and drive down the middle of it until the road rejoins.
-    const isl = Math.max(track.island[aheadIndex], track.island[i]);
-    if (isl > 1) {
-      if (this.lane === 0) {
-        // Choose by what each lane offers and what the craft needs right now.
-        const fork = track.forkAt(aheadIndex) ?? track.forkAt(i);
-        if (fork) {
-          const worth = (kind: string, side: number) => {
-            let v = kind === 'jump' ? 1.0 + 0.3 * this.skill : kind === 'boost' ? 1.05
-              : kind === 'charge' ? 0.5 + (1 - c.energy) * 1.1 : kind === 'cool' ? 0.35 + c.heat * 2.4
-              : kind === 'fire' ? 1.1 - c.heat * 2 : 0.6;
-            if (fork.curve && side === fork.sign) v += 0.5 * this.skill;   // the shorter inside line
-            return v + (Math.random() - 0.5) * 0.5;
-          };
-          this.lane = worth(fork.left, 1) >= worth(fork.right, -1) ? 1 : -1;
-        } else {
-          this.lane = Math.random() < 0.5 ? 1 : -1;
-        }
+    // In a fork: drive our lane, cutting toward the inside of its bends.
+    if (lane !== 0) {
+      if (track.split(aheadIndex)) {
+        const half = (track.outer(aheadIndex, lane) - track.inner(aheadIndex, lane)) / 2;
+        off = track.laneOffset(aheadIndex, lane)
+          + clamp(track.curveAt(aheadIndex, lane) * this.insideBias, -1, 1) * Math.max(0, half - 40) * 0.6;
+        // Never closer than 40 px to either of the lane's walls.
+        const a = lane * (track.inner(aheadIndex, lane) + 40), b = lane * (track.outer(aheadIndex, lane) - 40);
+        off = clamp(off, Math.min(a, b), Math.max(a, b));
+      } else {
+        off = lane * Math.max(HALF_WIDTH * 0.3, Math.abs(off));
       }
-      // Once the island has started, stay in the lane we're actually in (never cut across its nose).
-      const myLat = lateral(track, c, i);
-      if (track.island[i] > 12 && Math.sign(myLat) !== this.lane && myLat !== 0) this.lane = Math.sign(myLat);
-      const islA = track.island[aheadIndex], outA = track.outer[aheadIndex];
-      off = this.lane * (islA > 1 ? (islA + outA) / 2 : Math.max(HALF_WIDTH * 0.3, Math.abs(off)));
-    } else {
-      this.lane = 0;
     }
     // The lane hugs the wall, past the normal line limit: aim right along it.
     if (wantLane && this.state === 'cooling') off = COOL_LANE.side * (HALF_WIDTH - 16);
@@ -155,9 +158,7 @@ export class Driver {
     const late = this.mistake?.kind === 'late-brake' ? 1.18 : 1;
     // More grip (wing, upgrades) lets the car carry more speed through a bend: about its square root.
     const gripGain = Math.sqrt(Math.max(0.5, 1 + c.mods.grip));
-    const forkNow = this.lane !== 0 ? track.forkAt(i) : null;
-    const insideLine = forkNow?.curve && this.lane === forkNow.sign ? 0.86 : 1;
-    const safe = Math.min(1000, (this.cornerK * this.skill * late * gripGain * insideLine) / Math.sqrt(maxCurve + 1e-6));
+    const safe = Math.min(1000, (this.cornerK * this.skill * late * gripGain) / Math.sqrt(maxCurve + 1e-6));
     const brake = speed > safe * 1.04;
     const throttle = !brake && speed < safe;
     // ERS: spend energy on straights to attack or defend, or when the battery is nearly full.
@@ -167,6 +168,21 @@ export class Driver {
     // Past the finish of a point-to-point sprint: ease to a stop before the end of the road.
     if (track.open && this.race.lap > 0) return { aim, throttle: false, brake: true, deploy: false };
     return { aim, throttle, brake, deploy };
+  }
+
+  /**
+   * Pick a fork's lane: each is worth what it offers (a jump's boost, a charge when the battery is
+   * low, cooling when hot) minus the time it costs over the quicker lane, with a little randomness.
+   */
+  private chooseLane(track: Track, f: Fork): number {
+    const c = this.craft;
+    const offer = (kind: string) => kind === 'jump' ? 0.5 + 0.3 * this.skill
+      : kind === 'charge' ? 0.15 + (1 - c.energy) * 0.9
+      : kind === 'cool' ? c.heat * 2.4 - 0.15
+      : 0;
+    const quick = Math.min(f.time[0], f.time[1]);
+    const worth = (k: number) => offer(k === 0 ? f.left : f.right) - (f.time[k] - quick) * (0.7 + this.skill) + (Math.random() - 0.5) * 0.5;
+    return worth(0) >= worth(1) ? 1 : -1;
   }
 
   /** Roll how this driver gets off the line at GO. */

@@ -67,13 +67,24 @@ function build(track: Track): Scenery {
   const cx = track.pts.reduce((a, p) => a + p.x, 0) / m;
   const cy = track.pts.reduce((a, p) => a + p.y, 0) / m;
 
-  // Distance from a point to the track's centerline (coarse scan, done once at load).
-  // (Measured as if the road were its normal width: where it widens at a split, it counts as closer.)
+  // Distance from a point to the track's centerline (coarse scan, done once at load), measured as
+  // if the road were its normal width: where it's wider (a fork's lanes), it counts as closer. A
+  // point on a fork's island counts by its distance to the island's edges.
   const clearance = (x: number, y: number) => {
     let best = Infinity;
     for (let i = 0; i < m; i += 2) {
       const p = track.pts[i];
-      const d = Math.hypot(p.x - x, p.y - y) - (track.outer[i] - HALF_WIDTH);
+      const dx = x - p.x, dy = y - p.y;
+      const lat = dx * p.nx + dy * p.ny, along = dx * -p.ny + dy * p.nx;
+      if (Math.abs(along) > 2000) continue;
+      // How far outside the drivable band (lanes) at this sample the point lies, sideways.
+      const oL = track.outL[i], oR = track.outR[i], iL = track.inL[i], iR = track.inR[i];
+      let g: number;
+      if (lat > oL) g = lat - oL;
+      else if (lat < -oR) g = -oR - lat;
+      else if (iL + iR > 1 && lat < iL && lat > -iR) g = Math.min(iL - lat, lat + iR);
+      else g = 0;
+      const d = Math.hypot(along, g) + HALF_WIDTH;
       if (d < best) best = d;
     }
     return best;
@@ -329,13 +340,24 @@ function build(track: Track): Scenery {
   };
   const mark = ISLE_MARK[track.name];
   if (mark) {
-    for (const j of track.jumps) {
-      const mid = Math.round((j.from + j.land) / 2);
-      for (const off of [-34, 0, 34]) {
-        const i = mid + off, isl = track.island[i] ?? 0;
-        if (isl < 120) continue;
-        const p = track.pts[i];
-        props.push({ ...mark(isl * 0.8), x: p.x, y: p.y, rot: track.direction(i), seed: rand() });
+    // Along each fork's island: landmarks spaced along its middle, as big as the island allows.
+    for (const f of track.forks) {
+      let last = -1e9;
+      for (let i = f.from; i <= f.to; i++) {
+        const w = (track.inL[i] + track.inR[i]) / 2;
+        if (w < 120 || track.dist[i] - last < Math.max(260, w * 2.2)) continue;
+        last = track.dist[i];
+        const p = track.pts[i], mid = (track.inL[i] - track.inR[i]) / 2;
+        const r = Math.min(w * 0.8, 320);
+        props.push({ ...mark(r), x: p.x + p.nx * mid, y: p.y + p.ny * mid, rot: track.direction(i), seed: rand() });
+        // A wide island gets the map's own scenery round its landmark too.
+        if (w > 420) {
+          for (const off of [-1, 1]) {
+            const d = mid + off * (w * 0.55);
+            const q = { x: p.x + p.nx * d, y: p.y + p.ny * d };
+            props.push({ ...mark(Math.min(w * 0.3, 160)), x: q.x, y: q.y, rot: track.direction(i), seed: rand() });
+          }
+        }
       }
     }
   }
