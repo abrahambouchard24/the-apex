@@ -464,8 +464,7 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       add(ribbon(j.lip, j.land, ISL(sd), OUT(sd), -3, -3, 64), additive({ map: netTex, color: theme.wall, opacity: 0.55 }), 2);
     }
   }
-  // Fork lanes: each effect strip glows in its own way (gold pads, flames, charging pulses, frost),
-  // and a sign on the island's nose says what each lane offers.
+  // Fork lanes: each effect strip glows in its own way (gold pads, flames, charging pulses, frost).
   const stripTex: THREE.Texture[] = [];
   if (track.strips.length) {
     const STRIP_LOOK: Record<string, { color: string; draw: (g: CanvasRenderingContext2D) => void; v: number; speed: number }> = {
@@ -486,25 +485,6 @@ function buildWorld(track: Track, aniso: number): TrackWorld {
       const sd = st.side;
       add(ribbon(st.from, st.to, ISL(sd, 18), OUT(sd, -18), 0.5, 0.5, 1e9), basic({ color: look.color, transparent: true, opacity: 0.14, depthWrite: false }), 1);
       add(ribbon(st.from, st.to, ISL(sd, 30), OUT(sd, -30), 0.7, 0.7, look.v), looks.get(st.kind)!.mat, 2);
-    }
-  }
-  if (track.forks.length) {
-    for (const f of track.forks) {
-      // On the island's nose, once it's wide enough to stand on.
-      let i = f.from;
-      while (i < f.to && track.inL[i] + track.inR[i] < 140) i++;
-      const p0 = pts[i], mid = (track.inL[i] - track.inR[i]) / 2, dir = track.direction(i);
-      const p = { x: p0.x + p0.nx * mid, y: p0.y + p0.ny * mid };
-      const sign = textPlane(`◀ ${f.labels[0]}     ${f.labels[1]} ▶`, '#ffffff', 360, 40, theme.wall);
-      sign.geometry.rotateX(Math.PI / 2).rotateY(Math.PI / 2);
-      const holder = new THREE.Group();
-      holder.add(bothWays(sign));
-      const post = new THREE.Mesh(new THREE.BoxGeometry(8, 64, 8), new THREE.MeshLambertMaterial({ color: GOLD_C }));
-      post.position.y = -32;
-      holder.add(post);
-      holder.position.set(p.x, 104, p.y);
-      holder.rotation.y = -dir;
-      group.add(holder);
     }
   }
   {
