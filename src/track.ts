@@ -66,7 +66,7 @@ const RUNOFF = 1600;              // px of road past the finish line
 /** Kerb width at the track edge through corners. */
 export const KERB_WIDTH = 21;
 
-const NEON: TrackTheme = { wall: '#4fe3ff', wallFace: '#bff6ff', lights: '255, 79, 216', kerb: '#ff2d75', surface: '#23283f' };
+const NEON: TrackTheme = { wall: '#3fe0d0', wallFace: '#f3ead2', lights: '255, 214, 140', kerb: '#e8c25a', surface: '#1f262b' };   // Apex Arena: marble, teal and gold
 
 export const TRACKS: TrackDef[] = [
   {
@@ -103,7 +103,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'VELOCITY COLOSSEUM',
     blurb: 'Marble colosseum oval: flat out, slipstream battles',
-    theme: { wall: '#ffd23f', wallFace: '#fff3c4', lights: '255, 140, 40', kerb: '#ff8a1f', surface: '#26252f' },
+    theme: { wall: '#e8c25a', wallFace: '#f6efe0', lights: '255, 226, 170', kerb: '#c9a24a', surface: '#2a2826' },
     control: [
       [0, 1400],
       [2000, 1400],
@@ -126,7 +126,7 @@ export const TRACKS: TrackDef[] = [
     name: 'NEW YORK',
     blurb: 'Deco skyline streets: square corners, short straights',
     scale: 1.51,
-    theme: { wall: '#ff4fd8', wallFace: '#ffd1f4', lights: '79, 227, 255', kerb: '#4fe3ff', surface: '#211f33' },
+    theme: { wall: '#f2b84b', wallFace: '#f1e3c4', lights: '255, 196, 110', kerb: '#3fe0d0', surface: '#22232a' },
     control: [
       [0, 1000],
       [1300, 1000],
@@ -158,7 +158,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'LAPPLAND',
     blurb: 'Arctic night under the aurora: long sweepers',
-    theme: { wall: '#cfd8e3', wallFace: '#f2f5f8', lights: '220, 235, 255', kerb: '#8a919c', surface: '#232427' },
+    theme: { wall: '#7dffd0', wallFace: '#eef6ff', lights: '200, 235, 255', kerb: '#9fb6d6', surface: '#20252c' },
     control: [
       [0, 1500],
       [1800, 1500],
@@ -183,7 +183,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'NEW ATLANTIS',
     blurb: 'Marble city on the sea: fast sweepers, one big hairpin',
-    theme: { wall: '#3fd0ff', wallFace: '#c9f3ff', lights: '255, 210, 90', kerb: '#2f8cff', surface: '#1d2536' },
+    theme: { wall: '#5fe6d6', wallFace: '#f0f7f4', lights: '255, 214, 120', kerb: '#e8c25a', surface: '#1c2a30' },
     control: [
       [0, 1400],      // start/finish on the quay
       [1600, 1400],
@@ -211,7 +211,7 @@ export const TRACKS: TrackDef[] = [
   {
     name: 'CRYSTAL FRONT',
     blurb: 'Crystal war zone: tight switchbacks, few straights',
-    theme: { wall: '#b98cff', wallFace: '#eadcff', lights: '120, 220, 255', kerb: '#8f5cff', surface: '#221f35' },
+    theme: { wall: '#b98cff', wallFace: '#e6dcff', lights: '160, 220, 255', kerb: '#5fd8ff', surface: '#1f1d2c' },
     control: [
       [0, 1200],
       [1400, 1200],
@@ -244,7 +244,7 @@ export const TRACKS: TrackDef[] = [
     name: 'HIEROPOLIS',
     blurb: 'Sacred city of the sun: long straights, heavy braking',
     scale: 1.49,
-    theme: { wall: '#ffb347', wallFace: '#ffe6c2', lights: '255, 120, 60', kerb: '#ff6a2b', surface: '#2a2420' },
+    theme: { wall: '#f0b24a', wallFace: '#f3dfb8', lights: '255, 190, 110', kerb: '#c85a2a', surface: '#2c2620' },
     control: [
       [0, 1500],
       [2500, 1500],
@@ -275,7 +275,7 @@ export const TRACKS: TrackDef[] = [
     name: 'HANGING GARDENS',
     blurb: 'Terraced sky gardens with a long, sweeping carousel',
     scale: 1.44,
-    theme: { wall: '#ff5e8a', wallFace: '#ffd3e0', lights: '255, 240, 120', kerb: '#ff3060', surface: '#251c2a' },
+    theme: { wall: '#6fe0a0', wallFace: '#efe6cf', lights: '255, 230, 160', kerb: '#e8c25a', surface: '#232a24' },
     control: [
       [0, 1300],
       [1700, 1300],
@@ -313,7 +313,7 @@ export const TRACKS: TrackDef[] = [
     sprint: true, samples: 26, jumps: 20,
     forks: [['jump', 'charge'], ['plain', 'cool'], ['jump', 'plain'], ['charge', 'cool']],
     curveForks: [['plain', 'charge'], ['plain', 'cool']],
-    theme: { wall: '#7dffb0', wallFace: '#e6fff0', lights: '190, 255, 210', kerb: '#c88bff', surface: '#1e2a26' },
+    theme: { wall: '#9dffb8', wallFace: '#eaf7e6', lights: '210, 255, 190', kerb: '#c8a0ff', surface: '#1e2622' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
       [0, 0], [520, 0], [1040, 0], [1560, 0], [2100, 0], [2620, 0], [3140, 0], [3660, 0],
@@ -342,7 +342,7 @@ export const TRACKS: TrackDef[] = [
     sprint: true, samples: 26, jumps: 20,
     forks: [['jump', 'plain'], ['plain', 'charge'], ['jump', 'cool']],
     curveForks: [['plain', 'cool'], ['plain', 'charge']],
-    theme: { wall: '#ffd23f', wallFace: '#fff6d8', lights: '255, 236, 170', kerb: '#3d7bff', surface: '#262a36' },
+    theme: { wall: '#e8c25a', wallFace: '#ece6da', lights: '255, 230, 170', kerb: '#3d6fd8', surface: '#262a33' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
       [0, 0], [520, 0], [1040, 0], [1560, 0], [2094, 0], [2620, 0], [3140, 0], [3660, 0],
@@ -372,7 +372,7 @@ export const TRACKS: TrackDef[] = [
     sprint: true, samples: 26, jumps: 20,
     forks: [['plain', 'cool'], ['jump', 'charge'], ['charge', 'cool']],
     curveForks: [['plain', 'charge'], ['plain', 'cool']],
-    theme: { wall: '#ff8a1f', wallFace: '#ffe8cc', lights: '255, 200, 120', kerb: '#4fe3ff', surface: '#2e2622' },
+    theme: { wall: '#ff9a3d', wallFace: '#f6e2c4', lights: '255, 180, 90', kerb: '#2fb5a8', surface: '#2c2420' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
       [0, 0], [520, 0], [1040, 0], [1560, 0], [2080, 0], [2600, 0], [3120, 0], [3640, 0],
@@ -404,7 +404,7 @@ export const TRACKS: TrackDef[] = [
     sprint: true, samples: 26, jumps: 20,
     forks: [['jump', 'plain'], ['jump', 'charge'], ['cool', 'charge'], ['jump', 'cool']],
     curveForks: [['plain', 'charge']],
-    theme: { wall: '#b98cff', wallFace: '#f3eaff', lights: '230, 210, 255', kerb: '#4fe3ff', surface: '#232036' },
+    theme: { wall: '#c9a6ff', wallFace: '#f3eaff', lights: '230, 210, 255', kerb: '#7fe8ff', surface: '#232036' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
       [0, 0], [520, 0], [1040, 0], [1560, 0], [2080, 0], [2600, 0], [3120, 0], [3640, 0],
@@ -437,7 +437,7 @@ export const TRACKS: TrackDef[] = [
     sprint: true, samples: 26, jumps: 20,
     forks: [['cool', 'charge'], ['jump', 'plain'], ['plain', 'cool'], ['jump', 'charge']],
     curveForks: [['plain', 'cool'], ['plain', 'charge']],
-    theme: { wall: '#ffd23f', wallFace: '#fff2c8', lights: '255, 230, 150', kerb: '#2fd16b', surface: '#24261c' },
+    theme: { wall: '#f2c24a', wallFace: '#f4e6c0', lights: '255, 220, 140', kerb: '#2fae6b', surface: '#24271e' },
     // Generated route: rows across the world joined by sweeping U-turns, start to finish.
     control: [
       [0, 0], [520, 0], [1040, 0], [1560, 0], [2080, 0], [2600, 0], [3120, 0], [3640, 0],
