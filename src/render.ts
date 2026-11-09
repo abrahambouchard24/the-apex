@@ -491,7 +491,10 @@ function hudScale(w: number, h: number): number {
   return clamp(Math.min(w / 1280, h / 720) * 1.45, Math.min(1, h / 560), 1.6);
 }
 
-/** A sprint's route for the minimap: the lead-in into the start, then start to the end, left open. */
+/**
+ * A sprint's route for the minimap: the lead-in into the start, then start to the end, left open.
+ * Traced once along each lane, so at a fork both roads show (elsewhere the two traces coincide).
+ */
 const openRoutes = new WeakMap<Track, Path2D>();
 function openRoute(track: Track): Path2D {
   let p = openRoutes.get(track);
@@ -499,7 +502,9 @@ function openRoute(track: Track): Path2D {
   p = new Path2D();
   const order = [...Array.from({ length: track.length - track.routeEnd - 1 }, (_, k) => track.routeEnd + 1 + k),
     ...Array.from({ length: track.routeEnd + 1 }, (_, k) => k)];
-  order.forEach((i, n) => { const q = track.pts[i]; if (n === 0) p!.moveTo(q.x, q.y); else p!.lineTo(q.x, q.y); });
+  for (const side of [1, -1]) {
+    order.forEach((i, n) => { const q = track.lanePoint(i, side); if (n === 0) p!.moveTo(q.x, q.y); else p!.lineTo(q.x, q.y); });
+  }
   openRoutes.set(track, p);
   return p;
 }

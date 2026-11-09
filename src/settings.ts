@@ -30,6 +30,9 @@ export const DEFAULT_KEYS: Record<Action, string[]> = {
 const DEFAULTS: Settings = { music: 0.8, sfx: 0.9, muted: false, quality: 'high', keys: DEFAULT_KEYS, tutorialDone: false };
 const SETTINGS_KEY = 'the-apex-settings';
 const RECORDS_KEY = 'the-apex-records';
+const SPRINTS_KEY = 'the-apex-sprint-layouts';   // which sprint layouts the saved records are for
+const SPRINTS_VERSION = '2';
+const OLD_SPRINTS = ['FAE FOREST', 'NOVA CAMELOT', 'ZOROPERSIA', 'BIFROST', 'EL DORADO'];
 
 export function loadSettings(): Settings {
   try {
@@ -72,6 +75,12 @@ export function loadRecords(): Record<string, number> {
     const raw = JSON.parse(localStorage.getItem(RECORDS_KEY) ?? '{}');
     const out: Record<string, number> = {};
     for (const [k, v] of Object.entries(raw ?? {})) if (typeof v === 'number' && v > 0) out[k] = v;
+    // The sprints were rebuilt from scratch (new routes): times set on the old ones are dropped once.
+    if (localStorage.getItem(SPRINTS_KEY) !== SPRINTS_VERSION) {
+      for (const name of OLD_SPRINTS) delete out[name];
+      localStorage.setItem(RECORDS_KEY, JSON.stringify(out));
+      localStorage.setItem(SPRINTS_KEY, SPRINTS_VERSION);
+    }
     return out;
   } catch { return {}; }
 }
